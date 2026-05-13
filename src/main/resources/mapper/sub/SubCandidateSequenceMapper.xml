@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scrm.dao.sub.SubCandidateSequenceMapper">
+
+  <select id="countUpdatedSince" resultType="java.lang.Long">
+    select count(*) from candidate_sequences
+    where updated_at &gt;= #{since} and user_id = #{userId}
+  </select>
+
+  <select id="selectUpdatedSince" resultMap="com.scrm.dao.CandidateSequenceMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.CandidateSequenceMapper.Base_Column_List"/>
+    from candidate_sequences
+    where updated_at &gt;= #{since} and user_id = #{userId}
+    order by updated_at ASC
+  </select>
+
+</mapper>

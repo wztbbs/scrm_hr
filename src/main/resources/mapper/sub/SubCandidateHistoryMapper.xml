@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scrm.dao.sub.SubCandidateHistoryMapper">
+
+  <select id="countUpdatedSince" resultType="java.lang.Long">
+    select count(*) from candidate_history
+    where created_at &gt;= #{since} and user_id = #{userId}
+  </select>
+
+  <select id="selectUpdatedSince" resultMap="com.scrm.dao.CandidateHistoryMapper.ResultMapWithBLOBs">
+    select
+    <include refid="com.scrm.dao.CandidateHistoryMapper.Base_Column_List"/>
+    ,
+    <include refid="com.scrm.dao.CandidateHistoryMapper.Blob_Column_List"/>
+    from candidate_history
+    where created_at &gt;= #{since} and user_id = #{userId}
+    order by created_at ASC
+  </select>
+
+</mapper>

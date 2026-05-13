@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn SCRM</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 520px;
+      min-height: 870px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f7fa;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    .app-header {
+      background: #5b4cdb;
+      color: #fff;
+      padding: 16px 20px;
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .feedback-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .feedback-btn:hover { background: rgba(255,255,255,0.25); }
+
+    /* Feedback Modal */
+    .feedback-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .feedback-overlay.hidden { display: none; }
+    .feedback-modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+      overflow: hidden;
+    }
+    .feedback-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .feedback-modal-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .feedback-modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      color: #9ca3af;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .feedback-modal-close:hover { color: #4b5563; }
+    .feedback-modal-body {
+      padding: 16px 18px;
+    }
+    .feedback-modal-desc {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .feedback-textarea {
+      width: 100%;
+      min-height: 90px;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+    }
+    .feedback-textarea:focus { border-color: #5b4cdb; }
+    .feedback-field {
+      margin-top: 12px;
+    }
+    .feedback-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: #4b5563;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .feedback-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .feedback-input:focus { border-color: #5b4cdb; }
+    .feedback-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 18px;
+      border-top: 1px solid #f3f4f6;
+      background: #fafafa;
+    }
+    .feedback-btn-secondary {
+      padding: 7px 14px;
+      font-size: 13px;
+      border: 1px solid #e5e7eb;
+      background: #fff;
+      color: #4b5563;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .feedback-btn-secondary:hover { background: #f3f4f6; }
+    .feedback-btn-primary {
+      padding: 7px 16px;
+      font-size: 13px;
+      border: none;
+      background: #5b4cdb;
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .feedback-btn-primary:hover { background: #4c3ec7; }
+    .feedback-btn-primary:disabled {
+      background: #a5a5a5;
+      cursor: not-allowed;
+    }
+
+    /* Nav Tabs */
+    .nav-tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .nav-tab {
+      flex: 1;
+      text-align: center;
+      padding: 12px 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #9ca3af;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .nav-tab.active {
+      color: #5b4cdb;
+      border-bottom-color: #5b4cdb;
+      font-weight: 600;
+    }
+
+    /* Tab Content */
+    .tab-content { display: none; padding: 12px; }
+    .tab-content.active { display: block; }
+
+    /* Card */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+      border: 1px solid #e5e7eb;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-title small {
+      font-size: 11px;
+      color: #9ca3af;
+      font-weight: 400;
+    }
+
+    /* Avatar & Profile */
+    .profile-header {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .profile-avatar {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: #5b4cdb;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .profile-info { flex: 1; min-width: 0; }
+    .profile-name { font-size: 18px; font-weight: 700; color: #1a1a1a; }
+    .profile-title { font-size: 13px; color: #666; margin-top: 2px; }
+
+    /* Select / Input */
+    .form-select, .form-input, .form-textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+      background: #fff;
+    }
+    .form-select:focus, .form-input:focus, .form-textarea:focus { border-color: #5b4cdb; }
+    .form-textarea { min-height: 60px; resize: none; line-height: 1.5; }
+    .form-row { margin-bottom: 10px; }
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    /* Contact Mode */
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .mode-tab {
+      padding: 10px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .mode-tab .mode-title { font-size: 13px; font-weight: 600; color: #4b5563; }
+    .mode-tab .mode-desc { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    .mode-tab.active {
+      background: #5b4cdb;
+      border-color: #5b4cdb;
+      color: #fff;
+    }
+    .mode-tab.active .mode-title,
+    .mode-tab.active .mode-desc { color: #fff; }
+
+    /* Inline mode tabs (inside AI Assistant card) */
+    .mode-tabs-inline {
+      display: flex;
+      gap: 8px;
+    }
+    .mode-tabs-inline .mode-tab {
+      flex: none;
+      padding: 5px 14px;
+      min-width: auto;
+    }
+    .mode-tabs-inline .mode-tab .mode-desc { display: none; }
+
+    /* Key Memory */
+    .memory-box {
+      background: #fefce8;
+      border: 1px solid #fde047;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #713f12;
+      line-height: 1.5;
+    }
+
+    /* AI Assistant placeholder */
+    .ai-placeholder {
+      background: #f5f3ff;
+      border: 1px dashed #c4b5fd;
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      color: #7c6ae6;
+      font-size: 13px;
+    }
+
+    /* Sequence card */
+    .seq-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .seq-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .seq-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+    .seq-meta { font-size: 12px; color: #9ca3af; }
+    .seq-steps { list-style: none; }
+    .seq-steps li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      font-size: 12px;
+      color: #4b5563;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .seq-steps li:last-child { border-bottom: none; }
+    .seq-step-num {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #5b4cdb;
+      color: #fff;
+      font-size: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 6px;
+    }
+    .seq-step-status {
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-sent { color: #10b981; }
+    .status-waiting { color: #9ca3af; }
+    .status-overdue { color: #ef4444; }
+
+    /* Next follow-up */
+    .followup-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .followup-time { font-size: 14px; color: #1a1a1a; }
+    .followup-tag {
+      font-size: 11px;
+      color: #9ca3af;
+      background: #f3f4f6;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    /* Voice memo */
+    .voice-memo-btn {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #fdba74;
+      border-radius: 10px;
+      background: #fff7ed;
+      color: #c2410c;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .voice-memo-btn.recording {
+      background: #fef2f2;
+      border-color: #ef4444;
+      color: #ef4444;
+    }
+
+    /* Primary Button */
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      background: #5b4cdb;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary:hover { background: #4c3ec7; }
+    .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+    .btn-sm {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      background: #5b4cdb;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-outline {
+      padding: 6px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #fff;
+      color: #4b5563;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    /* Pipeline */
+    .pipeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .pipeline-title { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+    .pipeline-filter {
+      font-size: 12px;
+      color: #9ca3af;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+    }
+    .pipeline-filter-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 6px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      min-width: 160px;
+      z-index: 100;
+      padding: 6px 0;
+    }
+    .pipeline-filter-dropdown.active { display: block; }
+    .pipeline-filter-dropdown-item {
+      padding: 8px 14px;
+      font-size: 13px;
+      color: #4b5563;
+      cursor: pointer;
+    }
+    .pipeline-filter-dropdown-item:hover { background: #f3f4f6; }
+    .pipeline-filter-dropdown-item.active { color: #5b4cdb; font-weight: 600; }
+
+    .add-option-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s;
+    }
+    .add-option-btn.linkedin {
+      border: 1.5px solid #5b4cdb;
+      color: #5b4cdb;
+    }
+    .add-option-btn.linkedin:hover { background: #f5f3ff; }
+    .add-option-btn.manual {
+      border: 1.5px solid #d1d5db;
+      color: #4b5563;
+    }
+    .add-option-btn.manual:hover { background: #f9fafb; }
+    .add-option-icon { font-size: 18px; }
+    .add-option-text { flex: 1; }
+    .add-option-title { font-size: 14px; font-weight: 600; }
+    .add-option-desc { font-size: 12px; color: #9ca3af; font-weight: 400; }
+
+    .temp-btn { flex: 1; padding: 6px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid transparent; }
+    .temp-btn.hot { background: #fee2e2; color: #ef4444; border-color: #fecaca; }
+    .temp-btn.warm { background: #fef3c7; color: #d97706; border-color: #fde68a; }
+    .temp-btn.cold { background: #dbeafe; color: #2563eb; border-color: #bfdbfe; }
+    .temp-btn.dead { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
+    .temp-btn.active.hot { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .temp-btn.active.warm { background: #f59e0b; color: #fff; border-color: #f59e0b; }
+    .temp-btn.active.cold { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .temp-btn.active.dead { background: #6b7280; color: #fff; border-color: #6b7280; }
+
+    .board {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .board::-webkit-scrollbar { height: 4px; }
+    .board::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+    .board-column {
+      min-width: 116px;
+      flex: 1;
+      background: #f9fafb;
+      border-radius: 10px;
+      padding: 8px;
+      min-height: 300px;
+    }
+    .board-column-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4b5563;
+      text-align: center;
+      padding: 6px 0;
+      margin-bottom: 8px;
+      background: #fff;
+      border-radius: 6px;
+      border: 1px solid #e5e7eb;
+    }
+    .board-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
+      cursor: grab;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .board-card:hover { border-color: #5b4cdb; box-shadow: 0 2px 6px rgba(91,76,219,0.08); }
+    .board-card.dragging { opacity: 0.5; }
+    .board-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .board-card-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .board-card-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .board-card-title { font-size: 11px; color: #666; line-height: 1.3; }
+    .board-card-time {
+      font-size: 10px;
+      color: #9ca3af;
+      text-align: right;
+      margin-top: 4px;
+    }
+    .board-card-delete {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      border: 1px solid #fff;
+      background: #e5e7eb;
+      color: #6b7280;
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      transition: all 0.2s;
+      z-index: 2;
+    }
+    .board-card-delete:hover {
+      background: #ef4444;
+      color: #fff;
+      border-color: #ef4444;
+    }
+    .unclaimed-hint {
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 500;
+      padding: 6px 10px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      text-align: center;
+      border: 1px solid #fde68a;
+    }
+    .board-card-save-to-new {
+      width: 100%;
+      margin-top: 8px;
+      padding: 6px 0;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .board-card-save-to-new:hover {
+      background: #4f46e5;
+    }
+    .board-column.drag-over { background: #ede9fe; border: 1px dashed #5b4cdb; }
+    .board-hint {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 12px;
+      margin-top: 16px;
+      font-style: italic;
+    }
+
+    /* Sequence tabs */
+    .sub-tabs {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .sub-tab {
+      padding: 8px 4px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #9ca3af;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .sub-tab.active { color: #5b4cdb; border-bottom-color: #5b4cdb; }
+
+    .seq-list-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .seq-list-title { font-size: 15px; font-weight: 700; color: #1a1a1a; }
+    .seq-add-btn {
+      font-size: 13px;
+      font-weight: 600;
+      color: #5b4cdb;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    .seq-item {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .seq-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .seq-item-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+    .seq-item-count { font-size: 12px; color: #9ca3af; }
+    .seq-item-toggle {
+      font-size: 12px;
+      color: #5b4cdb;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+    .seq-item-progress {
+      font-size: 11px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+    }
+    .seq-safety-tip {
+      background: #fefce8;
+      border: 1px solid #fde047;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px;
+      color: #713f12;
+      margin-bottom: 10px;
+    }
+
+    /* Task item */
+    .task-item {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .task-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .task-info { flex: 1; min-width: 0; }
+    .task-name { font-size: 14px; font-weight: 600; color: #1a1a1a; }
+    .task-desc { font-size: 12px; color: #666; margin-top: 2px; }
+    .task-schedule { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+    .task-right {
+      text-align: right;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+    .task-status {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-today { color: #f59e0b; }
+    .status-overdue { color: #ef4444; }
+    .status-tomorrow { color: #9ca3af; }
+
+    /* History */
+    .history-search {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .history-search input {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+    }
+    .history-search input:focus { border-color: #5b4cdb; }
+    .history-filter-btn {
+      padding: 8px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+      color: #4b5563;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .history-candidate-header {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .history-candidate-avatar {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #5b4cdb;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .history-candidate-info { flex: 1; }
+    .history-candidate-name { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+    .history-candidate-meta { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+
+    .timeline {
+      position: relative;
+      padding-left: 20px;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #e5e7eb;
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: 14px;
+      padding-left: 16px;
+    }
+    .timeline-dot {
+      position: absolute;
+      left: -16px;
+      top: 2px;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 2px #e5e7eb;
+    }
+    .timeline-dot.sent { background: #5b4cdb; }
+    .timeline-dot.replied { background: #10b981; }
+    .timeline-dot.call { background: #f59e0b; }
+    .timeline-dot.status_change { background: #9ca3af; }
+    .timeline-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .timeline-date { font-size: 12px; color: #9ca3af; }
+    .timeline-time { font-size: 12px; color: #9ca3af; }
+    .timeline-label {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    .timeline-label.sent { color: #5b4cdb; }
+    .timeline-label.replied { color: #10b981; }
+    .timeline-label.call { color: #f59e0b; }
+    .timeline-label.status_change { color: #9ca3af; }
+    .timeline-content {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: #4b5563;
+      line-height: 1.5;
+    }
+    .timeline-subtype {
+      font-size: 10px;
+      color: #9ca3af;
+      text-align: right;
+      margin-top: 2px;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 20px;
+      width: 100%;
+      max-width: 400px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #333;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      opacity: 0;
+      transition: all 0.3s;
+      z-index: 3000;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Loading */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(255,255,255,0.9);
+      z-index: 100;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .loading-overlay.active { display: flex; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #5b4cdb;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* Misc */
+    .text-center { text-align: center; }
+    .text-gray { color: #9ca3af; }
+    .text-sm { font-size: 12px; }
+    .mt-2 { margin-top: 8px; }
+    .mt-4 { margin-top: 16px; }
+    .mb-2 { margin-bottom: 8px; }
+    .hidden { display: none !important; }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 8px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9ca3af;
+    }
+
+    .candidate-select-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .candidate-select-row select {
+      flex: 1;
+    }
+
+    .footer-hint {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 12px;
+      margin-top: 16px;
+      font-style: italic;
+    }
+
+    /* Follow-up Status Bar */
+    .followup-status-bar {
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .followup-status-bar.status-overdue {
+      color: #ef4444;
+      background: #fef2f2;
+    }
+    .followup-status-bar.status-today {
+      color: #d97706;
+      background: #fffbeb;
+    }
+    .followup-status-bar.status-future {
+      color: #059669;
+      background: #ecfdf5;
+    }
+    .followup-status-bar.status-none {
+      color: #9ca3af;
+      background: #f9fafb;
+    }
+
+    /* Today Section */
+    .today-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      padding: 2px 0;
+    }
+    .today-header-left {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ef4444;
+    }
+    .today-header-right {
+      font-size: 13px;
+      color: #9ca3af;
+    }
+    .today-content { margin-top: 10px; }
+    .today-content.hidden { display: none; }
+    .today-task-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .today-task-item:last-child { border-bottom: none; }
+    .today-task-border {
+      width: 3px;
+      height: 36px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .today-task-border.overdue { background: #ef4444; }
+    .today-task-border.today { background: #f59e0b; }
+    .today-task-border.tomorrow { background: #d1d5db; }
+    .today-task-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .today-task-info { flex: 1; min-width: 0; }
+    .today-task-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
+    .today-task-desc { font-size: 11px; color: #9ca3af; }
+    .today-task-status {
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .today-task-status.overdue { color: #ef4444; }
+    .today-task-status.today { color: #f59e0b; }
+    .today-footer {
+      text-align: center;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .today-footer a {
+      font-size: 13px;
+      color: #5b4cdb;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .today-footer a:hover { text-decoration: underline; }
+    /* Custom DateTime Picker */
+    .datetime-picker-wrapper { position: relative; }
+    .datetime-picker-popup {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      width: 280px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      padding: 12px;
+      z-index: 1000;
+      user-select: none;
+    }
+    .datetime-picker-popup.hidden { display: none; }
+    .dtp-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .dtp-nav-btn {
+      background: none;
+      border: none;
+      font-size: 14px;
+      color: #5b4cdb;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .dtp-nav-btn:hover { background: #f3f4f6; }
+    .dtp-month-year {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+    .dtp-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      text-align: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+    .dtp-days {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 2px;
+    }
+    .dtp-day {
+      text-align: center;
+      padding: 6px 0;
+      font-size: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #374151;
+      transition: background 0.15s;
+    }
+    .dtp-day:hover { background: #f3f4f6; }
+    .dtp-day.selected {
+      background: #5b4cdb;
+      color: #fff;
+      font-weight: 600;
+    }
+    .dtp-day.other-month { color: #d1d5db; }
+    .dtp-day.today {
+      border: 1px solid #5b4cdb;
+    }
+    .dtp-time-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 10px 0 6px;
+    }
+    .dtp-time-row select {
+      padding: 4px 8px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    .dtp-time-row span { color: #6b7280; font-weight: 600; }
+    .dtp-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #f3f4f6;
+    }
+    .dtp-btn {
+      padding: 5px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .dtp-btn-text {
+      background: none;
+      color: #5b4cdb;
+    }
+    .dtp-btn-text:hover { background: #f3f4f6; }
+    .dtp-btn-primary {
+      background: #5b4cdb;
+      color: #fff;
+    }
+    .dtp-btn-primary:hover { background: #4c3ec7; }
+  </style>
+</head>
+<body>
+
+<div class="app-header">
+  <span>LinkedIn SCRM</span>
+  <button class="feedback-btn" id="feedbackOpenBtn" title="Send Feedback">💬 Feedback</button>
+</div>
+
+<!-- Feedback Modal -->
+<div class="feedback-overlay hidden" id="feedbackOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-header">
+      <span class="feedback-modal-title">Send Feedback</span>
+      <button class="feedback-modal-close" id="feedbackCloseBtn">&#10005;</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div class="feedback-modal-desc">Found a bug or have a suggestion? Let us know.</div>
+      <textarea class="feedback-textarea" id="feedbackContent" placeholder="Describe your issue..."></textarea>
+      <div class="feedback-field">
+        <label class="feedback-label">Email (optional)</label>
+        <input type="text" class="feedback-input" id="feedbackEmail" placeholder="your@email.com">
+      </div>
+    </div>
+    <div class="feedback-modal-footer">
+      <button class="feedback-btn-secondary" id="feedbackCancelBtn">Cancel</button>
+      <button class="feedback-btn-primary" id="feedbackSendBtn">Send</button>
+    </div>
+  </div>
+</div>
+
+<div class="nav-tabs">
+  <div class="nav-tab active" data-tab="overview">Overview</div>
+  <div class="nav-tab" data-tab="pipeline">Pipeline</div>
+  <div class="nav-tab" data-tab="sequence">Sequence</div>
+  <div class="nav-tab" data-tab="history">History</div>
+</div>
+
+<!-- Overview Tab -->
+<div class="tab-content active" id="tab-overview">
+  <div class="card" id="ovTodayCard">
+    <div class="today-header" id="ovTodayHeader">
+      <span class="today-header-left">📋 Today</span>
+      <span class="today-header-right" id="ovTodayCount">0 tasks ▼</span>
+    </div>
+    <div class="today-content hidden" id="ovTodayContent">
+      <div id="ovTodayTaskList"></div>
+      <div class="today-footer">
+        <a id="ovTodayViewAll">View all in Sequence →</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="profile-header">
+      <div class="profile-avatar" id="ovAvatar">?</div>
+      <div class="profile-info">
+        <div class="profile-name" id="ovName">-</div>
+        <div class="profile-title" id="ovTitle">Open a LinkedIn profile to load data</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      Temperature
+      <small>AI suggested</small>
+    </div>
+    <div class="form-row">
+      <select class="form-select" id="ovTemperature">
+        <option value="Cold">🧊 Cold</option>
+        <option value="Warm">🌤 Warm</option>
+        <option value="Hot">🔥 Hot</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Key Memory</div>
+    <div class="form-row">
+      <textarea class="form-textarea" id="ovKeyMemory" placeholder="Add notes about this candidate..."></textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      AI Message Assistant
+      <small>Based on chat history</small>
+    </div>
+    <div class="mode-tabs mode-tabs-inline">
+      <div class="mode-tab active" data-mode="recruiting" id="ovModeRecruiting">
+        <div class="mode-title">Recruiting</div>
+      </div>
+      <div class="mode-tab" data-mode="nurture" id="ovModeNurture">
+        <div class="mode-title">Nurture</div>
+      </div>
+    </div>
+    <div class="ai-placeholder" id="ovAiPlaceholder">
+      🤖 AI assistant will appear here<br>
+      <span style="font-size:12px">(Coming soon)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Active Sequence</div>
+    <div id="ovActiveSequence">
+      <div class="text-gray text-center text-sm" style="padding:12px">No active sequence</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Next Follow-up</div>
+    <div class="form-row">
+      <!-- Main follow-up time (user-set or from sequence) -->
+      <div class="followup-status-bar status-none" id="ovFollowupStatusBar">⚪ Set reminder</div>
+      <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;" id="ovFollowupSourceTag"></div>
+      <div class="datetime-picker-wrapper">
+        <input type="text" class="form-input" id="ovNextFollowupInput" placeholder="Select date &amp; time" readonly>
+        <div class="datetime-picker-popup hidden" id="ovDatetimePicker">
+          <div class="dtp-header">
+            <button class="dtp-nav-btn" id="dtpPrevMonth">&#10094;</button>
+            <span class="dtp-month-year" id="dtpMonthYear"></span>
+            <button class="dtp-nav-btn" id="dtpNextMonth">&#10095;</button>
+          </div>
+          <div class="dtp-weekdays">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+          <div class="dtp-days" id="dtpDays"></div>
+          <div class="dtp-time-row">
+            <select id="dtpHour"></select>
+            <span>:</span>
+            <select id="dtpMinute"></select>
+          </div>
+          <div class="dtp-footer">
+            <button class="dtp-btn dtp-btn-text" id="dtpBtnToday">Today</button>
+            <button class="dtp-btn dtp-btn-text" id="dtpBtnClear">Clear</button>
+            <button class="dtp-btn dtp-btn-primary" id="dtpBtnOk">OK</button>
+          </div>
+        </div>
+      </div>
+      <!-- Sequence suggestion (shown when source=manual and sequence has suggestion) -->
+      <div id="ovSequenceSuggestion" style="display:none;margin-top:8px;padding:8px;background:#f9fafb;border-radius:6px;font-size:12px;color:#6b7280;">
+        <div>💡 <span id="ovSequenceSuggestionText"></span></div>
+        <button class="btn-sm" id="ovSyncToSequenceBtn" style="margin-top:6px;width:auto;padding:4px 10px;font-size:11px;">Sync to Sequence</button>
+      </div>
+      <!-- Mark Done button -->
+      <div id="ovMarkDoneRow" style="display:none;margin-top:8px;">
+        <button class="btn-sm" id="ovMarkDoneBtn" style="width:auto;padding:6px 14px;font-size:12px;background:#10b981;">✓ Mark Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      Voice Memo
+      <small>Click to record or type below</small>
+    </div>
+    <div class="form-row">
+      <textarea class="form-textarea" id="ovVoiceMemoTextarea" placeholder="Type notes or click the button below to record voice..."></textarea>
+    </div>
+    <button class="voice-memo-btn" id="ovVoiceMemoBtn">
+      🎙 Record
+    </button>
+    <div class="text-center text-sm text-gray mt-2 hidden" id="ovVoiceMemoStatus"></div>
+  </div>
+
+  <button class="btn-primary mt-2" id="ovSaveBtn">Save & Track</button>
+</div>
+
+<!-- Pipeline Tab -->
+<div class="tab-content" id="tab-pipeline">
+  <div class="pipeline-header">
+    <div class="pipeline-title">Pipeline Board</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="pipeline-filter" id="pipelineFilterBtn">
+        Filter: <span id="pipelineFilterLabel">All Roles</span> ▼
+        <div class="pipeline-filter-dropdown" id="pipelineFilterDropdown"></div>
+      </div>
+      <button class="btn-sm" id="pipelineAddBtn">+ Add</button>
+    </div>
+  </div>
+  <div class="board" id="pipelineBoard">
+    <div style="text-align:center;color:#9ca3af;padding:20px;">Loading pipeline...</div>
+  </div>
+  <div class="board-hint">Drag cards to move between stages</div>
+</div>
+
+<!-- Sequence Tab -->
+<div class="tab-content" id="tab-sequence">
+  <div class="sub-tabs">
+    <div class="sub-tab active" data-subtab="templates">Templates</div>
+    <div class="sub-tab" data-subtab="today">Today's Tasks</div>
+  </div>
+
+  <div class="sub-content active" id="sub-templates">
+    <div class="seq-list-header">
+      <div class="seq-list-title">Active Sequences</div>
+      <button class="seq-add-btn" id="btnNewSequence">+ New</button>
+    </div>
+    <div id="seqTemplatesList"></div>
+  </div>
+
+  <div class="sub-content hidden" id="sub-today">
+    <div class="seq-list-header">
+      <div class="seq-list-title" id="todayTasksTitle">Today's Tasks (0)</div>
+      <div class="text-gray text-sm" id="todayDate"></div>
+    </div>
+    <div id="seqTodayList"></div>
+  </div>
+
+  <div class="footer-hint">Auto-send disabled · Approval required</div>
+</div>
+
+<!-- History Tab -->
+<div class="tab-content" id="tab-history">
+  <div class="candidate-select-row">
+    <select class="form-select" id="historyCandidateSelect">
+      <option value="">Select a candidate...</option>
+    </select>
+  </div>
+
+  <div id="historyContent">
+    <div class="empty-state">
+      <div style="font-size:32px;margin-bottom:8px">📋</div>
+      <div>Select a candidate to view history</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Candidate Modal -->
+<div class="modal-overlay" id="modalAddCandidate">
+  <div class="modal" style="max-width:320px;">
+    <div class="modal-title" style="text-align:center;">Add Candidate</div>
+    <button class="add-option-btn linkedin" id="btnAddFromLinkedIn">
+      <span class="add-option-icon">🔗</span>
+      <div class="add-option-text">
+        <div class="add-option-title">Add from LinkedIn</div>
+        <div class="add-option-desc">Search and save from LinkedIn</div>
+      </div>
+    </button>
+    <button class="add-option-btn manual" id="btnManualEntry">
+      <span class="add-option-icon">✏️</span>
+      <div class="add-option-text">
+        <div class="add-option-title">Manual Entry</div>
+        <div class="add-option-desc">Type in candidate details</div>
+      </div>
+    </button>
+    <div style="text-align:center;margin-top:4px;">
+      <button class="btn-outline" id="btnAddCandidateCancel" style="width:100%;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual Entry Modal -->
+<div class="modal-overlay" id="modalManualEntry">
+  <div class="modal" style="max-width:420px;max-height:90vh;overflow-y:auto;">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="font-size:18px;font-weight:700;">Manual Entry</div>
+      <div style="font-size:13px;color:#9ca3af;margin-top:4px;">Add candidate manually</div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Full Name <span style="color:#ef4444;">*</span></label>
+      <input type="text" class="form-input" id="meName" placeholder="Enter full name">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Job Title</label>
+      <input type="text" class="form-input" id="meHeadline" placeholder="Enter job title">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Company</label>
+      <input type="text" class="form-input" id="meCompany" placeholder="Enter company">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Location</label>
+      <input type="text" class="form-input" id="meLocation" placeholder="Enter location">
+    </div>
+    <div class="form-row">
+      <label class="form-label">LinkedIn URL</label>
+      <input type="text" class="form-input" id="meLinkedInUrl" placeholder="linkedin.com/in/username">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Email</label>
+      <input type="text" class="form-input" id="meEmail" placeholder="email@example.com">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Temperature</label>
+      <div style="display:flex;gap:6px;">
+        <button type="button" class="temp-btn hot" data-temp="Hot" id="meTempHot">Hot</button>
+        <button type="button" class="temp-btn warm active" data-temp="Warm" id="meTempWarm">Warm</button>
+        <button type="button" class="temp-btn cold" data-temp="Cold" id="meTempCold">Cold</button>
+        <button type="button" class="temp-btn dead" data-temp="Dead" id="meTempDead">Dead</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Sequence</label>
+      <select class="form-select" id="meSequence">
+        <option value="">None (manual follow-up only)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Pipeline Stage</label>
+      <select class="form-select" id="meStatus">
+        <option value="New">New</option>
+        <option value="Messaged">Messaged</option>
+        <option value="Talking">Talking</option>
+        <option value="Done">Done</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Notes (Optional)</label>
+      <textarea class="form-textarea" id="meNotes" rows="3" placeholder="Add any notes about this candidate..."></textarea>
+    </div>
+    <button class="btn-primary" id="meSaveBtn">Save & Add to Pipeline</button>
+    <div style="text-align:center;margin-top:10px;">
+      <button class="btn-outline" id="meCancelBtn" style="width:100%;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="modalConfirm">
+  <div class="modal" style="max-width:320px;text-align:center;">
+    <div class="modal-title" id="modalConfirmTitle">Delete Candidate</div>
+    <div style="font-size:13px;color:#4b5563;margin-bottom:20px;" id="modalConfirmMessage">Are you sure?</div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-outline" style="flex:1;" id="modalConfirmCancel">Cancel</button>
+      <button class="btn-sm" style="flex:1;background:#ef4444;" id="modalConfirmOk">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- New Sequence Modal -->
+<div class="modal-overlay" id="modalNewSequence">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">New Sequence</div>
+    <div class="form-row">
+      <label class="form-label">Sequence Name</label>
+      <input type="text" class="form-input" id="modalSeqName" placeholder="e.g. Sr. Director Role Sequence">
+    </div>
+    <div id="modalSeqStepsContainer"></div>
+    <button class="btn-outline" id="modalSeqAddStep" style="width:100%;margin-bottom:16px;">+ Add Step</button>
+    <div class="modal-footer">
+      <button class="btn-outline" id="modalSeqCancel">Cancel</button>
+      <button class="btn-sm" id="modalSeqSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sequence Follow-up Confirm Modal -->
+<div class="modal-overlay" id="modalSeqFollowup">
+  <div class="modal" style="max-width:360px;text-align:center;">
+    <div class="modal-title">Sequence Suggests Follow-up</div>
+    <div style="font-size:14px;color:#4b5563;margin:12px 0;" id="modalSeqFollowupText"></div>
+    <div class="form-row" id="modalSeqFollowupEditRow" style="display:none;">
+      <input type="datetime-local" class="form-input" id="modalSeqFollowupEditInput">
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button class="btn-outline" id="modalSeqFollowupEdit">Edit Date</button>
+      <button class="btn-sm" id="modalSeqFollowupAccept">Accept</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mark Done Follow-up Confirm Modal -->
+<div class="modal-overlay" id="modalMarkDoneFollowup">
+  <div class="modal" style="max-width:360px;text-align:center;">
+    <div class="modal-title">Follow-up Completed</div>
+    <div style="font-size:14px;color:#4b5563;margin:12px 0;" id="modalMarkDoneText"></div>
+    <div class="form-row" id="modalMarkDoneEditRow" style="display:none;">
+      <input type="datetime-local" class="form-input" id="modalMarkDoneEditInput">
+    </div>
+    <div class="modal-footer" style="justify-content:center;">
+      <button class="btn-outline" id="modalMarkDoneEdit">Edit Date</button>
+      <button class="btn-sm" id="modalMarkDoneAccept">Accept</button>
+      <button class="btn-outline" id="modalMarkDoneSkip" style="display:none;">Skip</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upgrade Prompt Modal -->
+<div class="modal-overlay" id="modalUpgrade">
+  <div class="modal" style="max-width:360px;text-align:center;">
+    <div class="modal-title" id="modalUpgradeTitle">🚀 Limit Reached</div>
+    <div style="font-size:14px;color:#4b5563;margin:12px 0;" id="modalUpgradeMessage"></div>
+    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;" id="modalUpgradeSubMessage"></div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn-outline" style="flex:1;" id="modalUpgradeCancel">Continue with Free</button>
+      <button class="btn-sm" style="flex:1;background:#6366f1;" id="modalUpgradeOk">Upgrade to Pro</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="color:#666;font-size:13px">Loading...</div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script src="db.js"></script>
+<script src="api.js"></script>
+<script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scrm.dao.sub.SubCandidateMapper">
+
+  <select id="countUpdatedSince" resultType="java.lang.Long">
+    select count(*) from candidates
+    where updated_at &gt;= #{since} and user_id = #{userId}
+  </select>
+
+  <select id="selectUpdatedSince" resultMap="com.scrm.dao.CandidateMapper.ResultMapWithBLOBs">
+    select
+    <include refid="com.scrm.dao.CandidateMapper.Base_Column_List"/>
+    ,
+    <include refid="com.scrm.dao.CandidateMapper.Blob_Column_List"/>
+    from candidates
+    where updated_at &gt;= #{since} and user_id = #{userId}
+    order by updated_at ASC
+  </select>
+
+  <update id="updateNextFollowup">
+    update candidates
+    set next_followup_at = #{nextFollowupAt,jdbcType=TIMESTAMP},
+        next_followup_source = #{nextFollowupSource,jdbcType=CHAR},
+        next_followup_sequence_step_id = #{nextFollowupSequenceStepId,jdbcType=BIGINT},
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+</mapper>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE generatorConfiguration
+        PUBLIC "-//mybatis.org//DTD MyBatis Generator Configuration 1.0//EN"
+        "http://mybatis.org/dtd/mybatis-generator-config_1_0.dtd">
+
+<generatorConfiguration>
+    <context id="mysql" targetRuntime="MyBatis3">
+        <!-- 数据库连接 -->
+        <jdbcConnection driverClass="com.mysql.cj.jdbc.Driver"
+                        connectionURL="jdbc:mysql://localhost:3306/admin?useUnicode=true&amp;characterEncoding=utf-8&amp;serverTimezone=UTC&amp;useSSL=false"
+                        userId="admin"
+                        password="w123456">
+            <property name="nullCatalogMeansCurrent" value="true"/>
+        </jdbcConnection>
+
+        <!-- 生成 Entity 类的包名和位置 -->
+        <javaModelGenerator targetPackage="com.scrm.entity"
+                            targetProject="src/main/java">
+            <property name="enableSubPackages" value="true"/>
+            <property name="trimStrings" value="true"/>
+        </javaModelGenerator>
+
+        <!-- 生成 Mapper XML 文件的位置 -->
+        <sqlMapGenerator targetPackage="mapper"
+                         targetProject="src/main/resources">
+            <property name="enableSubPackages" value="true"/>
+        </sqlMapGenerator>
+
+        <!-- 生成 DAO（Mapper 接口）的包名和位置 -->
+        <javaClientGenerator type="XMLMAPPER"
+                             targetPackage="com.scrm.dao"
+                             targetProject="src/main/java">
+            <property name="enableSubPackages" value="true"/>
+        </javaClientGenerator>
+
+        <!-- 用户表 -->
+        <table tableName="users" domainObjectName="User"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
+        <!-- 候选人主表 -->
+        <table tableName="candidates" domainObjectName="Candidate"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
+        <!-- 序列模板表 -->
+        <table tableName="sequences" domainObjectName="Sequence"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
+        <!-- 序列步骤表 -->
+        <table tableName="sequence_steps" domainObjectName="SequenceStep"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
+        <!-- pipeline_boards, pipeline_stages, pipeline_candidates 已废弃，字段合并到 candidates 表 -->
+
+        <!-- 埋点事件表 -->
+        <table tableName="events" domainObjectName="Event"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+    </context>
+</generatorConfiguration>
