@@ -28,6 +28,8 @@ public class CandidateService {
     private SubCandidateMapper subCandidateMapper;
     @Autowired
     private SequenceService sequenceService;
+    @Autowired
+    private SubscriptionService subscriptionService;
 
     public List<Candidate> listCandidates(String search, String temperature, String status,
                                           String source, String sortBy, String sortOrder,
@@ -114,6 +116,9 @@ public class CandidateService {
             candidateMapper.updateByPrimaryKeySelective(candidate);
             return candidate;
         }
+
+        // Check candidate limit before inserting new record
+        subscriptionService.checkCandidateLimit(userId);
 
         // Insert new record
         candidate.setUserId(userId);

@@ -499,7 +499,8 @@ $('ovSaveBtn').addEventListener('click', async () => {
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
   } catch (e) {
-    showToast('Save failed: ' + e.message);
+    const handled = await handleQuotaError(e);
+    if (!handled) showToast('Save failed: ' + e.message);
   } finally {
     hideLoading();
   }
@@ -1008,20 +1009,130 @@ function invalidateUsageCache() {
 }
 
 let upgradeResolve = null;
+let _cachedPlans = null;
 
-function showUpgradeModal(config) {
-  trackEvent('upgrade_prompt_shown', { category: 'conversion', label: config.label || '' });
-  const titleEl = $('modalUpgradeTitle');
-  const msgEl = $('modalUpgradeMessage');
-  const subMsgEl = $('modalUpgradeSubMessage');
-  const okBtn = $('modalUpgradeOk');
-  const cancelBtn = $('modalUpgradeCancel');
+async function fetchPlans() {
+  if (_cachedPlans) return _cachedPlans;
+  try {
+    const resp = await window.API.subscription.listPlans();
+    if (resp.data && resp.data.items) {
+      _cachedPlans = resp.data.items;
+      return _cachedPlans;
+    }
+  } catch (e) {
+    console.warn('[Popup] Failed to fetch plans:', e.message);
+  }
+  return [];
+}
 
-  titleEl.textContent = config.title || '🚀 Limit Reached';
-  msgEl.textContent = config.message || '';
-  subMsgEl.textContent = config.subMessage || '';
-  okBtn.textContent = config.okText || 'Upgrade to Pro';
-  cancelBtn.textContent = config.cancelText || 'Continue with Free';
+function formatLimit(value, type) {
+  if (value === null || value === undefined) return '';
+  const num = Number(value);
+  if (num >= 999999) {
+    if (type === 'candidates') return 'Unlimited cand.';
+    return 'Unlimited';
+  }
+  if (type === 'candidates') return num + ' cand.';
+  if (type === 'ai') return num + ' AI/day';
+  if (type === 'sequences') return num + ' Sequence' + (num > 1 ? 's' : '');
+  return String(value);
+}
+
+function renderPlanCard(plan, options) {
+  const isFree = plan.planCode === 'free';
+  const isCurrent = options.isCurrent;
+  const highlightType = options.highlight;
+  const cls = 'plan-card ' + (isCurrent ? 'current' : 'pro');
+
+  const candidates = formatLimit(plan.totalCandidateLimit, 'candidates');
+  const ai = formatLimit(plan.dailyConnectLimit, 'ai');
+  const seq = formatLimit(plan.sequenceLimit, 'sequences');
+
+  const items = [
+    { key: 'candidates', text: '• ' + candidates },
+    { key: 'ai', text: '• ' + ai },
+    { key: 'sequences', text: '• ' + seq }
+  ];
+  if (!isFree) {
+    items.push({ key: 'sync', text: '• Cross-device sync' });
+  }
+
+  const listHtml = items.map(it => {
+    const hl = !isFree && it.key === highlightType ? 'highlight' : '';
+    return `<li class="${hl}">${escapeHtml(it.text)}</li>`;
+  }).join('');
+
+  let actionHtml = '';
+  if (isCurrent) {
+    actionHtml = `<div class="plan-badge">Current</div>`;
+  } else {
+    const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
+    actionHtml = `<div class="plan-price">${escapeHtml(price || '')}</div>
+      <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">Upgrade</button>`;
+  }
+
+  return `<div class="${cls}">
+    <div class="plan-card-title">${escapeHtml(plan.name)}</div>
+    <ul>${listHtml}</ul>
+    ${actionHtml}
+  </div>`;
+}
+
+async function showUpgradeModal(config) {
+  trackEvent('upgrade_prompt_shown', { category: 'conversion', label: config.scenario || '' });
+
+  const plans = await fetchPlans();
+  const usage = await getSubscriptionUsage();
+  const currentPlanCode = (usage && usage.subscription && usage.subscription.plan && usage.subscription.plan.planCode) || 'free';
+
+  const headerEl = $('modalUpgradeHeader');
+  const plansEl = $('modalUpgradePlans');
+
+  let headerText = config.header || "You've reached your daily limit";
+  if (config.scenario === 'ai') {
+    const used = config.used || 0;
+    const limit = config.limit || 10;
+    headerText = `You've used ${used}/${limit} AI messages today`;
+  } else if (config.scenario === 'candidate') {
+    const used = config.used || 0;
+    const limit = config.limit || 20;
+    headerText = `Your pipeline is full (${used}/${limit})`;
+  } else if (config.scenario === 'sequence') {
+    const used = config.used || 0;
+    const limit = config.limit || 1;
+    headerText = `Sequence limit reached (${used}/${limit})`;
+  }
+  headerEl.textContent = headerText;
+
+  const highlight = config.scenario === 'ai' ? 'ai' : config.scenario === 'candidate' ? 'candidates' : config.scenario === 'sequence' ? 'sequences' : '';
+
+  const sorted = [...plans].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  const cardsHtml = sorted.map(p => renderPlanCard(p, {
+    isCurrent: p.planCode === currentPlanCode,
+    highlight: highlight
+  })).join('');
+
+  plansEl.innerHTML = cardsHtml;
+
+  // Bind upgrade buttons
+  plansEl.querySelectorAll('.btn-upgrade').forEach(btn => {
+    btn.onclick = async () => {
+      const planCode = btn.dataset.planCode;
+      trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
+      $('modalUpgrade').classList.remove('active');
+      try {
+        const successUrl = chrome.runtime.getURL('popup.html') + '?checkout=success';
+        const cancelUrl = chrome.runtime.getURL('popup.html') + '?checkout=cancel';
+        const resp = await window.API.subscription.checkout(planCode, successUrl, cancelUrl, '');
+        if (resp.data && resp.data.checkout_url) {
+          chrome.tabs.create({ url: resp.data.checkout_url });
+        }
+      } catch (e) {
+        showToast('Checkout failed: ' + e.message);
+      }
+      if (upgradeResolve) { upgradeResolve(true); upgradeResolve = null; }
+    };
+  });
 
   $('modalUpgrade').classList.add('active');
   return new Promise(resolve => {
@@ -1029,13 +1140,7 @@ function showUpgradeModal(config) {
   });
 }
 
-$('modalUpgradeOk').addEventListener('click', () => {
-  trackEvent('upgrade_clicked', { category: 'conversion', label: 'upgrade_modal' });
-  $('modalUpgrade').classList.remove('active');
-  if (upgradeResolve) { upgradeResolve(true); upgradeResolve = null; }
-});
-
-$('modalUpgradeCancel').addEventListener('click', () => {
+$('modalUpgradeClose').addEventListener('click', () => {
   $('modalUpgrade').classList.remove('active');
   if (upgradeResolve) { upgradeResolve(false); upgradeResolve = null; }
 });
@@ -1054,11 +1159,9 @@ async function checkCandidateLimit() {
   const limit = usage.usage.candidates_limit || 20;
   if (candidatesUsed >= limit) {
     const upgrade = await showUpgradeModal({
-      title: '🚀 You\'ve reached ' + limit + ' candidates',
-      message: 'Free plan: ' + limit + ' candidates\nPro plan: Unlimited + AI messages',
-      subMessage: 'Upgrade to unlock more candidates.',
-      okText: 'Upgrade $29/mo',
-      cancelText: 'Continue with Free'
+      scenario: 'candidate',
+      used: candidatesUsed,
+      limit: limit
     });
     return upgrade;
   }
@@ -1072,11 +1175,9 @@ async function checkSequenceLimit() {
   const limit = usage.usage.sequences_limit || 1;
   if (sequencesUsed >= limit) {
     const upgrade = await showUpgradeModal({
-      title: '📋 Sequence limit reached',
-      message: 'Free plan: ' + limit + ' Sequence' + (limit > 1 ? 's' : '') + '\nPro plan: 10 Sequences + Auto-followup',
-      subMessage: 'Upgrade to unlock more sequences.',
-      okText: 'Upgrade to Pro',
-      cancelText: 'Continue with Free'
+      scenario: 'sequence',
+      used: sequencesUsed,
+      limit: limit
     });
     return upgrade;
   }
@@ -1085,12 +1186,21 @@ async function checkSequenceLimit() {
 
 async function showAiLimitModal(used, limit) {
   return showUpgradeModal({
-    title: '🤖 AI message limit reached',
-    message: `You've used ${used}/${limit} AI messages today.\nUpgrade to Pro for ${limit >= 50 ? 'more' : '50'}/day.`,
-    subMessage: '',
-    okText: 'Upgrade to Pro',
-    cancelText: 'Maybe Tomorrow'
+    scenario: 'ai',
+    used: used,
+    limit: limit
   });
+}
+
+async function handleQuotaError(err) {
+  if (err.status === 429 || (err.data && err.data.scenario)) {
+    const scenario = err.data && err.data.scenario ? err.data.scenario : 'ai';
+    const used = err.data && err.data.used !== undefined ? err.data.used : 0;
+    const limit = err.data && err.data.limit !== undefined ? err.data.limit : 10;
+    await showUpgradeModal({ scenario, used, limit });
+    return true;
+  }
+  return false;
 }
 
 async function updateFilterDropdown() {
@@ -1412,7 +1522,8 @@ $('meSaveBtn').addEventListener('click', async () => {
     if (currentTab === 'pipeline') renderPipeline();
     if (currentTab === 'history') renderHistory();
   } catch (e) {
-    showToast('Save failed: ' + e.message);
+    const handled = await handleQuotaError(e);
+    if (!handled) showToast('Save failed: ' + e.message);
   } finally {
     hideLoading();
   }
@@ -1627,13 +1738,18 @@ $('modalSeqSave').addEventListener('click', async () => {
 
   if (steps.length === 0) { showToast('Please enter at least one step'); return; }
 
-  await saveSequence({ name, steps });
-  showToast('Sequence saved!');
-  $('modalNewSequence').classList.remove('active');
-  $('modalSeqName').value = '';
-  seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
-  renderSeqStepRows();
-  renderSequenceTemplates();
+  try {
+    await saveSequence({ name, steps });
+    showToast('Sequence saved!');
+    $('modalNewSequence').classList.remove('active');
+    $('modalSeqName').value = '';
+    seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
+    renderSeqStepRows();
+    renderSequenceTemplates();
+  } catch (e) {
+    const handled = await handleQuotaError(e);
+    if (!handled) showToast('Save failed: ' + e.message);
+  }
 });
 
 $('modalNewSequence').addEventListener('click', (e) => {

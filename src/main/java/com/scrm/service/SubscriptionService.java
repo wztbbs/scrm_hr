@@ -5,6 +5,7 @@ import com.scrm.common.RequestContext;
 import com.scrm.dao.*;
 import com.scrm.entity.*;
 import com.scrm.exception.BusinessException;
+import com.scrm.exception.QuotaExceededException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -69,29 +70,28 @@ public class SubscriptionService {
 
         // usage
         Map<String, Object> usage = new HashMap<>();
-        CandidateExample ce = new CandidateExample();
-        ce.createCriteria().andUserIdEqualTo(userId).andPipelineStageNotEqualTo(PipelineStageEnum.DELETE.getValue());
-        long candidatesUsed = candidateMapper.countByExample(ce);
+        long candidatesUsed = countActiveCandidates(userId);
         usage.put("candidates_used", candidatesUsed);
 
-        SequenceExample se = new SequenceExample();
-        se.createCriteria().andUserIdEqualTo(userId);
-        long sequencesUsed = sequenceMapper.countByExample(se);
+        long sequencesUsed = countActiveSequences(userId);
         usage.put("sequences_used", sequencesUsed);
 
-        usage.put("connects_used_today", 0);
+        User user = userMapper.selectByPrimaryKey(userId);
+        int aiUsed = user != null && user.getDailyAiUsed() != null ? user.getDailyAiUsed() : 0;
+        usage.put("ai_used", aiUsed);
 
         SubscriptionPlan freePlan = getFreePlan();
-        if (activeSub != null) {
-            SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
-            usage.put("candidates_limit", plan.getTotalCandidateLimit());
-            usage.put("sequences_limit", plan.getSequenceLimit());
-            usage.put("connects_daily_limit", plan.getDailyConnectLimit());
-        } else if (freePlan != null) {
-            usage.put("candidates_limit", freePlan.getTotalCandidateLimit());
-            usage.put("sequences_limit", freePlan.getSequenceLimit());
-            usage.put("connects_daily_limit", freePlan.getDailyConnectLimit());
-        }
+        SubscriptionPlan currentPlan = activeSub != null ? planMapper.selectByPrimaryKey(activeSub.getPlanId()) : freePlan;
+        int aiLimit = currentPlan != null ? currentPlan.getDailyConnectLimit() : 10;
+        int candidateLimit = currentPlan != null ? currentPlan.getTotalCandidateLimit() : 20;
+        int sequenceLimit = currentPlan != null ? currentPlan.getSequenceLimit() : 1;
+
+        usage.put("ai_limit", aiLimit);
+        usage.put("candidates_limit", candidateLimit);
+        usage.put("sequences_limit", sequenceLimit);
+        usage.put("connects_used_today", 0);
+        usage.put("connects_daily_limit", aiLimit);
+
         result.put("usage", usage);
         return result;
     }
@@ -156,13 +156,49 @@ public class SubscriptionService {
 
         SubscriptionPlan plan = getCurrentPlan(userId);
         int limit = plan != null ? plan.getDailyConnectLimit() : 10;
-        if (user.getDailyAiUsed() != null && user.getDailyAiUsed() >= limit) {
-            throw new BusinessException(429, "Daily AI message limit reached. You've used " + user.getDailyAiUsed() + "/" + limit + " messages today. Upgrade to Pro for more.");
+        int used = user.getDailyAiUsed() != null ? user.getDailyAiUsed() : 0;
+        if (used >= limit) {
+            throw new QuotaExceededException("ai", used, limit,
+                    "You've used " + used + "/" + limit + " AI messages today.");
         }
 
-        user.setDailyAiUsed(user.getDailyAiUsed() != null ? user.getDailyAiUsed() + 1 : 1);
+        user.setDailyAiUsed(used + 1);
         user.setDailyAiResetAt(user.getDailyAiResetAt());
         userMapper.updateAiUsage(user);
+    }
+
+    public void checkCandidateLimit(Long userId) {
+        long used = countActiveCandidates(userId);
+        SubscriptionPlan plan = getCurrentPlan(userId);
+        int limit = plan != null && plan.getTotalCandidateLimit() != null ? plan.getTotalCandidateLimit() : 20;
+        if (used >= limit) {
+            throw new QuotaExceededException("candidate", (int) used, limit,
+                    "Your pipeline is full (" + used + "/" + limit + ")");
+        }
+    }
+
+    public void checkSequenceLimit(Long userId) {
+        long used = countActiveSequences(userId);
+        SubscriptionPlan plan = getCurrentPlan(userId);
+        int limit = plan != null && plan.getSequenceLimit() != null ? plan.getSequenceLimit() : 1;
+        if (used >= limit) {
+            throw new QuotaExceededException("sequence", (int) used, limit,
+                    "Sequence limit reached (" + used + "/" + limit + ")");
+        }
+    }
+
+    private long countActiveCandidates(Long userId) {
+        CandidateExample ce = new CandidateExample();
+        ce.createCriteria().andUserIdEqualTo(userId)
+                .andPipelineStageNotEqualTo(PipelineStageEnum.DELETE.getValue())
+                .andPipelineStageNotEqualTo(PipelineStageEnum.UNCLAIMED.getValue());
+        return candidateMapper.countByExample(ce);
+    }
+
+    private long countActiveSequences(Long userId) {
+        SequenceExample se = new SequenceExample();
+        se.createCriteria().andUserIdEqualTo(userId);
+        return sequenceMapper.countByExample(se);
     }
 
     public SubscriptionPlan getCurrentPlan(Long userId) {

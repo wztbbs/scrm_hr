@@ -886,6 +886,76 @@
       margin-top: 16px;
     }
 
+    /* Upgrade plan comparison */
+    .plan-card {
+      flex: 1;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 14px 12px;
+      text-align: left;
+      background: #fff;
+    }
+    .plan-card.current {
+      border-color: #9ca3af;
+      background: #f9fafb;
+    }
+    .plan-card.pro {
+      border-color: #6366f1;
+      background: #f5f3ff;
+    }
+    .plan-card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    .plan-card ul {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: #374151;
+      line-height: 1.6;
+    }
+    .plan-card ul li {
+      padding: 2px 0;
+    }
+    .plan-card ul li.highlight {
+      color: #6366f1;
+      font-weight: 600;
+    }
+    .plan-card .plan-price {
+      font-size: 13px;
+      font-weight: 600;
+      color: #111827;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .plan-card .btn-upgrade {
+      width: 100%;
+      padding: 8px 0;
+      border-radius: 6px;
+      border: none;
+      background: #6366f1;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .plan-card .btn-upgrade:hover {
+      background: #4f46e5;
+    }
+    .plan-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      text-align: center;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+
     /* Toast */
     .toast {
       position: fixed;
@@ -1553,13 +1623,15 @@
 
 <!-- Upgrade Prompt Modal -->
 <div class="modal-overlay" id="modalUpgrade">
-  <div class="modal" style="max-width:360px;text-align:center;">
-    <div class="modal-title" id="modalUpgradeTitle">🚀 Limit Reached</div>
-    <div style="font-size:14px;color:#4b5563;margin:12px 0;" id="modalUpgradeMessage"></div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:16px;" id="modalUpgradeSubMessage"></div>
-    <div style="display:flex;gap:10px;">
-      <button class="btn-outline" style="flex:1;" id="modalUpgradeCancel">Continue with Free</button>
-      <button class="btn-sm" style="flex:1;background:#6366f1;" id="modalUpgradeOk">Upgrade to Pro</button>
+  <div class="modal" style="max-width:420px;text-align:center;padding:0;overflow:visible;">
+    <div style="position:relative;padding:20px 20px 0;">
+      <button id="modalUpgradeClose" style="position:absolute;top:8px;right:8px;background:none;border:none;font-size:20px;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+      <div style="font-size:15px;font-weight:600;color:#111827;margin-top:8px;" id="modalUpgradeHeader"></div>
+    </div>
+    <div style="padding:16px 20px 20px;">
+      <div id="modalUpgradePlans" style="display:flex;gap:12px;justify-content:center;margin:16px 0;">
+        <!-- Plans rendered dynamically -->
+      </div>
     </div>
   </div>
 </div>

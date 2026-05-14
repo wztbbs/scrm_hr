@@ -31,6 +31,8 @@ public class SequenceService {
     private CandidateMapper candidateMapper;
     @Autowired
     private SubCandidateMapper subCandidateMapper;
+    @Autowired
+    private SubscriptionService subscriptionService;
 
     public List<Sequence> listSequences(Boolean isActive, Boolean isTemplate, String search) {
         Long userId = RequestContext.getCurrentUserId();
@@ -88,6 +90,7 @@ public class SequenceService {
     @Transactional
     public Sequence createSequence(Sequence sequence, List<SequenceStepRequest> steps) {
         Long userId = RequestContext.getCurrentUserId();
+        subscriptionService.checkSequenceLimit(userId);
         sequence.setUserId(userId);
         sequence.setStepCount(steps != null ? steps.size() : 0);
         sequence.setIsTemplate(false);

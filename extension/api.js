@@ -64,8 +64,12 @@ async function apiRequest(method, path, body = null, query = null) {
   try {
     const resp = await fetch(url, options);
     if (resp.status === 429) {
-      const text = await resp.text();
-      throw new Error(`RATE_LIMITED: ${text}`);
+      const json = await resp.json().catch(() => null);
+      const err = new Error(json && json.message ? json.message : 'Rate limit exceeded');
+      err.status = 429;
+      err.code = json && json.code ? json.code : 429;
+      err.data = json && json.data ? json.data : null;
+      throw err;
     }
     if (!resp.ok) {
       const text = await resp.text();
