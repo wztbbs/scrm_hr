@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scrm.dao.sub.SubUserMapper">
+
+  <update id="updateAiUsage" parameterType="com.scrm.entity.User">
+    update users
+    set daily_ai_used = #{dailyAiUsed,jdbcType=INTEGER},
+        daily_ai_reset_at = #{dailyAiResetAt,jdbcType=TIMESTAMP}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+</mapper>

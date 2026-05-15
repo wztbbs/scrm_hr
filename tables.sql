@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
                                         `order_no` varchar(64) NOT NULL,
                                         `user_id` bigint unsigned NOT NULL,
                                         `plan_id` bigint unsigned NOT NULL,
-                                        `subscription_id` bigint unsigned DEFAULT NULL COMMENT '关联subscriptions.id（续费时）',  -- ✅ 新增
+                                        `subscription_id` bigint unsigned DEFAULT NULL COMMENT '关联subscriptions.id（续费时）',
                                         `status` enum('pending','paid','failed','cancelled') NOT NULL DEFAULT 'pending',
                                         `amount` decimal(10,2) NOT NULL,
                                         `currency` varchar(8) NOT NULL DEFAULT 'USD',
@@ -80,14 +80,13 @@ CREATE TABLE IF NOT EXISTS `orders` (
                                         PRIMARY KEY (`id`),
                                         UNIQUE KEY `uk_order_no` (`order_no`),
                                         KEY `idx_user_id` (`user_id`),
-                                        KEY `idx_subscription_id` (`subscription_id`),  -- ✅ 新增索引
+                                        KEY `idx_subscription_id` (`subscription_id`),
                                         KEY `idx_status` (`status`),
                                         KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `candidates` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '后端自增主键',
-  `local_id` varchar(64) NOT NULL COMMENT '前端IndexedDB本地ID',
   `user_id` bigint unsigned NOT NULL COMMENT '所属用户',
   `full_name` varchar(128) NOT NULL COMMENT '候选人全名',
   `headline` varchar(255) DEFAULT NULL COMMENT 'LinkedIn头衔/Headline',
@@ -115,7 +114,7 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_local_id` (`user_id`, `local_id`),
+  UNIQUE KEY `uk_user_linkedin_id` (`user_id`, `linkedin_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_temperature` (`temperature`),
   KEY `idx_created_at` (`created_at`),
@@ -125,14 +124,12 @@ CREATE TABLE IF NOT EXISTS `candidates` (
 
 CREATE TABLE IF NOT EXISTS `candidate_notes` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `local_id` varchar(64) NOT NULL COMMENT '前端IndexedDB本地ID',
   `candidate_id` bigint unsigned NOT NULL COMMENT '关联candidates.id',
   `user_id` bigint unsigned NOT NULL COMMENT '所属用户',
   `content` text NOT NULL COMMENT '笔记内容',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_local_id` (`local_id`),
   KEY `idx_candidate_id` (`candidate_id`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候选人笔记表（Key Memory）';
@@ -141,7 +138,6 @@ CREATE TABLE IF NOT EXISTS `candidate_notes` (
 
 CREATE TABLE IF NOT EXISTS `sequences` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `local_id` varchar(64) NOT NULL COMMENT '前端IndexedDB本地ID',
   `user_id` bigint unsigned NOT NULL COMMENT '所属用户',
   `name` varchar(128) NOT NULL COMMENT '序列名称（如 Sr. Director Role Sequence）',
   `description` text DEFAULT NULL COMMENT '序列描述',
@@ -153,7 +149,6 @@ CREATE TABLE IF NOT EXISTS `sequences` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_local_id` (`local_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='序列模板表';
@@ -178,7 +173,6 @@ CREATE TABLE IF NOT EXISTS `sequence_steps` (
 
 CREATE TABLE IF NOT EXISTS `candidate_sequences` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `local_id` varchar(64) NOT NULL COMMENT '前端IndexedDB本地ID',
   `candidate_id` bigint unsigned NOT NULL COMMENT '关联候选人',
   `sequence_id` bigint unsigned NOT NULL COMMENT '关联序列',
   `user_id` bigint unsigned NOT NULL COMMENT '所属用户',
@@ -190,35 +184,14 @@ CREATE TABLE IF NOT EXISTS `candidate_sequences` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_local_id` (`local_id`),
   UNIQUE KEY `uk_candidate_sequence` (`candidate_id`, `sequence_id`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候选人与序列绑定表';
 
-CREATE TABLE IF NOT EXISTS `sync_records` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` bigint unsigned NOT NULL COMMENT '关联用户',
-  `device_id` varchar(128) DEFAULT NULL COMMENT '设备/浏览器标识',
-  `status` enum('in_progress','completed','failed') NOT NULL DEFAULT 'in_progress' COMMENT '同步状态',
-  `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '同步开始时间',
-  `completed_at` datetime DEFAULT NULL COMMENT '同步完成时间',
-  `client_timestamp` datetime NOT NULL COMMENT '客户端请求时的时间戳',
-  `server_timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '服务端处理时间戳',
-  `entities_synced` json DEFAULT NULL COMMENT '同步的实体统计（各表新增/更新/删除数量）',
-  `error_message` text DEFAULT NULL COMMENT '错误信息',
-  `next_sync_token` varchar(256) DEFAULT NULL COMMENT '下次同步令牌',
-  PRIMARY KEY (`id`),
-  KEY `idx_user_id` (`user_id`),
-  KEY `idx_status` (`status`),
-  KEY `idx_started_at` (`started_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数据同步记录表';
-
 CREATE TABLE IF NOT EXISTS `candidate_history` (
   `id`              BIGINT UNSIGNED     AUTO_INCREMENT PRIMARY KEY COMMENT '后端自增主键',
-  `local_id`        VARCHAR(64)         NOT NULL COMMENT '前端IndexedDB本地ID，用于同步映射',
   `user_id`         BIGINT UNSIGNED     NOT NULL COMMENT '所属用户ID',
   `candidate_id`    BIGINT UNSIGNED     NOT NULL COMMENT '关联的候选人ID',
-  `local_candidate_id` VARCHAR(64)      NOT NULL COMMENT '前端候选人的local_id',
   `history_type`    VARCHAR(32)         NOT NULL COMMENT '互动类型代码',
   `title`           VARCHAR(255)        NOT NULL COMMENT '历史记录标题',
   `description`     TEXT                COMMENT '详细描述',
@@ -232,7 +205,6 @@ CREATE TABLE IF NOT EXISTS `candidate_history` (
   `metadata`        JSON                COMMENT '扩展元数据',
   `history_time`    DATETIME            NOT NULL COMMENT '事件发生时间',
   `created_at`      DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY `uk_local_id_user` (`local_id`, `user_id`),
   KEY `idx_user_candidate` (`user_id`, `candidate_id`),
   KEY `idx_candidate_history_time` (`candidate_id`, `history_time`),
   KEY `idx_history_type` (`history_type`)

@@ -15,6 +15,7 @@ import org.springframework.web.util.ContentCachingResponseWrapper;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * 全局请求/响应日志拦截器
@@ -65,14 +66,34 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         String uri = request.getRequestURI();
         String queryString = request.getQueryString();
         String body = getRequestBody(request);
+        Map<String, String[]> parameterMap = request.getParameterMap();
 
-        String params;
+        StringBuilder params = new StringBuilder();
+        boolean hasParams = false;
+
+        if (queryString != null && !queryString.isEmpty()) {
+            params.append("Query: ").append(queryString);
+            hasParams = true;
+        }
+
+        if (!parameterMap.isEmpty()) {
+            if (hasParams) {
+                params.append(" | ");
+            }
+            params.append("Form: ").append(formatParameterMap(parameterMap));
+            hasParams = true;
+        }
+
         if (body != null && !body.isEmpty()) {
-            params = "Body: " + body;
-        } else if (queryString != null && !queryString.isEmpty()) {
-            params = "Params: " + queryString;
-        } else {
-            params = "(no params)";
+            if (hasParams) {
+                params.append(" | ");
+            }
+            params.append("Body: ").append(body);
+            hasParams = true;
+        }
+
+        if (!hasParams) {
+            params.append("(no params)");
         }
 
         log.info("[REQUEST] {} {} | {}", method, uri, params);
@@ -101,6 +122,26 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
         }
         String body = new String(buf, StandardCharsets.UTF_8);
         return truncate(body, 2000);
+    }
+
+    private String formatParameterMap(Map<String, String[]> parameterMap) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+        boolean first = true;
+        for (Map.Entry<String, String[]> entry : parameterMap.entrySet()) {
+            if (!first) {
+                sb.append(", ");
+            }
+            sb.append(entry.getKey()).append("=");
+            if (entry.getValue().length == 1) {
+                sb.append(entry.getValue()[0]);
+            } else {
+                sb.append(java.util.Arrays.toString(entry.getValue()));
+            }
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
     }
 
     private String truncate(String str, int maxLength) {

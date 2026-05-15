@@ -3,6 +3,7 @@ package com.scrm.service;
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
 import com.scrm.dao.*;
+import com.scrm.dao.sub.SubUserMapper;
 import com.scrm.entity.*;
 import com.scrm.exception.BusinessException;
 import com.scrm.exception.QuotaExceededException;
@@ -33,6 +34,8 @@ public class SubscriptionService {
     private SequenceMapper sequenceMapper;
     @Autowired
     private UserMapper userMapper;
+    @Autowired
+    private SubUserMapper subUserMapper;
 
     public List<SubscriptionPlan> listPlans() {
         SubscriptionPlanExample example = new SubscriptionPlanExample();
@@ -164,7 +167,7 @@ public class SubscriptionService {
 
         user.setDailyAiUsed(used + 1);
         user.setDailyAiResetAt(user.getDailyAiResetAt());
-        userMapper.updateAiUsage(user);
+        subUserMapper.updateAiUsage(user);
     }
 
     public void checkCandidateLimit(Long userId) {

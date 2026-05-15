@@ -5,10 +5,10 @@ const DB_VERSION = 5;
 
 const STORES = {
   candidates: 'candidates',
-  history: 'history',
   settings: 'settings'
   // sequences removed: now purely backend storage
   // tasks removed: logic simplified to use candidates.nextFollowup + backend candidate_sequences
+  // history removed: now recorded automatically by backend services
 };
 
 let db = null;
@@ -35,12 +35,6 @@ function openDB() {
           ts.createIndex('candidateId', 'candidateId', { unique: false });
           ts.createIndex('sequenceId', 'sequenceId', { unique: false });
           ts.createIndex('scheduledAt', 'scheduledAt', { unique: false });
-        }
-
-        if (!database.objectStoreNames.contains(STORES.history)) {
-          const hs = database.createObjectStore(STORES.history, { keyPath: 'id', autoIncrement: true });
-          hs.createIndex('candidateId', 'candidateId', { unique: false });
-          hs.createIndex('date', 'date', { unique: false });
         }
 
         if (!database.objectStoreNames.contains(STORES.settings)) {
@@ -330,42 +324,6 @@ async function getTodaysTasks() {
     const t = new Date(c.nextFollowup).getTime();
     return t <= endOfDay;
   }).sort((a, b) => new Date(a.nextFollowup).getTime() - new Date(b.nextFollowup).getTime());
-}
-
-// ========== History ==========
-async function addHistory(entry) {
-  await openDB();
-  entry.date = entry.date || Date.now();
-  if (!entry.localId) {
-    entry.localId = crypto.randomUUID();
-  }
-  const result = await dbAdd(STORES.history, entry);
-  // Sync to backend asynchronously
-  if (typeof window !== 'undefined' && window.API) {
-    try {
-      await window.API.history.create(entry);
-    } catch (e) {
-      console.warn('[DB] Sync history to backend failed:', e.message);
-    }
-  }
-  return result;
-}
-
-async function getHistoryByCandidate(candidateId) {
-  await openDB();
-  const list = await dbGetByIndex(STORES.history, 'candidateId', candidateId);
-  return list.sort((a, b) => b.date - a.date);
-}
-
-async function getAllHistory() {
-  await openDB();
-  const list = await dbGetAll(STORES.history);
-  return list.sort((a, b) => b.date - a.date);
-}
-
-async function deleteHistory(id) {
-  await openDB();
-  return dbDelete(STORES.history, id);
 }
 
 // ========== Settings ==========

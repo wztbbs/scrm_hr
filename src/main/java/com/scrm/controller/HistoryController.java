@@ -19,15 +19,9 @@ public class HistoryController {
     @Autowired
     private HistoryService historyService;
 
-    @PostMapping
-    public ApiResponse<CandidateHistoryWithBLOBs> create(@RequestBody CandidateHistoryWithBLOBs history) {
-        return ApiResponse.success(historyService.createHistory(history));
-    }
-
     @GetMapping
     public ApiResponse<Map<String, Object>> list(
             @RequestParam(required = false) Long candidate_id,
-            @RequestParam(required = false) String local_candidate_id,
             @RequestParam(required = false) String history_type,
             @RequestParam(required = false) String actor_type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date date_from,
@@ -40,11 +34,11 @@ public class HistoryController {
             @RequestParam(defaultValue = "desc") String sort_order) {
         if (page_size > 100) page_size = 100;
         List<CandidateHistoryWithBLOBs> allItems = historyService.listHistory(
-                candidate_id, local_candidate_id, history_type, actor_type,
+                candidate_id, history_type, actor_type,
                 date_from, date_to, keyword, include_deleted,
                 sort_by, sort_order, page, page_size);
         long total = historyService.countHistory(
-                candidate_id, local_candidate_id, history_type, actor_type,
+                candidate_id, history_type, actor_type,
                 date_from, date_to, keyword, include_deleted);
 
         // in-memory pagination

@@ -18,14 +18,10 @@ public class AiMessageController {
     public ApiResponse<AiMessageResponse> generateAiMessages(@PathVariable String id,
                                                               @RequestBody AiMessageRequest request) {
         // Resolve candidate ID
-        if (id.startsWith("local:")) {
-            request.setLocalCandidateId(id.substring(6));
-        } else {
-            try {
-                request.setCandidateId(Long.parseLong(id));
-            } catch (NumberFormatException e) {
-                request.setLocalCandidateId(id);
-            }
+        try {
+            request.setCandidateId(Long.parseLong(id));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid candidate id: " + id);
         }
         return ApiResponse.success(aiMessageService.generateMessages(request));
     }

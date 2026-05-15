@@ -30,6 +30,8 @@ public class CandidateService {
     private SequenceService sequenceService;
     @Autowired
     private SubscriptionService subscriptionService;
+    @Autowired
+    private HistoryService historyService;
 
     public List<Candidate> listCandidates(String search, String temperature, String status,
                                           String source, String sortBy, String sortOrder,
@@ -48,34 +50,23 @@ public class CandidateService {
 
     public CandidateWithBLOBs getCandidate(String id) {
         Long userId = RequestContext.getCurrentUserId();
-        CandidateWithBLOBs candidate = findByIdOrLocalId(userId, id);
+        CandidateWithBLOBs candidate = findById(userId, id);
         if (candidate == null) {
             throw new BusinessException("Candidate not found");
         }
         return candidate;
     }
 
-    private CandidateWithBLOBs findByIdOrLocalId(Long userId, String id) {
-        if (id.startsWith("local:")) {
-            String localId = id.substring(6);
-            CandidateExample example = new CandidateExample();
-            example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(localId);
-            List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-            return list.isEmpty() ? null : list.get(0);
-        } else {
-            try {
-                Long numericId = Long.parseLong(id);
-                CandidateWithBLOBs c = candidateMapper.selectByPrimaryKey(numericId);
-                if (c != null && !c.getUserId().equals(userId)) {
-                    return null;
-                }
-                return c;
-            } catch (NumberFormatException e) {
-                CandidateExample example = new CandidateExample();
-                example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(id);
-                List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-                return list.isEmpty() ? null : list.get(0);
+    private CandidateWithBLOBs findById(Long userId, String id) {
+        try {
+            Long numericId = Long.parseLong(id);
+            CandidateWithBLOBs c = candidateMapper.selectByPrimaryKey(numericId);
+            if (c != null && !c.getUserId().equals(userId)) {
+                return null;
             }
+            return c;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 
@@ -83,20 +74,19 @@ public class CandidateService {
     public CandidateWithBLOBs createCandidate(CandidateWithBLOBs candidate) {
         Long userId = RequestContext.getCurrentUserId();
 
-        // Upsert logic: query first, update if exists, insert if not
+        // Deduplication by linkedin_id + user_id
         CandidateWithBLOBs existing = null;
-        if (candidate.getId() != null) {
-            existing = candidateMapper.selectByPrimaryKey(candidate.getId());
-        }
-        if (existing == null && candidate.getLocalId() != null) {
+        if (candidate.getLinkedinId() != null && !candidate.getLinkedinId().isEmpty()) {
             CandidateExample example = new CandidateExample();
-            example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(candidate.getLocalId());
+            example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(candidate.getLinkedinId());
             List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
             if (!list.isEmpty()) {
                 existing = list.get(0);
             }
         }
-
+        if (existing == null && candidate.getId() != null) {
+            existing = candidateMapper.selectByPrimaryKey(candidate.getId());
+        }
         if (existing != null) {
             String existingStage = existing.getPipelineStage();
             if (existingStage == null) existingStage = PipelineStageEnum.NEW.getValue();
@@ -138,19 +128,31 @@ public class CandidateService {
         candidate.setCreatedAt(new Date());
         candidate.setUpdatedAt(new Date());
         candidateMapper.insertSelective(candidate);
+
+        // Auto-record history
+        historyService.recordHistory(candidate.getId(), "candidate_created",
+                "Candidate created: " + candidate.getFullName(), "user");
+
         return candidate;
     }
 
     @Transactional
     public CandidateWithBLOBs updateCandidate(String id, CandidateWithBLOBs candidate) {
         Long userId = RequestContext.getCurrentUserId();
-        CandidateWithBLOBs existing = findByIdOrLocalId(userId, id);
+        CandidateWithBLOBs existing = findById(userId, id);
         if (existing == null) {
             throw new BusinessException("Candidate not found");
         }
+
+        // Detect pipeline stage change for history
+        String newStage = candidate.getPipelineStage();
+        if (newStage != null && !newStage.equalsIgnoreCase(existing.getPipelineStage())) {
+            historyService.recordHistory(existing.getId(), "status_change",
+                    "Moved from " + existing.getPipelineStage() + " to " + newStage, "user");
+        }
+
         candidate.setId(existing.getId());
         candidate.setUserId(null);
-        candidate.setLocalId(null);
         candidate.setCreatedAt(null);
         candidate.setUpdatedAt(new Date());
         candidateMapper.updateByPrimaryKeySelective(candidate);
@@ -160,10 +162,12 @@ public class CandidateService {
     @Transactional
     public void deleteCandidate(String id, boolean hardDelete) {
         Long userId = RequestContext.getCurrentUserId();
-        CandidateWithBLOBs existing = findByIdOrLocalId(userId, id);
+        CandidateWithBLOBs existing = findById(userId, id);
         if (existing == null) {
             throw new BusinessException("Candidate not found");
         }
+        historyService.recordHistory(existing.getId(), "candidate_deleted",
+                "Candidate deleted: " + existing.getFullName(), "user");
         if (hardDelete) {
             candidateMapper.deleteByPrimaryKey(existing.getId());
         } else {
@@ -182,37 +186,49 @@ public class CandidateService {
         List<Map<String, Object>> results = new ArrayList<>();
         for (Map<String, Object> item : items) {
             Map<String, Object> result = new HashMap<>();
-            String localId = (String) item.get("local_id");
-            result.put("local_id", localId);
             String action = (String) item.getOrDefault("_sync_action", "create");
             try {
-                if ("delete".equals(action)) {
-                    CandidateExample example = new CandidateExample();
-                    example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(localId);
-                    List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
+                // Resolve candidate by id or linkedin_id
+                CandidateWithBLOBs existing = null;
+                Object idObj = item.get("id");
+                if (idObj != null) {
+                    try {
+                        existing = candidateMapper.selectByPrimaryKey(Long.parseLong(idObj.toString()));
+                        if (existing != null && !existing.getUserId().equals(userId)) {
+                            existing = null;
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (existing == null && item.get("linkedin_id") != null) {
+                    CandidateExample ex = new CandidateExample();
+                    ex.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo((String) item.get("linkedin_id"));
+                    List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(ex);
                     if (!list.isEmpty()) {
-                        candidateMapper.deleteByPrimaryKey(list.get(0).getId());
+                        existing = list.get(0);
+                    }
+                }
+
+                if ("delete".equals(action)) {
+                    if (existing != null) {
+                        candidateMapper.deleteByPrimaryKey(existing.getId());
                     }
                     result.put("status", "deleted");
                 } else {
                     CandidateWithBLOBs candidate = mapToCandidate(item);
                     candidate.setUserId(userId);
-                    CandidateExample example = new CandidateExample();
-                    example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(localId);
-                    List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-                    if (list.isEmpty()) {
+                    if (existing == null) {
+                        subscriptionService.checkCandidateLimit(userId);
                         candidateMapper.insertSelective(candidate);
                         result.put("status", "created");
                         result.put("id", candidate.getId());
                     } else {
-                        candidate.setId(list.get(0).getId());
-                        candidate.setLocalId(null);
+                        candidate.setId(existing.getId());
                         candidate.setUserId(null);
                         candidate.setCreatedAt(null);
                         candidate.setUpdatedAt(new Date());
                         candidateMapper.updateByPrimaryKeySelective(candidate);
                         result.put("status", "updated");
-                        result.put("id", list.get(0).getId());
+                        result.put("id", existing.getId());
                     }
                 }
             } catch (Exception e) {
@@ -230,25 +246,58 @@ public class CandidateService {
     @Transactional
     public void updateFollowup(String id, Date nextFollowupAt, String source, Long sequenceStepId) {
         Long userId = RequestContext.getCurrentUserId();
-        CandidateWithBLOBs existing = findByIdOrLocalId(userId, id);
+        CandidateWithBLOBs existing = findById(userId, id);
         if (existing == null) {
             throw new BusinessException("Candidate not found");
         }
         subCandidateMapper.updateNextFollowup(existing.getId(), nextFollowupAt, source, sequenceStepId);
+        historyService.recordHistory(existing.getId(), "follow_up_scheduled",
+                "Follow-up scheduled for " + nextFollowupAt, "user");
+    }
+
+    public CandidateWithBLOBs getCandidateByLinkedInId(String linkedInId) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateExample example = new CandidateExample();
+        example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(linkedInId);
+        List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    public List<Candidate> listTodayTasks() {
+        Long userId = RequestContext.getCurrentUserId();
+        // End of today
+        Calendar cal = Calendar.getInstance();
+        cal.set(Calendar.HOUR_OF_DAY, 23);
+        cal.set(Calendar.MINUTE, 59);
+        cal.set(Calendar.SECOND, 59);
+        cal.set(Calendar.MILLISECOND, 999);
+        Date endOfDay = cal.getTime();
+
+        CandidateExample example = new CandidateExample();
+        example.createCriteria()
+                .andUserIdEqualTo(userId)
+                .andNextFollowupAtIsNotNull()
+                .andNextFollowupAtLessThanOrEqualTo(endOfDay)
+                .andPipelineStageNotEqualTo(PipelineStageEnum.DELETE.getValue());
+        example.setOrderByClause("next_followup_at ASC");
+        return candidateMapper.selectByExample(example);
     }
 
     public Map<String, Object> markFollowupDone(String id) {
         Long userId = RequestContext.getCurrentUserId();
-        CandidateWithBLOBs existing = findByIdOrLocalId(userId, id);
+        CandidateWithBLOBs existing = findById(userId, id);
         if (existing == null) {
             throw new BusinessException("Candidate not found");
         }
-        return sequenceService.markFollowupDone(existing.getId());
+        Map<String, Object> result = sequenceService.markFollowupDone(existing.getId());
+        historyService.recordHistory(existing.getId(), "follow_up_completed",
+                "Follow-up completed", "user");
+        return result;
     }
 
     private CandidateWithBLOBs mapToCandidate(Map<String, Object> map) {
         CandidateWithBLOBs c = new CandidateWithBLOBs();
-        c.setLocalId((String) map.get("local_id"));
+
         c.setFullName((String) map.get("full_name"));
         c.setHeadline((String) map.get("headline"));
         c.setJobTitle((String) map.get("job_title"));

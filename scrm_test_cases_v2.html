@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LinkedIn SCRM 测试用例</title>
+<style>
+  :root { --primary:#5b4cdb; --success:#22c55e; --bg:#f8f9fb; --card:#fff; --border:#e5e7eb; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:#111; line-height:1.5; }
+  header { background:var(--primary); color:#fff; padding:16px 24px; position:sticky; top:0; z-index:10; }
+  header h1 { font-size:18px; }
+  .stats { display:flex; gap:16px; margin-top:8px; font-size:13px; opacity:.9; }
+  .container { max-width:1200px; margin:0 auto; padding:24px; }
+  .module { margin-bottom:24px; background:var(--card); border-radius:12px; border:1px solid var(--border); overflow:hidden; }
+  .module-header { background:#f3f4f6; padding:12px 16px; font-weight:600; font-size:14px; display:flex; align-items:center; gap:8px; }
+  .module-header .count { background:var(--primary); color:#fff; padding:2px 8px; border-radius:12px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { background:#fafafa; font-weight:600; color:#555; font-size:12px; position:sticky; top:0; }
+  tr:hover { background:#f9fafb; }
+  tr.done { background:#f0fdf4; }
+  tr.done td { text-decoration:line-through; color:#666; }
+  .chk { width:18px; height:18px; cursor:pointer; accent-color:var(--success); }
+  .id { font-family:monospace; color:var(--primary); font-weight:600; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; }
+  .badge-p0 { background:#fee2e2; color:#991b1b; }
+  .badge-p1 { background:#fef3c7; color:#92400e; }
+  .badge-p2 { background:#dbeafe; color:#1e40af; }
+  .badge-p3 { background:#d1fae5; color:#065f46; }
+  .db-expect { font-family:monospace; background:#f4f4f5; padding:2px 4px; border-radius:3px; font-size:12px; color:#444; }
+  .ui-expect { color:#374151; }
+  .step-num { display:inline-block; width:20px; height:20px; line-height:20px; text-align:center; background:var(--primary); color:#fff; border-radius:50%; font-size:11px; margin-right:6px; }
+  .actions { display:flex; gap:8px; margin-bottom:16px; }
+  button { padding:6px 12px; border:1px solid var(--border); background:#fff; border-radius:6px; cursor:pointer; font-size:13px; }
+  button:hover { background:#f3f4f6; }
+  button.primary { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .progress-bar { height:6px; background:#e5e7eb; border-radius:3px; margin-top:4px; overflow:hidden; }
+  .progress-bar > div { height:100%; background:var(--success); width:0%; transition:width .3s; }
+  .filter { margin-bottom:16px; display:flex; gap:8px; flex-wrap:wrap; }
+  .filter label { font-size:13px; color:#555; display:flex; align-items:center; gap:4px; cursor:pointer; }
+  td pre { white-space:pre-wrap; word-break:break-word; margin:0; font-family:system-ui,sans-serif; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>LinkedIn SCRM 测试用例清单（精简版 v2）</h1>
+  <div class="stats">
+    <span>总用例: <b id="total">0</b></span>
+    <span>已完成: <b id="completed">0</b></span>
+    <span>进度: <b id="percent">0%</b></span>
+    <div class="progress-bar" style="flex:1;max-width:200px;"><div id="bar"></div></div>
+  </div>
+</header>
+
+<div class="container">
+  <div class="actions">
+    <button onclick="expandAll()">展开全部</button>
+    <button onclick="collapseAll()">收起全部</button>
+    <button onclick="resetAll()">重置进度</button>
+    <button class="primary" onclick="exportJSON()">导出JSON</button>
+  </div>
+
+  <div class="filter">
+    <label><input type="checkbox" checked onchange="toggleModule('m1')"> 候选人&Overview</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m2')"> Pipeline</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m3')"> Sequence</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m4')"> 聊天&Unclaimed</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m5')"> AI消息</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m6')"> History</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m7')"> 限制与Feedback</label>
+  </div>
+
+  <!-- 模块1: 候选人保存与Overview -->
+  <div class="module" id="m1">
+    <div class="module-header">模块1: 候选人保存与Overview <span class="count">5</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m1',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC01">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC01</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1已登录，在LinkedIn候选人A页面，插件未保存过该候选人</td>
+          <td><span class="step-num">1</span>点击插件icon打开面板<br><span class="step-num">2</span>确认信息自动填充<br><span class="step-num">3</span>点击 Save & Track</td>
+          <td class="ui-expect">Overview页显示候选人A卡片；Temperature默认Cold；Key Memory为空；Next Follow-up为空；Voice Memo为空；Today tasks显示"Follow up 候选人A"</td>
+          <td><span class="db-expect">candidates</span>: user_id=user1, full_name=A, pipeline_stage=new, source=linkedin_profile, local_id=gen_xxx<br><span class="db-expect">candidate_history</span>: history_type=save, title="Saved candidate A"<br><span class="db-expect">events</span>: event_name=candidate_saved</td>
+        </tr>
+        <tr data-id="TC02">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC02</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>TC01已执行，候选人A在Overview页</td>
+          <td><span class="step-num">1</span>Temperature下拉改为Warm<br><span class="step-num">2</span>Key Memory输入"Korea java developer"<br><span class="step-num">3</span>等待自动保存</td>
+          <td class="ui-expect">Temperature显示Warm；Key Memory显示"Korea java developer"；AI suggested标签消失</td>
+          <td><span class="db-expect">candidates</span>: temperature=warm, is_ai_suggested_temp=0<br><span class="db-expect">candidate_notes</span>: content="Korea java developer" (local_id关联)<br><span class="db-expect">candidate_history</span>: history_type=note_added + temp_change</td>
+        </tr>
+        <tr data-id="TC03">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC03</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人A已保存</td>
+          <td><span class="step-num">1</span>Next Follow-up输入"2026-05-28 10:01"<br><span class="step-num">2</span>点击保存</td>
+          <td class="ui-expect">Next Follow-up显示"Follow up on May 28, 2026"；Today tasks增加该任务</td>
+          <td><span class="db-expect">candidates</span>: next_followup_at='2026-05-28 10:01', next_followup_source=manual<br><span class="db-expect">candidate_history</span>: history_type=followup_set</td>
+        </tr>
+        <tr data-id="TC04">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC04</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>候选人A已保存</td>
+          <td><span class="step-num">1</span>Voice Memo输入"she want to contact after two months."<br><span class="step-num">2</span>点击Record（模拟）</td>
+          <td class="ui-expect">Voice Memo文本框显示输入内容；Record按钮可点击</td>
+          <td><span class="db-expect">candidates</span>: voice_memo字段或扩展表存储文本<br><span class="db-expect">candidate_history</span>: history_type=voice_memo_added</td>
+        </tr>
+        <tr data-id="TC25">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC25</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>user1已登录，不在LinkedIn Profile页面（如在Pipeline页）</td>
+          <td><span class="step-num">1</span>点击"+ Add"按钮<br><span class="step-num">2</span>输入姓名"candidate1"、LinkedIn URL<br><span class="step-num">3</span>选择Temperature=hot、Pipeline Stage=messaged<br><span class="step-num">4</span>确认创建</td>
+          <td class="ui-expect">Pipeline页Messaged列出现candidate1卡片；卡片显示hot标签</td>
+          <td><span class="db-expect">candidates</span>: full_name="candidate1", source=manual_entry, pipeline_stage=messaged, temperature=hot<br><span class="db-expect">candidate_history</span>: history_type=created</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块2: Pipeline -->
+  <div class="module" id="m2">
+    <div class="module-header">模块2: Pipeline 看板 <span class="count">4</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m2',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC05">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC05</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1已保存候选人B</td>
+          <td><span class="step-num">1</span>切换到Pipeline tab<br><span class="step-num">2</span>查看New列</td>
+          <td class="ui-expect">New列计数(1)；候选人B卡片显示头像+名字+公司；Messaged/Talking/Done为0</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=new, pipeline_position=0, pipeline_entered_at=now</td>
+        </tr>
+        <tr data-id="TC06">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC06</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>候选人B在New阶段</td>
+          <td><span class="step-num">1</span>拖拽候选人B卡片到Messaged列<br><span class="step-num">2</span>释放</td>
+          <td class="ui-expect">New计数变0；Messaged计数变1；候选人B卡片在Messaged列；3d ago时间戳显示</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=messaged, pipeline_entered_at=now<br><span class="db-expect">candidate_history</span>: history_type=stage_change, old_value=new, new_value=messaged</td>
+        </tr>
+        <tr data-id="TC07">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC07</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人B在Messaged阶段</td>
+          <td><span class="step-num">1</span>拖拽候选人B到Talking列</td>
+          <td class="ui-expect">Messaged变0；Talking变1；卡片位置更新</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=talking<br><span class="db-expect">candidate_history</span>: 新增stage_change记录</td>
+        </tr>
+        <tr data-id="TC08">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC08</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人B在Talking阶段</td>
+          <td><span class="step-num">1</span>点击候选人B卡片上的×删除<br><span class="step-num">2</span>确认</td>
+          <td class="ui-expect">卡片消失；Talking计数减1；可选Filter不再显示</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=delete (软删除) 或硬删除<br><span class="db-expect">candidate_history</span>: history_type=deleted</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块3: Sequence -->
+  <div class="module" id="m3">
+    <div class="module-header">模块3: Sequence 序列 <span class="count">5</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m3',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC09">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC09</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>user1已登录</td>
+          <td><span class="step-num">1</span>Sequence tab → + New<br><span class="step-num">2</span>输入名称"Standard Outreach Sequence"<br><span class="step-num">3</span>添加4步：Connection Request, Follow-up A, Follow-up B, Final Check-in<br><span class="step-num">4</span>保存</td>
+          <td class="ui-expect">Templates列表显示新序列；显示4 steps；Use/Edit按钮可用；黄色Safety提示"Max 20 connects/day"</td>
+          <td><span class="db-expect">sequences</span>: user_id=user1, name="Standard Outreach Sequence", step_count=4, is_template=0<br><span class="db-expect">sequence_steps</span>: 4条记录，step_number=1~4，delay_type/days</td>
+        </tr>
+        <tr data-id="TC10">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC10</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>候选人C已保存，存在序列seq1</td>
+          <td><span class="step-num">1</span>Overview页 Active Sequence区域<br><span class="step-num">2</span>点击"+ Bind to Sequence"<br><span class="step-num">3</span>选择seq1</td>
+          <td class="ui-expect">Active Sequence显示seq1名称；显示当前步骤"1/4 Connection Request"；Next Follow-up自动更新为步骤1的delay计算时间</td>
+          <td><span class="db-expect">candidate_sequences</span>: candidate_id=C, sequence_id=seq1, status=active, current_step_number=1, total_steps=4, started_at=now<br><span class="db-expect">candidates</span>: next_followup_source=sequence, next_followup_sequence_step_id=step1_id<br><span class="db-expect">candidate_history</span>: "Bound to sequence seq1"</td>
+        </tr>
+        <tr data-id="TC11">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC11</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人C已绑定seq1且当前在step1</td>
+          <td><span class="step-num">1</span>执行step1动作（发送Connection Request）<br><span class="step-num">2</span>点击推进/系统自动推进</td>
+          <td class="ui-expect">Active Sequence更新为"2/4 Follow-up A"；Next Follow-up更新为step2的触发时间</td>
+          <td><span class="db-expect">candidate_sequences</span>: current_step_number=2<br><span class="db-expect">candidate_history</span>: "Advanced to step 2 Follow-up A"</td>
+        </tr>
+        <tr data-id="TC12">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC12</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>候选人C绑定seq1</td>
+          <td><span class="step-num">1</span>点击Unbind/Remove Sequence</td>
+          <td class="ui-expect">Active Sequence显示"No active sequence"；Bind按钮恢复可用</td>
+          <td><span class="db-expect">candidate_sequences</span>: status=cancelled 或删除记录<br><span class="db-expect">candidates</span>: next_followup_source=none, next_followup_sequence_step_id=null<br><span class="db-expect">candidate_history</span>: "Unbound from sequence seq1"</td>
+        </tr>
+        <tr data-id="TC26">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC26</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人C绑定seq1（4步），当前在step4，next_followup_at已过期</td>
+          <td><span class="step-num">1</span>到达next_followup_at时间<br><span class="step-num">2</span>系统触发最终推进<br><span class="step-num">3</span>标记序列完成</td>
+          <td class="ui-expect">Active Sequence显示"Completed"或消失；候选人C自动移动到Done列（如配置auto-move）</td>
+          <td><span class="db-expect">candidate_sequences</span>: status=completed, completed_at=now<br><span class="db-expect">candidates</span>: pipeline_stage=done（如配置auto-move）<br><span class="db-expect">candidate_history</span>: history_type=sequence_completed</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块4: 聊天抓取与Unclaimed -->
+  <div class="module" id="m4">
+    <div class="module-header">模块4: 聊天抓取与Unclaimed候选人 <span class="count">3</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m4',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC13">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC13</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1插件已安装，LinkedIn Messaging页面，候选人D从未被保存过</td>
+          <td><span class="step-num">1</span>候选人D发送消息给user1<br><span class="step-num">2</span>插件content script抓取消息<br><span class="step-num">3</span>发送到后端POST /chat-messages</td>
+          <td class="ui-expect">插件自动弹出通知/红点；Pipeline页New列出现候选人D卡片，标记为Unclaimed；Overview页显示D的基本信息（从聊天页抓取）</td>
+          <td><span class="db-expect">candidates</span>: full_name=D, source=linkedin_profile, pipeline_stage=unclaimed, linkedin_url=抓取URL, local_id=gen_unclaimed_xxx<br><span class="db-expect">candidate_history</span>: history_type=chat_received, title="Received message from D"<br><span class="db-expect">events</span>: event_name=unclaimed_created</td>
+        </tr>
+        <tr data-id="TC14">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC14</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人A已存在（claimed）</td>
+          <td><span class="step-num">1</span>候选人A发送新消息<br><span class="step-num">2</span>插件抓取并发送</td>
+          <td class="ui-expect">候选人A卡片last_activity时间更新；History页新增聊天记录</td>
+          <td><span class="db-expect">candidates</span>: last_activity_at=now<br><span class="db-expect">candidate_history</span>: history_type=chat_received, content_snapshot=消息摘要<br>不创建新候选人记录</td>
+        </tr>
+        <tr data-id="TC15">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC15</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人D当前为Unclaimed</td>
+          <td><span class="step-num">1</span>在Unclaimed卡片点击"Claim/Save"<br><span class="step-num">2</span>确认保存</td>
+          <td class="ui-expect">Unclaimed标记消失；候选人D进入New阶段；可正常编辑所有字段</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=new (从unclaimed变更)<br><span class="db-expect">candidate_history</span>: history_type=claimed, old_value=unclaimed, new_value=new</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块5: AI智能消息 -->
+  <div class="module" id="m5">
+    <div class="module-header">模块5: AI Message Assistant <span class="count">3</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m5',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC16">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC16</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>候选人A已保存，有job_title和history</td>
+          <td><span class="step-num">1</span>Overview页 AI Message Assistant<br><span class="step-num">2</span>选择Recruiting tab<br><span class="step-num">3</span>点击Generate</td>
+          <td class="ui-expect">显示生成进度；出现3个版本消息(friendly/professional/direct)；推荐版本带"Recommended"标签；可点击Copy或Send</td>
+          <td><span class="db-expect">users</span>: daily_ai_used +1<br><span class="db-expect">candidate_history</span>: history_type=ai_message_generated, metadata包含tone和content摘要<br><span class="db-expect">events</span>: event_name=ai_message_generated</td>
+        </tr>
+        <tr data-id="TC17">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC17</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人A已保存</td>
+          <td><span class="step-num">1</span>切换到Nurture tab<br><span class="step-num">2</span>点击Generate</td>
+          <td class="ui-expect">生成 nurture 风格消息（更柔和，关系维护导向）</td>
+          <td><span class="db-expect">users</span>: daily_ai_used +1<br><span class="db-expect">candidate_history</span>: history_type=ai_nurture_generated</td>
+        </tr>
+        <tr data-id="TC18">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC18</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>user1(Free套餐) daily_ai_used已达10/10</td>
+          <td><span class="step-num">1</span>点击Generate</td>
+          <td class="ui-expect">界面提示"Daily AI limit reached. Upgrade to Pro."；生成按钮disabled；出现Upgrade按钮</td>
+          <td><span class="db-expect">users</span>: daily_ai_used=10, daily_ai_reset_at=次日零点<br>不调用AI接口；返回错误码或前端拦截</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块6: History -->
+  <div class="module" id="m6">
+    <div class="module-header">模块6: History 时间线 <span class="count">3</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m6',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC19">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC19</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>候选人A已保存</td>
+          <td><span class="step-num">1</span>切换到History tab</td>
+          <td class="ui-expect">时间线顶部显示"Saved candidate A"；System标签；时间戳正确；下拉选择器显示候选人A</td>
+          <td><span class="db-expect">candidate_history</span>: candidate_id=A, history_type=save, actor_type=system, history_time=保存时间</td>
+        </tr>
+        <tr data-id="TC20">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC20</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人A已绑定seq1</td>
+          <td><span class="step-num">1</span>在History页查看</td>
+          <td class="ui-expect">显示多条"Bound to sequence"记录；Status change标签；按时间倒序</td>
+          <td><span class="db-expect">candidate_history</span>: history_type=sequence_bound / stage_change, title="Bound to sequence seq1", actor_type=system</td>
+        </tr>
+        <tr data-id="TC21">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC21</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>候选人A有多条历史</td>
+          <td><span class="step-num">1</span>在History页切换候选人下拉框到候选人B</td>
+          <td class="ui-expect">时间线清空并加载候选人B的历史；无数据时显示空状态</td>
+          <td><span class="db-expect">candidate_history</span>: 查询条件 candidate_id=B, user_id=user1, 按history_time desc</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块7: 限制与Feedback -->
+  <div class="module" id="m7">
+    <div class="module-header">模块7: 限制与Feedback <span class="count">4</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m7',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC22">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC22</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>user1 Free套餐，已有20个候选人</td>
+          <td><span class="step-num">1</span>尝试保存第21个候选人F</td>
+          <td class="ui-expect">Save & Track按钮disabled或点击后弹窗提示"Free plan limit: 20 candidates. Upgrade?"</td>
+          <td><span class="db-expect">candidates</span>: 不插入第21条；返回错误码 LIMIT_EXCEEDED<br><span class="db-expect">events</span>: event_name=limit_exceeded, event_data={type:candidate, limit:20}</td>
+        </tr>
+        <tr data-id="TC23">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC23</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>user1 Free套餐，已有1个sequence</td>
+          <td><span class="step-num">1</span>尝试创建第2个sequence</td>
+          <td class="ui-expect">+ New按钮disabled或提示"Free plan: 1 sequence limit reached"</td>
+          <td><span class="db-expect">sequences</span>: user1下只有1条记录；新创建被拦截<br><span class="db-expect">subscription_plans</span>: free.sequence_limit=1</td>
+        </tr>
+        <tr data-id="TC24">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC24</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>user1已登录，在任意页面</td>
+          <td><span class="step-num">1</span>点击顶部"Feedback"按钮<br><span class="step-num">2</span>填写内容"Great tool! Can you add bulk import?"<br><span class="step-num">3</span>点击提交</td>
+          <td class="ui-expect">弹出Feedback表单；提交后显示"Thank you for your feedback"；表单关闭</td>
+          <td><span class="db-expect">events</span>: event_name=feedback_submitted, event_data包含content和plugin_version</td>
+        </tr>
+        <tr data-id="TC27">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC27</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>user1在Pipeline页面提交Feedback</td>
+          <td><span class="step-num">1</span>点击Feedback按钮<br><span class="step-num">2</span>直接提交（内容可为空或简短）</td>
+          <td class="ui-expect">表单正常提交；Feedback按钮可再次点击</td>
+          <td><span class="db-expect">events</span>: event_data.page_url包含"/pipeline"路径</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+const STORAGE_KEY = 'scrm_test_state_v2';
+
+function loadState() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    document.querySelectorAll('tr[data-id]').forEach(tr => {
+      const id = tr.getAttribute('data-id');
+      const chk = tr.querySelector('.chk');
+      if (data[id]) {
+        chk.checked = true;
+        tr.classList.add('done');
+      }
+    });
+  } catch(e) {}
+  updateStats();
+}
+
+function saveState() {
+  const data = {};
+  document.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.getAttribute('data-id');
+    const chk = tr.querySelector('.chk');
+    if (chk.checked) {
+      data[id] = true;
+      tr.classList.add('done');
+    } else {
+      tr.classList.remove('done');
+    }
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  updateStats();
+}
+
+function updateStats() {
+  const total = document.querySelectorAll('tr[data-id]').length;
+  const done = document.querySelectorAll('tr.done').length;
+  document.getElementById('total').textContent = total;
+  document.getElementById('completed').textContent = done;
+  const pct = total ? Math.round(done/total*100) : 0;
+  document.getElementById('percent').textContent = pct + '%';
+  document.getElementById('bar').style.width = pct + '%';
+}
+
+function toggleAll(moduleId, checked) {
+  const mod = document.getElementById(moduleId);
+  mod.querySelectorAll('tr[data-id] .chk').forEach(chk => chk.checked = checked);
+  saveState();
+}
+
+function resetAll() {
+  if (!confirm('重置所有进度？')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  document.querySelectorAll('.chk').forEach(chk => chk.checked = false);
+  document.querySelectorAll('tr[data-id]').forEach(tr => tr.classList.remove('done'));
+  updateStats();
+}
+
+function expandAll() {
+  document.querySelectorAll('.module').forEach(m => m.style.display = '');
+  document.querySelectorAll('.filter input').forEach(i => i.checked = true);
+}
+
+function collapseAll() {
+  document.querySelectorAll('.module').forEach(m => m.style.display = 'none');
+  document.querySelectorAll('.filter input').forEach(i => i.checked = false);
+}
+
+function toggleModule(id) {
+  const el = document.getElementById(id);
+  const visible = document.querySelector('input[onchange="toggleModule(''+id+'')"]').checked;
+  el.style.display = visible ? '' : 'none';
+}
+
+function exportJSON() {
+  const data = {};
+  document.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = tr.getAttribute('data-id');
+    const chk = tr.querySelector('.chk');
+    data[id] = { done: chk.checked };
+  });
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'scrm_test_progress_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+window.addEventListener('DOMContentLoaded', loadState);
+</script>
+</body>
+</html>

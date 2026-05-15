@@ -89,7 +89,6 @@ public class ChatMessageService {
 
     private CandidateWithBLOBs createCandidateFromChat(Long userId, ChatMessageRequest request) {
         CandidateWithBLOBs candidate = new CandidateWithBLOBs();
-        candidate.setLocalId("auto-chat-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16));
         candidate.setUserId(userId);
         candidate.setFullName(request.getSenderName() != null ? request.getSenderName() : "Unknown");
         candidate.setLinkedinId(request.getLinkedInId());
@@ -109,10 +108,8 @@ public class ChatMessageService {
 
     private CandidateHistoryWithBLOBs createHistoryFromChat(Long userId, CandidateWithBLOBs candidate, ChatMessageRequest request) {
         CandidateHistoryWithBLOBs history = new CandidateHistoryWithBLOBs();
-        history.setLocalId("auto-chat-hist-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16));
         history.setUserId(userId);
         history.setCandidateId(candidate.getId());
-        history.setLocalCandidateId(candidate.getLocalId());
         history.setHistoryType("chat_message");
         String direction = (request.getIsInbound() != null && request.getIsInbound()) ? "Received" : "Sent";
         String text = request.getText() != null ? request.getText() : "";

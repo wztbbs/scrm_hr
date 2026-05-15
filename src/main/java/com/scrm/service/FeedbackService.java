@@ -13,15 +13,19 @@ public class FeedbackService {
     @Autowired
     private JavaMailSender mailSender;
 
-    @Value("${FEEDBACK_FROM_EMAIL:}")
+    @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}")
+    @Value("${feedback.to-email}")
     private String toEmail;
 
     public void sendFeedback(FeedbackRequest request) {
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail.isEmpty() ? "noreply@linkedin-scrm.com" : fromEmail);
+        if (request.getEmail() != null && !request.getEmail().isEmpty()) {
+            message.setFrom(request.getEmail());
+        } else {
+            message.setFrom(fromEmail);
+        }
         message.setTo(toEmail);
         message.setSubject("LinkedIn SCRM Feedback");
 

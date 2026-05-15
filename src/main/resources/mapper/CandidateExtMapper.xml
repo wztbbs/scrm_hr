@@ -3,7 +3,6 @@
 <mapper namespace="com.scrm.dao.CandidateExtMapper">
   <resultMap id="BaseResultMap" type="com.scrm.entity.Candidate">
     <id column="id" jdbcType="BIGINT" property="id" />
-    <result column="local_id" jdbcType="VARCHAR" property="localId" />
     <result column="user_id" jdbcType="BIGINT" property="userId" />
     <result column="full_name" jdbcType="VARCHAR" property="fullName" />
     <result column="headline" jdbcType="VARCHAR" property="headline" />

@@ -7,6 +7,49 @@ let currentFilter = 'All Roles';
 let manualEntryCandidateId = null;
 let isDraggingCard = false;
 let pipelineStages = [];
+let isSavingCandidate = false;
+let hasSyncedData = false;
+
+// ========== Draft Cache (localStorage) ==========
+function getDraftKey(candidate) {
+  const id = candidate?.id || candidate?.linkedInId || candidate?.linkedinId || 'unknown';
+  return `draft_${id}`;
+}
+
+function saveDraft(candidate) {
+  if (!candidate) return;
+  const draft = {
+    keyMemory: candidate.keyMemory || '',
+    voiceMemo: candidate.voiceMemo || '',
+    temperature: candidate.temperature || '',
+    savedAt: Date.now()
+  };
+  localStorage.setItem(getDraftKey(candidate), JSON.stringify(draft));
+}
+
+function loadDraft(candidate) {
+  if (!candidate) return null;
+  const raw = localStorage.getItem(getDraftKey(candidate));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearDraft(candidate) {
+  if (!candidate) return;
+  localStorage.removeItem(getDraftKey(candidate));
+}
+
+function applyDraft(candidate) {
+  const draft = loadDraft(candidate);
+  if (!draft) return;
+  if (draft.keyMemory !== undefined) candidate.keyMemory = draft.keyMemory;
+  if (draft.voiceMemo !== undefined) candidate.voiceMemo = draft.voiceMemo;
+  if (draft.temperature !== undefined) candidate.temperature = draft.temperature;
+}
 
 // ========== Analytics / Tracking ==========
 const sessionId = 'sess_' + Math.random().toString(36).slice(2, 10);
@@ -90,7 +133,13 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     currentTab = tab.dataset.tab;
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     $(`tab-${currentTab}`).classList.add('active');
-    if (currentTab === 'pipeline') renderPipeline();
+    if (currentTab === 'pipeline') {
+      if (!hasSyncedData) {
+        syncDataFromBackend().then(() => renderPipeline());
+      } else {
+        renderPipeline();
+      }
+    }
     if (currentTab === 'sequence') renderSequence();
     if (currentTab === 'history') renderHistory();
     // Scroll popup to top on tab switch
@@ -121,7 +170,6 @@ async function loadCurrentCandidate() {
     if (!tab || !tab.url || !tab.url.includes('linkedin.com/in/')) {
       $('ovName').textContent = 'No LinkedIn Profile';
       $('ovTitle').textContent = 'Open a candidate profile to get started';
-      await renderOverviewTodayTasks();
       return;
     }
 
@@ -130,46 +178,51 @@ async function loadCurrentCandidate() {
     const tabUrl = tab.url || '';
     if (response && response.success && response.data) {
       const data = response.data;
-      currentCandidate = await getCandidateByLinkedInId(data.linkedInId);
-      if (!currentCandidate) {
-        currentCandidate = {
-          linkedInId: data.linkedInId,
-          linkedInUrl: tabUrl,
-          name: data.name || '',
-          headline: data.headline || '',
-          company: data.company || '',
-          school: data.school || '',
-          summary: data.summary || '',
-          skills: data.skills || [],
-          workExperiences: data.workExperiences || [],
-          educationExperiences: data.educationExperiences || [],
-          websites: data.websites || [],
-          emails: [],
-          phones: [],
-          temperature: 'Cold',
-          contactMode: 'recruiting',
-          keyMemory: '',
-          nextFollowup: '',
-          voiceMemo: ''
-        };
-      } else {
-        // Update with latest scraped data
-        Object.assign(currentCandidate, {
-          linkedInUrl: tabUrl || currentCandidate.linkedInUrl,
-          name: data.name || currentCandidate.name,
-          headline: data.headline || currentCandidate.headline,
-          company: data.company || currentCandidate.company,
-          school: data.school || currentCandidate.school,
-          summary: data.summary || currentCandidate.summary,
-          skills: data.skills?.length ? data.skills : currentCandidate.skills,
-          workExperiences: data.workExperiences?.length ? data.workExperiences : currentCandidate.workExperiences,
-          educationExperiences: data.educationExperiences?.length ? data.educationExperiences : currentCandidate.educationExperiences,
-          websites: data.websites?.length ? data.websites : currentCandidate.websites,
-          emails: [],
-          phones: [],
-        });
-      }
+      // Build candidate immediately from scraped data for instant render
+      currentCandidate = {
+        linkedInId: data.linkedInId,
+        linkedInUrl: tabUrl,
+        name: data.name || '',
+        headline: data.headline || '',
+        company: data.company || '',
+        school: data.school || '',
+        summary: data.summary || '',
+        skills: data.skills || [],
+        workExperiences: data.workExperiences || [],
+        educationExperiences: data.educationExperiences || [],
+        websites: data.websites || [],
+        emails: [],
+        phones: [],
+        temperature: 'Cold',
+        contactMode: 'recruiting',
+        keyMemory: '',
+        nextFollowup: '',
+        voiceMemo: ''
+      };
       renderOverview();
+
+      // Fetch backend details asynchronously (non-blocking)
+      if (typeof window !== 'undefined' && window.API) {
+        try {
+          const backendCandidate = await window.API.candidates.getByLinkedInId(data.linkedInId);
+          if (backendCandidate) {
+            // Merge backend data into currentCandidate
+            Object.assign(currentCandidate, backendCandidate, {
+              linkedInUrl: tabUrl || backendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
+              name: data.name || backendCandidate.name || currentCandidate.name,
+              headline: data.headline || backendCandidate.headline || currentCandidate.headline,
+              company: data.company || backendCandidate.company || currentCandidate.company,
+              skills: data.skills?.length ? data.skills : (backendCandidate.skills || currentCandidate.skills),
+              workExperiences: data.workExperiences?.length ? data.workExperiences : (backendCandidate.workExperiences || currentCandidate.workExperiences),
+              educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (backendCandidate.educationExperiences || currentCandidate.educationExperiences),
+              websites: data.websites?.length ? data.websites : (backendCandidate.websites || currentCandidate.websites),
+            });
+            renderOverview();
+          }
+        } catch (e) {
+          console.warn('[Popup] Backend candidate fetch failed:', e.message);
+        }
+      }
     } else {
       $('ovName').textContent = 'Unable to load';
       $('ovTitle').textContent = 'Try refreshing the page or click Save & Track';
@@ -183,6 +236,9 @@ async function loadCurrentCandidate() {
 
 function renderOverview() {
   if (!currentCandidate) return;
+  // Apply draft if exists (before rendering)
+  applyDraft(currentCandidate);
+
   $('ovAvatar').textContent = getInitials(currentCandidate.name);
   $('ovAvatar').style.background = getAvatarColor(currentCandidate.name);
   $('ovName').textContent = currentCandidate.name || 'Unknown';
@@ -372,7 +428,22 @@ function renderOverviewVoiceMemo() {
 }
 
 async function renderOverviewTodayTasks() {
-  const candidates = await getTodaysTasks();
+  let candidates = [];
+  // Try backend API first; fallback to IndexedDB if offline
+  if (typeof window !== 'undefined' && window.API) {
+    try {
+      const resp = await window.API.candidates.tasks();
+      if (resp.data && resp.data.items) {
+        candidates = resp.data.items;
+      }
+    } catch (e) {
+      console.warn('[Popup] Backend tasks fetch failed, falling back to local:', e.message);
+      candidates = await getTodaysTasks();
+    }
+  } else {
+    candidates = await getTodaysTasks();
+  }
+
   const countEl = $('ovTodayCount');
   const listEl = $('ovTodayTaskList');
 
@@ -440,7 +511,10 @@ $('ovTodayViewAll').addEventListener('click', (e) => {
 });
 
 $('ovTemperature').addEventListener('change', () => {
-  if (currentCandidate) currentCandidate.temperature = $('ovTemperature').value;
+  if (currentCandidate) {
+    currentCandidate.temperature = $('ovTemperature').value;
+    saveDraft(currentCandidate);
+  }
 });
 
 $('ovModeRecruiting').addEventListener('click', () => {
@@ -456,33 +530,46 @@ $('ovModeNurture').addEventListener('click', () => {
 });
 
 $('ovKeyMemory').addEventListener('input', () => {
-  if (currentCandidate) currentCandidate.keyMemory = $('ovKeyMemory').value;
+  if (currentCandidate) {
+    currentCandidate.keyMemory = $('ovKeyMemory').value;
+    saveDraft(currentCandidate);
+  }
 });
 
 // ovNextFollowupInput 的事件由自定义 DateTime Picker 处理，见文件底部
 
 $('ovVoiceMemoTextarea').addEventListener('input', () => {
-  if (currentCandidate) currentCandidate.voiceMemo = $('ovVoiceMemoTextarea').value;
+  if (currentCandidate) {
+    currentCandidate.voiceMemo = $('ovVoiceMemoTextarea').value;
+    saveDraft(currentCandidate);
+  }
 });
 
 $('ovSaveBtn').addEventListener('click', async () => {
+  if (isSavingCandidate) {
+    showToast('Saving in progress, please wait...');
+    return;
+  }
   if (!currentCandidate) {
     showToast('No candidate data to save');
     return;
   }
   const canSave = await checkCandidateLimit();
   if (!canSave) return;
+  isSavingCandidate = true;
   showLoading();
   try {
     const savedId = await saveCandidate(currentCandidate);
     if (!currentCandidate.id) currentCandidate.id = savedId;
-    await addHistory({
-      candidateId: currentCandidate.id,
-      type: 'status_change',
-      content: `Saved candidate ${currentCandidate.name}`,
-      subtype: 'System',
-      date: Date.now()
-    });
+    // Sync sequence binding if needed (backend auto-records history)
+    if (currentCandidate.sequenceId && currentCandidate.serverId) {
+      try {
+        await bindCandidateToSequence(currentCandidate.id, currentCandidate.sequenceId);
+      } catch (e) {
+        console.warn('[Save] Sequence binding failed:', e.message);
+      }
+    }
+    clearDraft(currentCandidate);
     showToast('Saved & tracked!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'overview' });
     await renderOverviewNextFollowup();
@@ -502,6 +589,7 @@ $('ovSaveBtn').addEventListener('click', async () => {
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
   } finally {
+    isSavingCandidate = false;
     hideLoading();
   }
   trackEvent('plugin_opened', { category: 'engagement' });
@@ -872,13 +960,6 @@ function bindPipelineDragEvents() {
         candidate.pipelineStage = newStage;
         await updateCandidate(candidate);
         trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
-        await addHistory({
-          candidateId: candidate.id,
-          type: 'status_change',
-          content: `Pipeline stage changed from ${oldStage} to ${newStage}`,
-          subtype: 'System',
-          date: Date.now()
-        });
         renderPipeline();
       }
     });
@@ -934,13 +1015,6 @@ function bindPipelineSaveToNewEvents() {
         candidate.pipelineStage = 'new';
         await updateCandidate(candidate);
         trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
-        await addHistory({
-          candidateId: candidate.id,
-          type: 'status_change',
-          content: `Saved "${candidate.name}" from Unclaimed to New`,
-          subtype: 'System',
-          date: Date.now()
-        });
         showToast('Candidate saved to New');
         renderPipeline();
         if (currentTab === 'history') renderHistory();
@@ -1287,13 +1361,6 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
       delete candidate.sequenceId;
       await dbPut(STORES.candidates, candidate);
     }
-    await addHistory({
-      candidateId: candidateId,
-      type: 'status_change',
-      content: 'Unbound from sequence',
-      subtype: 'System',
-      date: Date.now()
-    });
     return;
   }
 
@@ -1309,15 +1376,6 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     candidate.sequenceId = sequenceId;
     await dbPut(STORES.candidates, candidate);
   }
-
-  await addHistory({
-    candidateId: candidateId,
-    type: 'status_change',
-    content: `Bound to sequence "${seq.name}"`,
-    subtype: 'System',
-    date: Date.now()
-  });
-  console.log('[BIND_SEQ] history added');
 
   // Sync candidate-sequence binding to backend
   if (typeof window !== 'undefined' && window.API) {
@@ -1498,22 +1556,13 @@ $('meSaveBtn').addEventListener('click', async () => {
 
     const canSave = await checkCandidateLimit();
     if (!canSave) { hideLoading(); return; }
+    isSavingCandidate = true;
     const savedId = await saveCandidate(candidate);
 
     // Handle sequence binding
     const sequenceId = $('meSequence').value;
     if (sequenceId) {
       await bindCandidateToSequence(savedId, sequenceId);
-    }
-
-    if (!manualEntryCandidateId) {
-      await addHistory({
-        candidateId: savedId,
-        type: 'status_change',
-        content: `Added candidate ${name}`,
-        subtype: 'System',
-        date: Date.now()
-      });
     }
 
     showToast(manualEntryCandidateId ? 'Candidate updated!' : 'Candidate added!');
@@ -1525,6 +1574,7 @@ $('meSaveBtn').addEventListener('click', async () => {
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
   } finally {
+    isSavingCandidate = false;
     hideLoading();
   }
 });
@@ -1912,6 +1962,7 @@ async function syncDataFromBackend() {
 
     // Sequences and pipeline are now fetched directly from backend on init
     console.log('[Popup] Data synced from backend');
+    hasSyncedData = true;
   } catch (e) {
     console.warn('[Popup] Sync from backend failed:', e.message);
   }
@@ -1944,15 +1995,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   showLoading();
   try {
     await ensureUserId();
-    await initBackendData();
-    await syncDataFromBackend();
-    await loadCurrentCandidate();
-    await renderOverviewTodayTasks();
+    await initBackendData();        // 1. sequences + pipeline stages (fast)
+    await loadCurrentCandidate();   // 2. scrape current page → render overview instantly
+    await renderOverviewTodayTasks(); // 3. fetch today's tasks from backend (small payload)
   } catch (e) {
     console.error('Init error:', e);
   } finally {
     hideLoading();
   }
+  // 4. Sync full candidates list in background (heavy, non-blocking)
+  setTimeout(() => syncDataFromBackend(), 0);
 });
 
 // ========== Custom DateTime Picker ==========
@@ -2291,14 +2343,6 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
     currentCandidate.nextFollowupSource = 'none';
     currentCandidate.nextFollowupSequenceStepId = null;
     await dbPut(STORES.candidates, currentCandidate);
-
-    await addHistory({
-      candidateId: currentCandidate.id,
-      type: 'followup_completed',
-      content: 'Follow-up marked as done',
-      subtype: 'System',
-      date: Date.now()
-    });
 
     // If sequence has next suggestion, prompt user
     if (result && result.has_suggestion) {

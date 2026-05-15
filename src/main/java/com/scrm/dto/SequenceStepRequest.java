@@ -4,7 +4,6 @@ import lombok.Data;
 
 @Data
 public class SequenceStepRequest {
-    private String localId;
     private Integer stepNumber;
     private String name;
     private String actionType;

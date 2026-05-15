@@ -22,10 +22,10 @@ public class AiConfig {
      */
     @Bean
     public RestClientCustomizer restClientCustomizer(
-            @Value("${openrouter.site-url:}") String siteUrl,
-            @Value("${openrouter.app-name:}") String appName) {
+            @Value("${openrouter.site-url}") String siteUrl,
+            @Value("${openrouter.app-name}") String appName) {
         return restClient -> restClient
-                .defaultHeader("HTTP-Referer", siteUrl.isEmpty() ? "https://linkedin-scrm.com" : siteUrl)
-                .defaultHeader("X-Title", appName.isEmpty() ? "LinkedIn SCRM" : appName);
+                .defaultHeader("HTTP-Referer", siteUrl)
+                .defaultHeader("X-Title", appName);
     }
 }

@@ -1,5 +1,6 @@
 server:
   port: 8080
+  address: 127.0.0.1
   servlet:
     context-path: /
 
@@ -16,7 +17,7 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${FEEDBACK_FROM_EMAIL:}
+    username: ${FEEDBACK_FROM_EMAIL:270938043@qq.com}
     password: ${FEEDBACK_APP_PASSWORD:}
     properties:
       mail.smtp.auth: true
@@ -42,6 +43,9 @@ mybatis:
 openrouter:
   site-url: https://linkedin-scrm.com
   app-name: LinkedIn SCRM
+
+feedback:
+  to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
 
 logging:
   level:

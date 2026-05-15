@@ -17,6 +17,23 @@ public class CandidateController {
     @Autowired
     private CandidateService candidateService;
 
+    @GetMapping("/by-linkedin-id")
+    public ApiResponse<CandidateWithBLOBs> getByLinkedInId(@RequestParam String linkedin_id) {
+        CandidateWithBLOBs candidate = candidateService.getCandidateByLinkedInId(linkedin_id);
+        if (candidate == null) {
+            return ApiResponse.success(null);
+        }
+        return ApiResponse.success(candidate);
+    }
+
+    @GetMapping("/tasks")
+    public ApiResponse<Map<String, Object>> listTasks() {
+        List<Candidate> items = candidateService.listTodayTasks();
+        Map<String, Object> data = new HashMap<>();
+        data.put("items", items);
+        return ApiResponse.success(data);
+    }
+
     @GetMapping
     public ApiResponse<Map<String, Object>> list(
             @RequestParam(defaultValue = "1") int page,

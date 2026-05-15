@@ -212,6 +212,19 @@ const CandidatesAPI = {
   async markFollowupDone(id) {
     const resp = await apiRequest('POST', `/api/v1/candidates/${id}/follow-up/done`);
     return resp.data;
+  },
+
+  async getByLinkedInId(linkedinId) {
+    const resp = await apiRequest('GET', '/api/v1/candidates/by-linkedin-id', null, { linkedin_id: linkedinId });
+    return resp.data ? candidateFromBackend(resp.data) : null;
+  },
+
+  async tasks() {
+    const resp = await apiRequest('GET', '/api/v1/candidates/tasks');
+    if (resp.data && resp.data.items) {
+      resp.data.items = resp.data.items.map(candidateFromBackend);
+    }
+    return resp;
   }
 };
 
@@ -250,13 +263,8 @@ const HistoryAPI = {
       resp.data.items = resp.data.items.map(historyFromBackend);
     }
     return resp;
-  },
-
-  async create(entry) {
-    const body = historyToBackend(entry);
-    const resp = await apiRequest('POST', '/api/v1/history', body);
-    return historyFromBackend(resp.data);
   }
+  // create removed: history is now recorded automatically by backend services
 };
 
 // ==================== Notes ====================

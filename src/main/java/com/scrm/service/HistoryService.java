@@ -32,16 +32,6 @@ public class HistoryService {
         Long userId = RequestContext.getCurrentUserId();
         history.setUserId(userId);
 
-        // 如果 candidateId 为空但有 localCandidateId，尝试查找对应的 candidateId
-        if (history.getCandidateId() == null && history.getLocalCandidateId() != null && !history.getLocalCandidateId().isEmpty()) {
-            CandidateExample example = new CandidateExample();
-            example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(history.getLocalCandidateId());
-            List<CandidateWithBLOBs> candidates = candidateMapper.selectByExampleWithBLOBs(example);
-            if (!candidates.isEmpty()) {
-                history.setCandidateId(candidates.get(0).getId());
-            }
-        }
-
         if (history.getActorType() == null) {
             history.setActorType("user");
         }
@@ -50,7 +40,24 @@ public class HistoryService {
         return history;
     }
 
-    public List<CandidateHistoryWithBLOBs> listHistory(Long candidateId, String localCandidateId,
+    /**
+     * 便捷方法：快速记录一条 history，供其他 Service 内部调用
+     */
+    public void recordHistory(Long candidateId, String historyType, String title, String actorType) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateHistoryWithBLOBs history = new CandidateHistoryWithBLOBs();
+        history.setUserId(userId);
+        history.setCandidateId(candidateId);
+        history.setHistoryType(historyType);
+        history.setTitle(title);
+        history.setDescription(title);
+        history.setActorType(actorType != null ? actorType : "system");
+        history.setHistoryTime(new Date());
+        history.setCreatedAt(new Date());
+        historyMapper.insertSelective(history);
+    }
+
+    public List<CandidateHistoryWithBLOBs> listHistory(Long candidateId,
                                                String historyType, String actorType,
                                                Date dateFrom, Date dateTo,
                                                String keyword, Boolean includeDeleted,
@@ -61,9 +68,6 @@ public class HistoryService {
         CandidateHistoryExample.Criteria criteria = example.createCriteria().andUserIdEqualTo(userId);
         if (candidateId != null) {
             criteria.andCandidateIdEqualTo(candidateId);
-        }
-        if (localCandidateId != null && !localCandidateId.isEmpty()) {
-            criteria.andLocalCandidateIdEqualTo(localCandidateId);
         }
         if (historyType != null && !historyType.isEmpty()) {
             String[] types = historyType.split(",");
@@ -95,7 +99,7 @@ public class HistoryService {
         return historyMapper.selectByExampleWithBLOBs(example);
     }
 
-    public long countHistory(Long candidateId, String localCandidateId,
+    public long countHistory(Long candidateId,
                              String historyType, String actorType,
                              Date dateFrom, Date dateTo,
                              String keyword, Boolean includeDeleted) {
@@ -104,9 +108,6 @@ public class HistoryService {
         CandidateHistoryExample.Criteria criteria = example.createCriteria().andUserIdEqualTo(userId);
         if (candidateId != null) {
             criteria.andCandidateIdEqualTo(candidateId);
-        }
-        if (localCandidateId != null && !localCandidateId.isEmpty()) {
-            criteria.andLocalCandidateIdEqualTo(localCandidateId);
         }
         if (historyType != null && !historyType.isEmpty()) {
             criteria.andHistoryTypeEqualTo(historyType.split(",")[0]);

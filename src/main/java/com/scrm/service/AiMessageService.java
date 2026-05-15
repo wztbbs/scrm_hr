@@ -123,14 +123,6 @@ public class AiMessageService {
                 return c;
             }
         }
-        if (request.getLocalCandidateId() != null && !request.getLocalCandidateId().isEmpty()) {
-            CandidateExample example = new CandidateExample();
-            example.createCriteria().andUserIdEqualTo(userId).andLocalIdEqualTo(request.getLocalCandidateId());
-            List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-            if (!list.isEmpty()) {
-                return list.get(0);
-            }
-        }
         return null;
     }
 

@@ -33,6 +33,8 @@ public class SequenceService {
     private SubCandidateMapper subCandidateMapper;
     @Autowired
     private SubscriptionService subscriptionService;
+    @Autowired
+    private HistoryService historyService;
 
     public List<Sequence> listSequences(Boolean isActive, Boolean isTemplate, String search) {
         Long userId = RequestContext.getCurrentUserId();
@@ -223,6 +225,10 @@ public class SequenceService {
         cs.setTotalSteps(steps.size());
         candidateSequenceMapper.insertSelective(cs);
 
+        // Auto-record history
+        historyService.recordHistory(cs.getCandidateId(), "sequence_started",
+                "Sequence started (step 1/" + cs.getTotalSteps() + ")", "system");
+
         // Note: next_followup is NO LONGER set here automatically.
         // The frontend will prompt the user to accept or edit the suggested follow-up time.
 
@@ -262,6 +268,10 @@ public class SequenceService {
         cs.setCurrentStepNumber(nextStepNumber);
         cs.setUpdatedAt(new Date());
         candidateSequenceMapper.updateByPrimaryKeySelective(cs);
+
+        // Auto-record history
+        historyService.recordHistory(cs.getCandidateId(), "sequence_advanced",
+                "Advanced to step " + nextStepNumber + "/" + cs.getTotalSteps(), "system");
 
         // find next step for follow-up
         SequenceStepExample example = new SequenceStepExample();
@@ -321,6 +331,10 @@ public class SequenceService {
 
         // clear user follow-up
         subCandidateMapper.updateNextFollowup(candidateId, null, "none", null);
+
+        // Auto-record history
+        historyService.recordHistory(candidateId, "follow_up_completed",
+                "Follow-up completed", "user");
 
         // find active candidate sequence
         CandidateSequenceExample example = new CandidateSequenceExample();
