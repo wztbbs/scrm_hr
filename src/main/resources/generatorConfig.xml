@@ -77,6 +77,18 @@
 
         <!-- pipeline_boards, pipeline_stages, pipeline_candidates 已废弃，字段合并到 candidates 表 -->
 
+        <!-- 订单表 -->
+        <table tableName="orders" domainObjectName="Order"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
+        <!-- 订阅表 -->
+        <table tableName="subscriptions" domainObjectName="Subscription"
+               enableCountByExample="true" enableUpdateByExample="true"
+               enableDeleteByExample="false" enableSelectByExample="true"
+               selectByExampleQueryId="true"/>
+
         <!-- 埋点事件表 -->
         <table tableName="events" domainObjectName="Event"
                enableCountByExample="true" enableUpdateByExample="true"

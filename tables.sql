@@ -41,49 +41,85 @@ INSERT INTO `subscription_plans` (`plan_code`, `name`, `description`, `price`, `
 ('pro_monthly', 'Pro Monthly', '专业版月付 $29/月', 29.00, 'USD', 'monthly', '["unlimited_pipeline","ai_assistant","sequences","voice_memo","50_daily_connects","unlimited_candidates"]', 50, 10, 999999, 2),
 ('pro_yearly', 'Pro Yearly', '专业版年付 $290/年（省$58）', 290.00, 'USD', 'yearly', '["unlimited_pipeline","ai_assistant","sequences","voice_memo","50_daily_connects","unlimited_candidates","priority_support"]', 50, 10, 999999, 3);
 
+-- ============================================================
+-- LinkedIn SCRM 支付表结构（Paddle + Stripe 双兼容）
+-- 说明：当前阶段接入 Paddle，保留 Stripe 字段便于未来切换
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS `subscriptions` (
                                                `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-                                               `user_id` bigint unsigned NOT NULL,
-                                               `plan_id` bigint unsigned NOT NULL,
-                                               `status` enum('active','cancelled','expired','past_due','paused') NOT NULL DEFAULT 'active',
-                                               `current_period_start` datetime NOT NULL,
-                                               `current_period_end` datetime NOT NULL,
-                                               `cancel_at_period_end` tinyint(1) NOT NULL DEFAULT 0,
-                                               `cancelled_at` datetime DEFAULT NULL,
-                                               `stripe_subscription_id` varchar(128) DEFAULT NULL,
-                                               `stripe_customer_id` varchar(128) DEFAULT NULL,
-                                               `payment_provider` enum('stripe','paypal','manual') DEFAULT NULL,
+                                               `user_id` bigint unsigned NOT NULL COMMENT '所属用户',
+                                               `plan_id` bigint unsigned NOT NULL COMMENT '关联 subscription_plans.id',
+
+    -- 订阅状态
+                                               `status` enum('active','cancelled','expired','past_due','paused') NOT NULL DEFAULT 'active' COMMENT '订阅状态',
+                                               `current_period_start` datetime NOT NULL COMMENT '当前计费周期开始',
+                                               `current_period_end` datetime NOT NULL COMMENT '当前计费周期结束',
+                                               `cancel_at_period_end` tinyint(1) NOT NULL DEFAULT 0 COMMENT '是否在当前周期结束后取消',
+                                               `cancelled_at` datetime DEFAULT NULL COMMENT '取消操作时间',
+
+    -- Paddle 字段（新增）
+                                               `paddle_subscription_id` varchar(128) DEFAULT NULL COMMENT 'Paddle 订阅 ID',
+                                               `paddle_customer_id` varchar(128) DEFAULT NULL COMMENT 'Paddle 客户 ID',
+
+    -- Stripe 字段（保留，阶段3可能切回）
+                                               `stripe_subscription_id` varchar(128) DEFAULT NULL COMMENT 'Stripe 订阅 ID',
+                                               `stripe_customer_id` varchar(128) DEFAULT NULL COMMENT 'Stripe 客户 ID',
+
+    -- 支付渠道标识
+                                               `payment_provider` enum('paddle','stripe','paypal','manual') DEFAULT NULL COMMENT '实际支付渠道',
+
                                                `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                                `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
                                                PRIMARY KEY (`id`),
+                                               UNIQUE KEY `uk_paddle_subscription` (`paddle_subscription_id`),
                                                UNIQUE KEY `uk_stripe_subscription` (`stripe_subscription_id`),
                                                KEY `idx_user_id` (`user_id`),
+                                               KEY `idx_plan_id` (`plan_id`),
                                                KEY `idx_status` (`status`),
-                                               KEY `idx_period_end` (`current_period_end`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                                               KEY `idx_period_end` (`current_period_end`),
+                                               KEY `idx_payment_provider` (`payment_provider`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户订阅表（Paddle/Stripe 兼容）';
+
 
 CREATE TABLE IF NOT EXISTS `orders` (
                                         `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-                                        `order_no` varchar(64) NOT NULL,
-                                        `user_id` bigint unsigned NOT NULL,
-                                        `plan_id` bigint unsigned NOT NULL,
-                                        `subscription_id` bigint unsigned DEFAULT NULL COMMENT '关联subscriptions.id（续费时）',
-                                        `status` enum('pending','paid','failed','cancelled') NOT NULL DEFAULT 'pending',
-                                        `amount` decimal(10,2) NOT NULL,
-                                        `currency` varchar(8) NOT NULL DEFAULT 'USD',
-                                        `stripe_session_id` varchar(128) DEFAULT NULL,
-                                        `paid_at` datetime DEFAULT NULL,
-                                        `billing_cycle` enum('monthly','yearly','lifetime') NOT NULL,
-                                        `metadata` json DEFAULT NULL,
+                                        `order_no` varchar(64) NOT NULL COMMENT '内部订单号（如 ORD-20260519-xxx）',
+                                        `user_id` bigint unsigned NOT NULL COMMENT '下单用户',
+                                        `plan_id` bigint unsigned NOT NULL COMMENT '购买套餐',
+                                        `subscription_id` bigint unsigned DEFAULT NULL COMMENT '关联 subscriptions.id（续费/升级时）',
+
+    -- 订单状态
+                                        `status` enum('pending','paid','failed','cancelled','refunded') NOT NULL DEFAULT 'pending' COMMENT '订单状态',
+                                        `amount` decimal(10,2) NOT NULL COMMENT '支付金额',
+                                        `currency` varchar(8) NOT NULL DEFAULT 'USD' COMMENT '货币',
+
+    -- Paddle 字段（新增）
+                                        `paddle_transaction_id` varchar(128) DEFAULT NULL COMMENT 'Paddle 交易 ID（transaction.completed 回调时写入）',
+                                        `paddle_subscription_id` varchar(128) DEFAULT NULL COMMENT 'Paddle 订阅 ID（关联）',
+                                        `paddle_checkout_id` varchar(128) DEFAULT NULL COMMENT 'Paddle Checkout Session ID',
+
+    -- Stripe 字段（保留）
+                                        `stripe_session_id` varchar(128) DEFAULT NULL COMMENT 'Stripe Checkout Session ID',
+
+                                        `paid_at` datetime DEFAULT NULL COMMENT '实际支付时间',
+                                        `billing_cycle` enum('monthly','yearly','lifetime') NOT NULL COMMENT '计费周期',
+                                        `metadata` json DEFAULT NULL COMMENT '扩展信息（Paddle webhook payload 快照等）',
+
                                         `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
                                         `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
                                         PRIMARY KEY (`id`),
                                         UNIQUE KEY `uk_order_no` (`order_no`),
+                                        UNIQUE KEY `uk_paddle_transaction` (`paddle_transaction_id`),
                                         KEY `idx_user_id` (`user_id`),
+                                        KEY `idx_plan_id` (`plan_id`),
                                         KEY `idx_subscription_id` (`subscription_id`),
                                         KEY `idx_status` (`status`),
+                                        KEY `idx_paddle_checkout` (`paddle_checkout_id`),
                                         KEY `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订单表（Paddle/Stripe 兼容）';
 
 CREATE TABLE IF NOT EXISTS `candidates` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '后端自增主键',

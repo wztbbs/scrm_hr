@@ -39,14 +39,6 @@ public class SubscriptionController {
         return ApiResponse.success(subscriptionService.checkout(planCode, successUrl, cancelUrl, couponCode));
     }
 
-    @PostMapping("/webhook")
-    public ApiResponse<Map<String, Object>> webhook(@RequestBody Map<String, Object> body) {
-        subscriptionService.handleWebhook(body);
-        Map<String, Object> result = new HashMap<>();
-        result.put("received", true);
-        return ApiResponse.success(result);
-    }
-
     @PostMapping("/cancel")
     public ApiResponse<Map<String, Object>> cancel(@RequestBody Map<String, Object> body) {
         boolean atPeriodEnd = (Boolean) body.getOrDefault("at_period_end", true);

@@ -2,7 +2,10 @@ package com.scrm.service;
 
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
+import com.scrm.config.PaddleProperties;
 import com.scrm.dao.*;
+import com.scrm.dao.sub.SubOrderMapper;
+import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.dao.sub.SubUserMapper;
 import com.scrm.entity.*;
 import com.scrm.exception.BusinessException;
@@ -10,8 +13,13 @@ import com.scrm.exception.QuotaExceededException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +35,10 @@ public class SubscriptionService {
     @Autowired
     private OrderMapper orderMapper;
     @Autowired
+    private SubOrderMapper subOrderMapper;
+    @Autowired
+    private SubSubscriptionMapper subSubscriptionMapper;
+    @Autowired
     @Qualifier("candidateMapper")
     private CandidateMapper candidateMapper;
     @Autowired
@@ -36,6 +48,10 @@ public class SubscriptionService {
     private UserMapper userMapper;
     @Autowired
     private SubUserMapper subUserMapper;
+    @Autowired
+    private PaddleApiService paddleApiService;
+    @Autowired
+    private PaddleProperties paddleProperties;
 
     public List<SubscriptionPlan> listPlans() {
         SubscriptionPlanExample example = new SubscriptionPlanExample();
@@ -46,14 +62,9 @@ public class SubscriptionService {
 
     public Map<String, Object> getCurrentSubscription() {
         Long userId = RequestContext.getCurrentUserId();
-        SubscriptionExample example = new SubscriptionExample();
-        example.createCriteria().andUserIdEqualTo(userId);
-        List<Subscription> subs = subscriptionMapper.selectByExample(example);
+        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
 
         Map<String, Object> result = new HashMap<>();
-        Subscription activeSub = subs.stream()
-                .filter(s -> "active".equals(s.getStatus()))
-                .findFirst().orElse(null);
         result.put("has_subscription", activeSub != null);
 
         if (activeSub != null) {
@@ -106,25 +117,105 @@ public class SubscriptionService {
         return list.isEmpty() ? null : list.get(0);
     }
 
+    @Transactional
     public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
+        Long userId = RequestContext.getCurrentUserId();
+        User user = userMapper.selectByPrimaryKey(userId);
+        if (user == null || user.getEmail() == null) {
+            throw new BusinessException("User email not found");
+        }
+
         SubscriptionPlanExample example = new SubscriptionPlanExample();
         example.createCriteria().andPlanCodeEqualTo(planCode);
         List<SubscriptionPlan> plans = planMapper.selectByExample(example);
         SubscriptionPlan plan = plans.isEmpty() ? null : plans.get(0);
+        if (plan == null) {
+            throw new BusinessException("Plan not found: " + planCode);
+        }
+
+        String priceId = paddleProperties.getPriceIds().get(planCode);
+        if (priceId == null || priceId.isEmpty()) {
+            throw new BusinessException("Paddle price ID not configured for plan: " + planCode);
+        }
+
+        // 1. Create local order
+        Order order = new Order();
+        order.setOrderNo(generateOrderNo());
+        order.setUserId(userId);
+        order.setPlanId(plan.getId());
+        order.setStatus("pending");
+        order.setAmount(plan.getPrice());
+        order.setCurrency(plan.getCurrency());
+        order.setBillingCycle(plan.getBillingCycle());
+        order.setCreatedAt(new Date());
+        order.setUpdatedAt(new Date());
+        orderMapper.insertSelective(order);
+
+        // 2. Call Paddle API
+        Map<String, Object> customData = new HashMap<>();
+        customData.put("order_id", order.getId());
+
+        Map<String, Object> paddleData = paddleApiService.createCheckout(
+                priceId, user.getEmail(), successUrl, cancelUrl, customData);
+
+        String checkoutId = (String) paddleData.get("id");
+        String checkoutUrl = (String) paddleData.get("url");
+
+        // 3. Update order with paddle checkout id
+        Order updateOrder = new Order();
+        updateOrder.setId(order.getId());
+        updateOrder.setPaddleCheckoutId(checkoutId);
+        updateOrder.setUpdatedAt(new Date());
+        orderMapper.updateByPrimaryKeySelective(updateOrder);
 
         Map<String, Object> result = new HashMap<>();
-        if (plan != null) {
-            result.put("checkout_url", "https://checkout.stripe.com/" + planCode);
-            result.put("session_id", "sess_" + System.currentTimeMillis());
-            result.put("plan", plan);
-            result.put("amount", plan.getPrice());
-            result.put("currency", plan.getCurrency());
-        }
+        result.put("checkout_url", checkoutUrl);
+        result.put("checkout_id", checkoutId);
+        result.put("order_no", order.getOrderNo());
+        result.put("client_token", paddleProperties.isSandbox() ? "test_5da3dc2731cc4791072992f74f6" : null);
         return result;
     }
 
-    public void handleWebhook(Map<String, Object> payload) {
-        // TODO: implement Stripe webhook handling
+    private String generateOrderNo() {
+        return "ORD-" + java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd")) + "-"
+                + String.format("%06d", (int) (Math.random() * 1000000));
+    }
+
+    @Transactional
+    public Map<String, Object> cancelSubscription(boolean atPeriodEnd) {
+        Long userId = RequestContext.getCurrentUserId();
+        Subscription sub = subSubscriptionMapper.selectActiveByUserId(userId);
+        Map<String, Object> result = new HashMap<>();
+        if (sub == null) {
+            result.put("success", false);
+            result.put("message", "No active subscription");
+            return result;
+        }
+
+        if (!"paddle".equals(sub.getPaymentProvider()) || sub.getPaddleSubscriptionId() == null) {
+            result.put("success", false);
+            result.put("message", "Subscription is not managed by Paddle");
+            return result;
+        }
+
+        String effectiveFrom = atPeriodEnd ? "next_billing_period" : "immediately";
+        paddleApiService.cancelSubscription(sub.getPaddleSubscriptionId(), effectiveFrom);
+
+        Subscription update = new Subscription();
+        update.setId(sub.getId());
+        update.setCancelAtPeriodEnd(atPeriodEnd);
+        update.setUpdatedAt(new Date());
+        if (!atPeriodEnd) {
+            update.setStatus("cancelled");
+            update.setCancelledAt(new Date());
+        }
+        subscriptionMapper.updateByPrimaryKeySelective(update);
+
+        result.put("success", true);
+        result.put("status", update.getStatus() != null ? update.getStatus() : sub.getStatus());
+        result.put("cancel_at_period_end", atPeriodEnd);
+        result.put("current_period_end", sub.getCurrentPeriodEnd());
+        return result;
     }
 
     public void checkAndIncrementAiUsage(Long userId) {
@@ -205,38 +296,10 @@ public class SubscriptionService {
     }
 
     public SubscriptionPlan getCurrentPlan(Long userId) {
-        SubscriptionExample example = new SubscriptionExample();
-        example.createCriteria().andUserIdEqualTo(userId).andStatusEqualTo("active");
-        List<Subscription> subs = subscriptionMapper.selectByExample(example);
-        Subscription activeSub = subs.stream().findFirst().orElse(null);
+        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
         if (activeSub != null) {
             return planMapper.selectByPrimaryKey(activeSub.getPlanId());
         }
         return getFreePlan();
-    }
-
-    public Map<String, Object> cancelSubscription(boolean atPeriodEnd) {
-        Long userId = RequestContext.getCurrentUserId();
-        SubscriptionExample example = new SubscriptionExample();
-        example.createCriteria().andUserIdEqualTo(userId).andStatusEqualTo("active");
-        List<Subscription> subs = subscriptionMapper.selectByExample(example);
-        Map<String, Object> result = new HashMap<>();
-        if (!subs.isEmpty()) {
-            Subscription sub = subs.get(0);
-            sub.setCancelAtPeriodEnd(atPeriodEnd);
-            sub.setUpdatedAt(new Date());
-            if (!atPeriodEnd) {
-                sub.setStatus("cancelled");
-                sub.setCancelledAt(new Date());
-            }
-            subscriptionMapper.updateByPrimaryKeySelective(sub);
-            result.put("success", true);
-            result.put("status", sub.getStatus());
-            result.put("cancel_at_period_end", sub.getCancelAtPeriodEnd());
-            result.put("current_period_end", sub.getCurrentPeriodEnd());
-        } else {
-            result.put("success", false);
-        }
-        return result;
     }
 }

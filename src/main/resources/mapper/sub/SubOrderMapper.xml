@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.scrm.dao.sub.SubOrderMapper">
+
+  <select id="selectByOrderNo" parameterType="java.lang.String" resultMap="com.scrm.dao.OrderMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.OrderMapper.Base_Column_List" />
+    ,
+    <include refid="com.scrm.dao.OrderMapper.Blob_Column_List" />
+    from orders
+    where order_no = #{orderNo,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <select id="selectByPaddleTransactionId" parameterType="java.lang.String" resultMap="com.scrm.dao.OrderMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.OrderMapper.Base_Column_List" />
+    ,
+    <include refid="com.scrm.dao.OrderMapper.Blob_Column_List" />
+    from orders
+    where paddle_transaction_id = #{paddleTransactionId,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <select id="selectByPaddleCheckoutId" parameterType="java.lang.String" resultMap="com.scrm.dao.OrderMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.OrderMapper.Base_Column_List" />
+    ,
+    <include refid="com.scrm.dao.OrderMapper.Blob_Column_List" />
+    from orders
+    where paddle_checkout_id = #{paddleCheckoutId,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <update id="updateStatusPaidById">
+    update orders
+    set status = #{status,jdbcType=VARCHAR},
+        paddle_transaction_id = #{paddleTransactionId,jdbcType=VARCHAR},
+        paddle_subscription_id = #{paddleSubscriptionId,jdbcType=VARCHAR},
+        paid_at = #{paidAt,jdbcType=TIMESTAMP},
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+</mapper>
