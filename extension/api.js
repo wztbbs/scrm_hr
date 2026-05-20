@@ -48,13 +48,13 @@ async function apiRequest(method, path, body = null, query = null) {
     if (qstr) url += (url.includes('?') ? '&' : '?') + qstr;
   }
 
+  const userId = await getSetting('userId', '');
   const options = {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json'
-      // Auth header reserved for future use
-      // 'Authorization': 'Bearer ' + await getAuthToken()
+      'Accept': 'application/json',
+      'X-User-Id': userId
     }
   };
   if (body !== null) {
@@ -533,6 +533,26 @@ const SyncAPI = {
 const UserAPI = {
   async me() {
     const resp = await apiRequest('GET', '/api/v1/user/me');
+    return resp.data;
+  },
+
+  async sendVerificationCode(email) {
+    const resp = await apiRequest('POST', '/api/v1/user/send-verification-code', { email });
+    return resp.data;
+  },
+
+  async bindEmail(email, code) {
+    const resp = await apiRequest('POST', '/api/v1/user/bind-email', { email, code });
+    return resp.data;
+  },
+
+  async mergeAccount(email, code, targetUserId, targetUuid) {
+    const resp = await apiRequest('POST', '/api/v1/user/merge-account', { email, code, targetUserId, targetUuid });
+    return resp.data;
+  },
+
+  async keepDeviceNew(email, code) {
+    const resp = await apiRequest('POST', '/api/v1/user/keep-device-new', { email, code });
     return resp.data;
   }
 };

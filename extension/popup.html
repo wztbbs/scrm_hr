@@ -36,6 +36,74 @@
       transition: background 0.2s;
     }
     .feedback-btn:hover { background: rgba(255,255,255,0.25); }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .bind-email-btn {
+      background: rgba(255,255,255,0.15);
+      border: none;
+      color: #fff;
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .bind-email-btn:hover { background: rgba(255,255,255,0.25); }
+    .bind-email-btn.hidden { display: none; }
+    .email-alert-card {
+      background: #fff7ed;
+      border: 1px solid #f97316;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 4px rgba(249,115,22,0.08);
+    }
+    .email-alert-card.hidden { display: none; }
+    .email-alert-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #c2410c;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .email-alert-desc {
+      font-size: 12px;
+      color: #9a3412;
+      line-height: 1.5;
+      margin-bottom: 10px;
+    }
+    .email-alert-btn {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      background: #f97316;
+      color: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: center;
+    }
+    .email-alert-btn:hover { background: #ea580c; }
+    .send-code-btn {
+      padding: 7px 12px;
+      font-size: 12px;
+      border: 1px solid #5b4cdb;
+      background: #fff;
+      color: #5b4cdb;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .send-code-btn:disabled {
+      border-color: #d1d5db;
+      color: #9ca3af;
+      cursor: not-allowed;
+      background: #f3f4f6;
+    }
+    .email-row { display: flex; gap: 8px; align-items: center; }
+    .email-row .feedback-input { flex: 1; }
 
     /* Feedback Modal */
     .feedback-overlay {
@@ -1248,7 +1316,10 @@
 
 <div class="app-header">
   <span>LinkedIn SCRM</span>
-  <button class="feedback-btn" id="feedbackOpenBtn" title="Send Feedback">💬 Feedback</button>
+  <div class="header-actions">
+    <button class="feedback-btn" id="feedbackOpenBtn" title="Send Feedback">💬 Feedback</button>
+    <button class="bind-email-btn" id="bindEmailOpenBtn" title="Bind Email">📧 Bind Email</button>
+  </div>
 </div>
 
 <!-- Feedback Modal -->
@@ -1273,6 +1344,68 @@
   </div>
 </div>
 
+<!-- Bind Email Modal -->
+<div class="feedback-overlay hidden" id="bindEmailOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-header">
+      <span class="feedback-modal-title">Bind Email</span>
+      <button class="feedback-modal-close" id="bindEmailCloseBtn">&#10005;</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div class="feedback-field">
+        <label class="feedback-label">Email</label>
+        <div class="email-row">
+          <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
+          <button class="send-code-btn" id="sendCodeBtn">Send Code</button>
+        </div>
+      </div>
+      <div class="feedback-field">
+        <label class="feedback-label">Verification Code</label>
+        <input type="text" class="feedback-input" id="bindCodeInput" placeholder="Enter 5-digit code">
+      </div>
+    </div>
+    <div class="feedback-modal-footer">
+      <button class="feedback-btn-secondary" id="bindEmailCancelBtn">Cancel</button>
+      <button class="feedback-btn-primary" id="bindEmailSubmitBtn">Bind</button>
+    </div>
+  </div>
+</div>
+
+<!-- Email Display Modal -->
+<div class="feedback-overlay hidden" id="emailDisplayOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-header">
+      <span class="feedback-modal-title">Your Email</span>
+      <button class="feedback-modal-close" id="emailDisplayCloseBtn">&#10005;</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div class="feedback-modal-desc" id="emailDisplayText"></div>
+    </div>
+    <div class="feedback-modal-footer">
+      <button class="feedback-btn-secondary" id="emailDisplayOkBtn">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Account Conflict Modal -->
+<div class="feedback-overlay hidden" id="accountConflictOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-header">
+      <span class="feedback-modal-title">Account Already Exists</span>
+      <button class="feedback-modal-close" id="accountConflictCloseBtn">&#10005;</button>
+    </div>
+    <div class="feedback-modal-body">
+      <div class="feedback-modal-desc" id="accountConflictDesc">
+        This email is already linked to another account. How would you like to proceed?
+      </div>
+    </div>
+    <div class="feedback-modal-footer" style="flex-direction: column; gap: 8px;">
+      <button class="feedback-btn-primary" id="accountConflictMergeBtn" style="width: 100%;">Merge with existing account</button>
+      <button class="feedback-btn-secondary" id="accountConflictKeepBtn" style="width: 100%;">Keep this device as new</button>
+    </div>
+  </div>
+</div>
+
 <div class="nav-tabs">
   <div class="nav-tab active" data-tab="overview">Overview</div>
   <div class="nav-tab" data-tab="pipeline">Pipeline</div>
@@ -1282,6 +1415,14 @@
 
 <!-- Overview Tab -->
 <div class="tab-content active" id="tab-overview">
+  <div class="email-alert-card hidden" id="ovEmailAlertCard">
+    <div class="email-alert-title">⚠️ Bind Your Email</div>
+    <div class="email-alert-desc">
+      You have an active Pro subscription. To prevent losing your data when clearing browser cache, please bind your email now.
+    </div>
+    <button class="email-alert-btn" id="ovEmailAlertBtn">Bind Email Now</button>
+  </div>
+
   <div class="card" id="ovTodayCard">
     <div class="today-header" id="ovTodayHeader">
       <span class="today-header-left">📋 Today</span>

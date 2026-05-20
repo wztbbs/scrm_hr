@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <h1>LinkedIn SCRM 测试用例清单（精简版 v2）</h1>
+  <h1>LinkedIn SCRM 测试用例清单（精简版 v3）</h1>
   <div class="stats">
     <span>总用例: <b id="total">0</b></span>
     <span>已完成: <b id="completed">0</b></span>
@@ -69,6 +69,8 @@
     <label><input type="checkbox" checked onchange="toggleModule('m5')"> AI消息</label>
     <label><input type="checkbox" checked onchange="toggleModule('m6')"> History</label>
     <label><input type="checkbox" checked onchange="toggleModule('m7')"> 限制与Feedback</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m8')"> 支付&订阅</label>
+    <label><input type="checkbox" checked onchange="toggleModule('m9')"> 邮箱绑定</label>
   </div>
 
   <!-- 模块1: 候选人保存与Overview -->
@@ -87,7 +89,7 @@
           <td>user1已登录，在LinkedIn候选人A页面，插件未保存过该候选人</td>
           <td><span class="step-num">1</span>点击插件icon打开面板<br><span class="step-num">2</span>确认信息自动填充<br><span class="step-num">3</span>点击 Save & Track</td>
           <td class="ui-expect">Overview页显示候选人A卡片；Temperature默认Cold；Key Memory为空；Next Follow-up为空；Voice Memo为空；Today tasks显示"Follow up 候选人A"</td>
-          <td><span class="db-expect">candidates</span>: user_id=user1, full_name=A, pipeline_stage=new, source=linkedin_profile, local_id=gen_xxx<br><span class="db-expect">candidate_history</span>: history_type=save, title="Saved candidate A"<br><span class="db-expect">events</span>: event_name=candidate_saved</td>
+          <td><span class="db-expect">candidates</span>: user_id=user1, full_name=A, pipeline_stage=new, source=linkedin_profile<br><span class="db-expect">candidate_history</span>: history_type=save<br><span class="db-expect">events</span>: event_name=candidate_saved</td>
         </tr>
         <tr data-id="TC02">
           <td><input type="checkbox" class="chk" onchange="saveState()"></td>
@@ -96,7 +98,7 @@
           <td>TC01已执行，候选人A在Overview页</td>
           <td><span class="step-num">1</span>Temperature下拉改为Warm<br><span class="step-num">2</span>Key Memory输入"Korea java developer"<br><span class="step-num">3</span>等待自动保存</td>
           <td class="ui-expect">Temperature显示Warm；Key Memory显示"Korea java developer"；AI suggested标签消失</td>
-          <td><span class="db-expect">candidates</span>: temperature=warm, is_ai_suggested_temp=0<br><span class="db-expect">candidate_notes</span>: content="Korea java developer" (local_id关联)<br><span class="db-expect">candidate_history</span>: history_type=note_added + temp_change</td>
+          <td><span class="db-expect">candidates</span>: temperature=warm, is_ai_suggested_temp=0<br><span class="db-expect">candidate_notes</span>: content="Korea java developer"<br><span class="db-expect">candidate_history</span>: history_type=note_added + temp_change</td>
         </tr>
         <tr data-id="TC03">
           <td><input type="checkbox" class="chk" onchange="saveState()"></td>
@@ -114,7 +116,7 @@
           <td>候选人A已保存</td>
           <td><span class="step-num">1</span>Voice Memo输入"she want to contact after two months."<br><span class="step-num">2</span>点击Record（模拟）</td>
           <td class="ui-expect">Voice Memo文本框显示输入内容；Record按钮可点击</td>
-          <td><span class="db-expect">candidates</span>: voice_memo字段或扩展表存储文本<br><span class="db-expect">candidate_history</span>: history_type=voice_memo_added</td>
+          <td><span class="db-expect">candidates</span>: voice_memo字段存储文本<br><span class="db-expect">candidate_history</span>: history_type=voice_memo_added</td>
         </tr>
         <tr data-id="TC25">
           <td><input type="checkbox" class="chk" onchange="saveState()"></td>
@@ -171,8 +173,8 @@
           <td><span class="badge badge-p1">P1</span></td>
           <td>候选人B在Talking阶段</td>
           <td><span class="step-num">1</span>点击候选人B卡片上的×删除<br><span class="step-num">2</span>确认</td>
-          <td class="ui-expect">卡片消失；Talking计数减1；可选Filter不再显示</td>
-          <td><span class="db-expect">candidates</span>: pipeline_stage=delete (软删除) 或硬删除<br><span class="db-expect">candidate_history</span>: history_type=deleted</td>
+          <td class="ui-expect">卡片消失；Talking计数减1</td>
+          <td><span class="db-expect">candidates</span>: pipeline_stage=delete (软删除)<br><span class="db-expect">candidate_history</span>: history_type=deleted</td>
         </tr>
       </tbody>
     </table>
@@ -194,7 +196,7 @@
           <td>user1已登录</td>
           <td><span class="step-num">1</span>Sequence tab → + New<br><span class="step-num">2</span>输入名称"Standard Outreach Sequence"<br><span class="step-num">3</span>添加4步：Connection Request, Follow-up A, Follow-up B, Final Check-in<br><span class="step-num">4</span>保存</td>
           <td class="ui-expect">Templates列表显示新序列；显示4 steps；Use/Edit按钮可用；黄色Safety提示"Max 20 connects/day"</td>
-          <td><span class="db-expect">sequences</span>: user_id=user1, name="Standard Outreach Sequence", step_count=4, is_template=0<br><span class="db-expect">sequence_steps</span>: 4条记录，step_number=1~4，delay_type/days</td>
+          <td><span class="db-expect">sequences</span>: user_id=user1, name="Standard Outreach Sequence", step_count=4, is_template=0<br><span class="db-expect">sequence_steps</span>: 4条记录，step_number=1~4</td>
         </tr>
         <tr data-id="TC10">
           <td><input type="checkbox" class="chk" onchange="saveState()"></td>
@@ -251,8 +253,8 @@
           <td><span class="badge badge-p0">P0</span></td>
           <td>user1插件已安装，LinkedIn Messaging页面，候选人D从未被保存过</td>
           <td><span class="step-num">1</span>候选人D发送消息给user1<br><span class="step-num">2</span>插件content script抓取消息<br><span class="step-num">3</span>发送到后端POST /chat-messages</td>
-          <td class="ui-expect">插件自动弹出通知/红点；Pipeline页New列出现候选人D卡片，标记为Unclaimed；Overview页显示D的基本信息（从聊天页抓取）</td>
-          <td><span class="db-expect">candidates</span>: full_name=D, source=linkedin_profile, pipeline_stage=unclaimed, linkedin_url=抓取URL, local_id=gen_unclaimed_xxx<br><span class="db-expect">candidate_history</span>: history_type=chat_received, title="Received message from D"<br><span class="db-expect">events</span>: event_name=unclaimed_created</td>
+          <td class="ui-expect">插件自动弹出通知/红点；Pipeline页New列出现候选人D卡片，标记为Unclaimed；Overview页显示D的基本信息</td>
+          <td><span class="db-expect">candidates</span>: full_name=D, source=linkedin_profile, pipeline_stage=unclaimed, linkedin_url=抓取URL<br><span class="db-expect">candidate_history</span>: history_type=chat_received, title="Received message from D"<br><span class="db-expect">events</span>: event_name=unclaimed_created</td>
         </tr>
         <tr data-id="TC14">
           <td><input type="checkbox" class="chk" onchange="saveState()"></td>
@@ -405,10 +407,135 @@
     </table>
   </div>
 
+  <!-- 模块8: 支付&订阅（新增） -->
+  <div class="module" id="m8">
+    <div class="module-header">模块8: 支付与订阅（Paddle） <span class="count">5</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m8',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC28">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC28</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1 Free用户，未绑定邮箱，点击Upgrade按钮</td>
+          <td><span class="step-num">1</span>点击"Upgrade to Pro"<br><span class="step-num">2</span>后端创建Order（pending）<br><span class="step-num">3</span>调Paddle创建Checkout<br><span class="step-num">4</span>弹出Inline支付窗口</td>
+          <td class="ui-expect">显示Paddle Checkout弹窗；显示价格$29/month；支持PayPal/Apple Pay/Google Pay；填写测试卡号4242424242424242</td>
+          <td><span class="db-expect">orders</span>: user_id=user1, status=pending, plan_id=pro_monthly, amount=29.00, paddle_checkout_id非空<br><span class="db-expect">events</span>: event_name=checkout_created</td>
+        </tr>
+        <tr data-id="TC29">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC29</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>TC28已执行，用户在Paddle Checkout完成支付</td>
+          <td><span class="step-num">1</span>填写测试卡号完成支付<br><span class="step-num">2</span>Paddle发送webhook: transaction.completed<br><span class="step-num">3</span>Paddle发送webhook: subscription.created<br><span class="step-num">4</span>后端处理webhook</td>
+          <td class="ui-expect">支付成功关闭弹窗；Overview页AI限制解除；Sequence限制解除；显示"You are now on Pro"</td>
+          <td><span class="db-expect">orders</span>: status=paid, paddle_transaction_id非空, paid_at=now<br><span class="db-expect">subscriptions</span>: user_id=user1, status=active, paddle_subscription_id非空, plan_id=pro_monthly, current_period_start/end正确<br><span class="db-expect">users</span>: 如已绑定邮箱则更新，否则不变</td>
+        </tr>
+        <tr data-id="TC30">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC30</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1已是Pro用户，订阅生效中</td>
+          <td><span class="step-num">1</span>刷新插件页面<br><span class="step-num">2</span>调GET /subscription/current</td>
+          <td class="ui-expect">Header不再显示Upgrade按钮；AI Message Assistant可用；可创建多个Sequence；候选人上限解除</td>
+          <td><span class="db-expect">subscriptions</span>: status=active, current_period_end > now<br><span class="db-expect">users</span>: daily_ai_used=0（每日重置）</td>
+        </tr>
+        <tr data-id="TC31">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC31</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>user1 Pro用户，在设置页点击"Cancel Subscription"</td>
+          <td><span class="step-num">1</span>点击Cancel<br><span class="step-num">2</span>后端调Paddle API取消订阅<br><span class="step-num">3</span>确认取消</td>
+          <td class="ui-expect">显示"Cancellation scheduled"；订阅状态变为"Cancel at period end"；在周期结束前仍可用Pro功能</td>
+          <td><span class="db-expect">subscriptions</span>: cancel_at_period_end=1, cancelled_at=now<br>Paddle API返回success</td>
+        </tr>
+        <tr data-id="TC32">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC32</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>user1 Pro订阅已过期（current_period_end < now）</td>
+          <td><span class="step-num">1</span>Paddle webhook发送subscription.updated/canceled<br><span class="step-num">2</span>后端接收并处理</td>
+          <td class="ui-expect">显示"Your subscription has expired"；AI功能和序列数量恢复Free限制；超出限制的序列标记为inactive</td>
+          <td><span class="db-expect">subscriptions</span>: status=expired或cancelled<br><span class="db-expect">users</span>: daily_ai_used重置为Free限制范围内</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 模块9: 邮箱绑定（新增） -->
+  <div class="module" id="m9">
+    <div class="module-header">模块9: 邮箱绑定与账号合并 <span class="count">5</span></div>
+    <table>
+      <thead>
+        <tr><th width="40"><input type="checkbox" class="chk" onchange="toggleAll('m9',this.checked)"></th>
+          <th width="70">ID</th><th width="90">优先级</th><th>前置条件</th><th>操作步骤</th><th>预期界面</th><th>预期数据库</th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="TC33">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC33</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1（uuid1）未绑定邮箱，在任意页面</td>
+          <td><span class="step-num">1</span>点击Header"Bind Email"按钮<br><span class="step-num">2</span>输入邮箱"user1@test.com"<br><span class="step-num">3</span>点击"Send Code"<br><span class="step-num">4</span>查收邮件获取验证码</td>
+          <td class="ui-expect">弹窗显示邮箱输入框和验证码输入框；Send Code按钮进入60秒倒计时；收到邮件包含6位验证码和RecruitFlow品牌</td>
+          <td><span class="db-expect">email_verifications</span>: email="user1@test.com", code=6位随机数, status=unused, expires_at=now+10min<br>SMTP发送记录成功</td>
+        </tr>
+        <tr data-id="TC34">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC34</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>TC33已执行，验证码已收到</td>
+          <td><span class="step-num">1</span>输入6位验证码<br><span class="step-num">2</span>点击"Confirm"</td>
+          <td class="ui-expect">弹窗关闭；Header按钮变为邮箱前缀"user1@..."；hover显示完整邮箱；显示"Email bound successfully"</td>
+          <td><span class="db-expect">email_verifications</span>: status=used, used_at=now<br><span class="db-expect">users</span>: uuid1的email="user1@test.com"<br>验证通过，无重复邮箱</td>
+        </tr>
+        <tr data-id="TC35">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC35</td>
+          <td><span class="badge badge-p0">P0</span></td>
+          <td>user1原账号（uuid1）已绑定邮箱且为Pro；换设备/清缓存后生成uuid2；uuid2尝试绑定同一邮箱</td>
+          <td><span class="step-num">1</span>uuid2点击Bind Email<br><span class="step-num">2</span>输入同一邮箱"user1@test.com"<br><span class="step-num">3</span>输入验证码<br><span class="step-num">4</span>点击Confirm</td>
+          <td class="ui-expect">弹窗显示"Email Already Linked"；两个选项："Merge with existing account"（默认选中）和"Keep this device as new"；底部提示推荐Merge</td>
+          <td><span class="db-expect">users</span>: 查询到email="user1@test.com"已存在，对应uuid1<br>后端返回action=merge，携带target_uuid=uuid1</td>
+        </tr>
+        <tr data-id="TC36">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC36</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>TC35弹窗中，用户选择"Merge with existing account"</td>
+          <td><span class="step-num">1</span>选择Merge<br><span class="step-num">2</span>点击Confirm</td>
+          <td class="ui-expect">弹窗关闭；localStorage的uuid替换为uuid1；页面自动刷新；加载uuid1的所有候选人/Sequence/订阅数据；Pro状态保留</td>
+          <td><span class="db-expect">candidates</span>: uuid2的所有记录user_id改为uuid1的user_id<br><span class="db-expect">users</span>: uuid2记录删除或is_active=0；uuid1保留<br><span class="db-expect">subscriptions</span>: uuid1的Pro订阅不变</td>
+        </tr>
+        <tr data-id="TC37">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC37</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>TC35弹窗中，用户选择"Keep this device as new"</td>
+          <td><span class="step-num">1</span>选择Keep as new<br><span class="step-num">2</span>点击Confirm</td>
+          <td class="ui-expect">弹窗关闭；uuid2继续使用当前数据；邮箱绑定到uuid2；原uuid1数据保留但不可访问</td>
+          <td><span class="db-expect">users</span>: uuid1的is_active=0, merged_to_user_id=null；uuid2的email="user1@test.com"<br>数据不迁移，两个账号独立</td>
+        </tr>
+        <tr data-id="TC38">
+          <td><input type="checkbox" class="chk" onchange="saveState()"></td>
+          <td class="id">TC38</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>user1已绑定邮箱，在设置页点击修改邮箱</td>
+          <td><span class="step-num">1</span>点击邮箱显示区域<br><span class="step-num">2</span>输入新邮箱<br><span class="step-num">3</span>获取验证码并验证<br><span class="step-num">4</span>确认修改</td>
+          <td class="ui-expect">弹窗同绑定流程；验证成功后Header邮箱更新；旧邮箱释放可重新注册</td>
+          <td><span class="db-expect">users</span>: email更新为新邮箱<br><span class="db-expect">email_verifications</span>: 旧验证码记录清理</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
 </div>
 
 <script>
-const STORAGE_KEY = 'scrm_test_state_v2';
+const STORAGE_KEY = 'scrm_test_state_v3';
 
 function loadState() {
   try {

@@ -1,0 +1,61 @@
+server:
+  port: 8080
+  address: 0.0.0.0
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: linkedin-scrm
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/admin?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&useSSL=false
+    username: admin
+    password: w123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${FEEDBACK_FROM_EMAIL:270938043@qq.com}
+    password: ${FEEDBACK_APP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
+  ai:
+    openai:
+      api-key: ${OPENROUTER_API_KEY:dummy}
+      base-url: https://openrouter.ai/api/v1
+      chat:
+        options:
+          model: google/gemini-1.5-flash
+          temperature: 0.3
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml,classpath:mapper/sub/*.xml
+  type-aliases-package: com.scrm.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# OpenRouter 额外标识（部分模型要求）
+openrouter:
+  site-url: https://linkedin-scrm.com
+  app-name: LinkedIn SCRM
+
+paddle:
+  api-key: ${PADDLE_API_KEY:}
+  webhook-secret: ${PADDLE_WEBHOOK_SECRET:}
+  environment: ${PADDLE_ENVIRONMENT:sandbox}
+  price-ids:
+    pro_monthly: ${PADDLE_PRICE_PRO_MONTHLY:}
+    pro_yearly: ${PADDLE_PRICE_PRO_YEARLY:}
+
+feedback:
+  to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
+
+logging:
+  level:
+    com.scrm: INFO
+    com.scrm.dao: INFO

@@ -9,4 +9,36 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
+  <select id="selectByEmail" resultMap="com.scrm.dao.UserMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.UserMapper.Base_Column_List"/>
+    from users
+    where email = #{email,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <select id="selectByUuid" resultMap="com.scrm.dao.UserMapper.BaseResultMap">
+    select
+    <include refid="com.scrm.dao.UserMapper.Base_Column_List"/>
+    from users
+    where uuid = #{uuid,jdbcType=VARCHAR}
+    limit 1
+  </select>
+
+  <update id="deactivateById">
+    update users
+    set is_active = 0,
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="mergeToUser">
+    update users
+    set is_active = 0,
+        merged_to_user_id = #{targetUserId,jdbcType=BIGINT},
+        merged_at = now(),
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
 </mapper>

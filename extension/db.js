@@ -1,11 +1,11 @@
 // db.js - IndexedDB data layer
 
 const DB_NAME = 'LinkedInSCRM';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const STORES = {
-  candidates: 'candidates',
-  settings: 'settings'
+  candidates: 'candidates'
+  // settings removed: migrated to chrome.storage.local
   // sequences removed: now purely backend storage
   // tasks removed: logic simplified to use candidates.nextFollowup + backend candidate_sequences
   // history removed: now recorded automatically by backend services
@@ -35,10 +35,6 @@ function openDB() {
           ts.createIndex('candidateId', 'candidateId', { unique: false });
           ts.createIndex('sequenceId', 'sequenceId', { unique: false });
           ts.createIndex('scheduledAt', 'scheduledAt', { unique: false });
-        }
-
-        if (!database.objectStoreNames.contains(STORES.settings)) {
-          database.createObjectStore(STORES.settings, { keyPath: 'key' });
         }
       }
 
@@ -76,6 +72,13 @@ function openDB() {
           if (!cs.indexNames.contains('pipelineStage')) {
             cs.createIndex('pipelineStage', 'pipelineStage', { unique: false });
           }
+        }
+      }
+
+      if (oldVersion < 6) {
+        // Remove settings store (migrated to chrome.storage.local)
+        if (database.objectStoreNames.contains('settings')) {
+          database.deleteObjectStore('settings');
         }
       }
     };
@@ -326,16 +329,14 @@ async function getTodaysTasks() {
   }).sort((a, b) => new Date(a.nextFollowup).getTime() - new Date(b.nextFollowup).getTime());
 }
 
-// ========== Settings ==========
+// ========== Settings (migrated to chrome.storage.local for popup/background consistency) ==========
 async function setSetting(key, value) {
-  await openDB();
-  return dbPut(STORES.settings, { key, value });
+  return chrome.storage.local.set({ [key]: value });
 }
 
 async function getSetting(key, defaultValue = null) {
-  await openDB();
-  const result = await dbGet(STORES.settings, key);
-  return result ? result.value : defaultValue;
+  const result = await chrome.storage.local.get(key);
+  return result[key] !== undefined ? result[key] : defaultValue;
 }
 
 // ========== UUID & User ==========

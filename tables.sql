@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '账号是否启用',
   `daily_ai_used` int NOT NULL DEFAULT 0 COMMENT '今日已用AI消息数',
   `daily_ai_reset_at` datetime DEFAULT NULL COMMENT '每日计数重置时间（用于判断是否需要清零）',
+  `merged_to_user_id` bigint unsigned DEFAULT NULL COMMENT '合并到哪个用户',
+  `merged_at` datetime DEFAULT NULL COMMENT '合并时间',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -256,3 +258,18 @@ CREATE TABLE IF NOT EXISTS `events` (
   KEY `idx_user_event` (`user_id`, `event_name`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='埋点事件日志表';
+
+CREATE TABLE IF NOT EXISTS `email_verifications` (
+                                                     `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+                                                     `email` varchar(255) NOT NULL COMMENT '目标邮箱',
+                                                     `user_id` bigint unsigned DEFAULT NULL COMMENT '关联用户ID（可选）',
+                                                     `code` varchar(16) NOT NULL COMMENT '6位验证码',
+                                                     `type` varchar(32) NOT NULL DEFAULT 'email_bind' COMMENT '验证类型：email_bind/password_reset等',
+                                                     `status` enum('unused','used','expired') NOT NULL DEFAULT 'unused' COMMENT '状态',
+                                                     `expires_at` datetime NOT NULL COMMENT '过期时间（创建时间+10分钟）',
+                                                     `used_at` datetime DEFAULT NULL COMMENT '验证成功时间',
+                                                     `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                                     PRIMARY KEY (`id`),
+                                                     UNIQUE KEY `uk_email` (`email`),
+                                                     KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='邮箱验证码表（替代Redis）';

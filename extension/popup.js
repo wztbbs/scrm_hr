@@ -1998,12 +1998,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initBackendData();        // 1. sequences + pipeline stages (fast)
     await loadCurrentCandidate();   // 2. scrape current page → render overview instantly
     await renderOverviewTodayTasks(); // 3. fetch today's tasks from backend (small payload)
+    await initBindEmailState();     // 4. init bind email button state
   } catch (e) {
     console.error('Init error:', e);
   } finally {
     hideLoading();
   }
-  // 4. Sync full candidates list in background (heavy, non-blocking)
+  // 5. Sync full candidates list in background (heavy, non-blocking)
   setTimeout(() => syncDataFromBackend(), 0);
 });
 
@@ -2465,6 +2466,269 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
     } finally {
       sendBtn.disabled = false;
       sendBtn.textContent = 'Send';
+    }
+  });
+})();
+
+// ========== Bind Email Modal ==========
+let currentUserEmail = null;
+
+let currentUserNeedBindEmail = false;
+
+async function initBindEmailState() {
+  try {
+    const user = await window.API.user.me();
+    currentUserEmail = user.email || null;
+    currentUserNeedBindEmail = user.needBindEmail || false;
+    updateBindEmailButton();
+    renderEmailAlertCard();
+  } catch (e) {
+    console.error('[BindEmail] Failed to get user:', e);
+  }
+}
+
+function renderEmailAlertCard() {
+  const alertCard = $('ovEmailAlertCard');
+  if (!alertCard) return;
+  if (currentUserNeedBindEmail && !currentUserEmail) {
+    alertCard.classList.remove('hidden');
+  } else {
+    alertCard.classList.add('hidden');
+  }
+}
+
+function updateBindEmailButton() {
+  const btn = $('bindEmailOpenBtn');
+  if (currentUserEmail) {
+    btn.textContent = '📧';
+    btn.title = 'Email: ' + currentUserEmail;
+  } else {
+    btn.textContent = '📧 Bind Email';
+    btn.title = 'Bind Email';
+  }
+}
+
+(function initBindEmailModal() {
+  const bindOverlay = $('bindEmailOverlay');
+  const bindOpenBtn = $('bindEmailOpenBtn');
+  const bindCloseBtn = $('bindEmailCloseBtn');
+  const bindCancelBtn = $('bindEmailCancelBtn');
+  const bindSubmitBtn = $('bindEmailSubmitBtn');
+  const bindEmailInput = $('bindEmailInput');
+  const bindCodeInput = $('bindCodeInput');
+  const sendCodeBtn = $('sendCodeBtn');
+
+  const emailDisplayOverlay = $('emailDisplayOverlay');
+  const emailDisplayCloseBtn = $('emailDisplayCloseBtn');
+  const emailDisplayOkBtn = $('emailDisplayOkBtn');
+  const emailDisplayText = $('emailDisplayText');
+
+  let countdownTimer = null;
+
+  function openBindModal() {
+    bindOverlay.classList.remove('hidden');
+    bindEmailInput.value = '';
+    bindCodeInput.value = '';
+    resetSendCodeBtn();
+    bindEmailInput.focus();
+  }
+
+  function closeBindModal() {
+    bindOverlay.classList.add('hidden');
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+    }
+  }
+
+  function openEmailDisplayModal() {
+    emailDisplayText.textContent = currentUserEmail || '';
+    emailDisplayOverlay.classList.remove('hidden');
+  }
+
+  function closeEmailDisplayModal() {
+    emailDisplayOverlay.classList.add('hidden');
+  }
+
+  function resetSendCodeBtn() {
+    if (countdownTimer) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+    }
+    sendCodeBtn.disabled = false;
+    sendCodeBtn.textContent = 'Send Code';
+  }
+
+  function startCountdown() {
+    let seconds = 60;
+    sendCodeBtn.disabled = true;
+    sendCodeBtn.textContent = `Resend (${seconds}s)`;
+    countdownTimer = setInterval(() => {
+      seconds--;
+      if (seconds <= 0) {
+        resetSendCodeBtn();
+      } else {
+        sendCodeBtn.textContent = `Resend (${seconds}s)`;
+      }
+    }, 1000);
+  }
+
+  bindOpenBtn.addEventListener('click', () => {
+    if (currentUserEmail) {
+      openEmailDisplayModal();
+    } else {
+      openBindModal();
+    }
+  });
+
+  // Overview tab email alert button
+  const ovEmailAlertBtn = $('ovEmailAlertBtn');
+  if (ovEmailAlertBtn) {
+    ovEmailAlertBtn.addEventListener('click', openBindModal);
+  }
+
+  bindCloseBtn.addEventListener('click', closeBindModal);
+  bindCancelBtn.addEventListener('click', closeBindModal);
+  bindOverlay.addEventListener('click', (e) => {
+    if (e.target === bindOverlay) closeBindModal();
+  });
+
+  emailDisplayCloseBtn.addEventListener('click', closeEmailDisplayModal);
+  emailDisplayOkBtn.addEventListener('click', closeEmailDisplayModal);
+  emailDisplayOverlay.addEventListener('click', (e) => {
+    if (e.target === emailDisplayOverlay) closeEmailDisplayModal();
+  });
+
+  sendCodeBtn.addEventListener('click', async () => {
+    const email = bindEmailInput.value.trim();
+    if (!email) {
+      showToast('Please enter your email');
+      bindEmailInput.focus();
+      return;
+    }
+    sendCodeBtn.disabled = true;
+    sendCodeBtn.textContent = 'Sending...';
+    try {
+      await window.API.user.sendVerificationCode(email);
+      showToast('Verification code sent!');
+      startCountdown();
+    } catch (e) {
+      console.error('[BindEmail] Failed to send code:', e);
+      showToast(e.message || 'Failed to send code. Please try again.');
+      resetSendCodeBtn();
+    }
+  });
+
+  bindSubmitBtn.addEventListener('click', async () => {
+    const email = bindEmailInput.value.trim();
+    const code = bindCodeInput.value.trim();
+    if (!email) {
+      showToast('Please enter your email');
+      bindEmailInput.focus();
+      return;
+    }
+    if (!code) {
+      showToast('Please enter the verification code');
+      bindCodeInput.focus();
+      return;
+    }
+    bindSubmitBtn.disabled = true;
+    bindSubmitBtn.textContent = 'Binding...';
+    try {
+      const result = await window.API.user.bindEmail(email, code);
+      if (result.conflict) {
+        // Show conflict modal
+        pendingBindEmail = email;
+        pendingBindCode = code;
+        pendingConflictUser = result.existingUser;
+        closeBindModal();
+        openConflictModal();
+        return;
+      }
+      showToast('Email bound successfully!');
+      currentUserEmail = email;
+      updateBindEmailButton();
+      closeBindModal();
+    } catch (e) {
+      console.error('[BindEmail] Failed to bind:', e);
+      showToast(e.message || 'Failed to bind email. Please try again.');
+    } finally {
+      bindSubmitBtn.disabled = false;
+      bindSubmitBtn.textContent = 'Bind';
+    }
+  });
+})();
+
+// ========== Account Conflict Modal ==========
+let pendingBindEmail = null;
+let pendingBindCode = null;
+let pendingConflictUser = null;
+
+(function initAccountConflictModal() {
+  const conflictOverlay = $('accountConflictOverlay');
+  const conflictCloseBtn = $('accountConflictCloseBtn');
+  const conflictMergeBtn = $('accountConflictMergeBtn');
+  const conflictKeepBtn = $('accountConflictKeepBtn');
+
+  function openConflictModal() {
+    conflictOverlay.classList.remove('hidden');
+  }
+
+  function closeConflictModal() {
+    conflictOverlay.classList.add('hidden');
+  }
+
+  window.openConflictModal = openConflictModal;
+
+  conflictCloseBtn.addEventListener('click', closeConflictModal);
+  conflictOverlay.addEventListener('click', (e) => {
+    if (e.target === conflictOverlay) closeConflictModal();
+  });
+
+  conflictMergeBtn.addEventListener('click', async () => {
+    if (!pendingBindEmail || !pendingBindCode || !pendingConflictUser) return;
+    conflictMergeBtn.disabled = true;
+    conflictMergeBtn.textContent = 'Merging...';
+    try {
+      const result = await window.API.user.mergeAccount(
+        pendingBindEmail,
+        pendingBindCode,
+        pendingConflictUser.id,
+        pendingConflictUser.uuid
+      );
+      showToast('Account merged successfully!');
+      // Switch to the merged account's UUID
+      if (result.targetUuid) {
+        await setSetting('userId', result.targetUuid);
+        localStorage.setItem('uuid', result.targetUuid);
+        currentUserEmail = pendingBindEmail;
+        updateBindEmailButton();
+        // Refresh page to reload data with new UUID
+        location.reload();
+      }
+    } catch (e) {
+      console.error('[Conflict] Failed to merge:', e);
+      showToast(e.message || 'Failed to merge account. Please try again.');
+      conflictMergeBtn.disabled = false;
+      conflictMergeBtn.textContent = 'Merge with existing account';
+    }
+  });
+
+  conflictKeepBtn.addEventListener('click', async () => {
+    if (!pendingBindEmail || !pendingBindCode) return;
+    conflictKeepBtn.disabled = true;
+    conflictKeepBtn.textContent = 'Processing...';
+    try {
+      await window.API.user.keepDeviceNew(pendingBindEmail, pendingBindCode);
+      showToast('Email bound to this device!');
+      currentUserEmail = pendingBindEmail;
+      updateBindEmailButton();
+      closeConflictModal();
+    } catch (e) {
+      console.error('[Conflict] Failed to keep device new:', e);
+      showToast(e.message || 'Failed to process. Please try again.');
+      conflictKeepBtn.disabled = false;
+      conflictKeepBtn.textContent = 'Keep this device as new';
     }
   });
 })();
