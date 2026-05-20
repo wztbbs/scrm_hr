@@ -1,7 +1,7 @@
 // api.js - Backend API client for LinkedIn SCRM
 // Maps frontend local data models to backend REST APIs
 
-const DEFAULT_API_BASE = 'http://localhost:8080';
+const DEFAULT_API_BASE = 'https://api.hrscrm.net';
 
 let _apiBase = null;
 

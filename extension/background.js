@@ -2,7 +2,7 @@
 
 importScripts('db.js');
 
-const DEFAULT_API_BASE = 'http://localhost:8080';
+const DEFAULT_API_BASE = 'https://api.hrscrm.net';
 
 async function getApiBase() {
     try {
