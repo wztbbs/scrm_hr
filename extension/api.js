@@ -100,7 +100,7 @@ function candidateToBackend(frontendCandidate) {
   };
 
   return {
-    localId: frontendCandidate.localId || generateLocalId(),
+    // localId removed: backend uses auto-increment id only
     fullName: frontendCandidate.name || '',
     headline: frontendCandidate.headline || '',
     company: frontendCandidate.company || '',
@@ -131,8 +131,7 @@ function candidateFromBackend(backend) {
   } catch (e) { /* ignore */ }
 
   const fc = {
-    localId: backend.localId || '',
-    serverId: backend.id || null,
+    id: backend.id || '',
     name: backend.fullName || '',
     headline: backend.headline || '',
     company: backend.company || '',
@@ -160,7 +159,6 @@ function candidateFromBackend(backend) {
     createdAt: toTimestamp(backend.createdAt) || Date.now(),
     updatedAt: toTimestamp(backend.updatedAt) || Date.now()
   };
-  // Do not set id here; let IndexedDB assign or caller manage it
   return fc;
 }
 
@@ -183,7 +181,7 @@ const CandidatesAPI = {
 
   async update(id, candidate) {
     const body = candidateToBackend(candidate);
-    body.localId = candidate.localId || id;
+    // localId removed: backend uses auto-increment id only
     const resp = await apiRequest('PUT', `/api/v1/candidates/${id}`, body);
     return candidateFromBackend(resp.data);
   },
@@ -232,7 +230,6 @@ const CandidatesAPI = {
 
 function historyToBackend(frontendHistory) {
   return {
-    localId: frontendHistory.localId || generateLocalId(),
     localCandidateId: String(frontendHistory.candidateId || ''),
     historyType: frontendHistory.type || 'note',
     title: (frontendHistory.content || '').substring(0, 100),
@@ -245,14 +242,13 @@ function historyToBackend(frontendHistory) {
 
 function historyFromBackend(backend) {
   return {
-    id: backend.localId || backend.id,
+    id: backend.id || '',
     candidateId: backend.localCandidateId || backend.candidateId,
     type: backend.historyType || 'note',
     content: backend.description || backend.title || '',
     subtype: backend.actorType || 'System',
     actorName: backend.actorName || '',
-    date: toTimestamp(backend.historyTime) || Date.now(),
-    serverId: backend.id || null
+    date: toTimestamp(backend.historyTime) || Date.now()
   };
 }
 
@@ -271,7 +267,6 @@ const HistoryAPI = {
 
 function noteToBackend(candidateId, frontendNote) {
   return {
-    localId: frontendNote.localId || generateLocalId(),
     candidateId: Number(candidateId) || 0,
     content: frontendNote.content || ''
   };
@@ -279,12 +274,11 @@ function noteToBackend(candidateId, frontendNote) {
 
 function noteFromBackend(backend) {
   return {
-    id: backend.localId || backend.id,
+    id: backend.id || '',
     candidateId: backend.candidateId,
     content: backend.content || '',
     createdAt: toTimestamp(backend.createdAt),
-    updatedAt: toTimestamp(backend.updatedAt),
-    serverId: backend.id || null
+    updatedAt: toTimestamp(backend.updatedAt)
   };
 }
 
@@ -304,7 +298,7 @@ const NotesAPI = {
   },
 
   async update(noteId, note) {
-    const body = { localId: note.localId || noteId, content: note.content || '' };
+    const body = { content: note.content || '' };
     const resp = await apiRequest('PUT', `/api/v1/notes/${noteId}`, body);
     return noteFromBackend(resp.data);
   },
@@ -384,7 +378,6 @@ const PipelineAPI = {
 
 function sequenceToBackend(frontendSeq) {
   const steps = (frontendSeq.steps || []).map((s, idx) => ({
-    localId: s.localId || generateLocalId(),
     stepNumber: idx + 1,
     name: s.name || '',
     actionType: s.actionType || 'message',
@@ -393,7 +386,6 @@ function sequenceToBackend(frontendSeq) {
   }));
 
   return {
-    localId: frontendSeq.localId || generateLocalId(),
     name: frontendSeq.name || '',
     description: frontendSeq.description || '',
     steps
@@ -402,7 +394,7 @@ function sequenceToBackend(frontendSeq) {
 
 function sequenceFromBackend(backend) {
   const steps = (backend.steps || []).map(s => ({
-    localId: s.localId || generateLocalId(),
+    id: s.id || '',
     name: s.name || '',
     delayDays: s.delayValue || 0,
     actionType: s.actionType || 'message',
@@ -410,9 +402,7 @@ function sequenceFromBackend(backend) {
   }));
 
   const fs = {
-    id: backend.id || backend.localId || '',
-    localId: backend.localId || '',
-    serverId: backend.id || null,
+    id: backend.id || '',
     name: backend.name || '',
     description: backend.description || '',
     isActive: backend.isActive !== undefined ? backend.isActive : true,
@@ -427,11 +417,10 @@ function sequenceFromBackend(backend) {
   return fs;
 }
 
-function candidateSequenceToBackend(frontendTask, candidateLocalId, sequenceLocalId) {
+function candidateSequenceToBackend(frontendTask, candidateId, sequenceId) {
   return {
-    localId: frontendTask.localId || generateLocalId(),
-    candidateId: candidateLocalId,
-    sequenceId: sequenceLocalId,
+    candidateId: candidateId,
+    sequenceId: sequenceId,
     status: frontendTask.status || 'active',
     currentStepNumber: (frontendTask.stepIndex || 0) + 1,
     totalSteps: frontendTask.totalSteps || 1
@@ -440,9 +429,7 @@ function candidateSequenceToBackend(frontendTask, candidateLocalId, sequenceLoca
 
 function candidateSequenceFromBackend(backend) {
   return {
-    id: backend.localId || backend.id,
-    localId: backend.localId || '',
-    serverId: backend.id || null,
+    id: backend.id || '',
     candidateId: backend.candidateId,
     sequenceId: backend.sequenceId,
     status: backend.status || 'active',
@@ -475,7 +462,6 @@ const SequencesAPI = {
 
   async update(id, seq) {
     const body = sequenceToBackend(seq);
-    body.localId = seq.localId || id;
     const resp = await apiRequest('PUT', `/api/v1/sequences/${id}`, body);
     return sequenceFromBackend(resp.data);
   },
@@ -505,25 +491,6 @@ const SequencesAPI = {
 
   async deleteCandidateSequence(id) {
     const resp = await apiRequest('DELETE', `/api/v1/candidate-sequences/${id}`);
-    return resp.data;
-  }
-};
-
-// ==================== Sync ====================
-
-const SyncAPI = {
-  async sync(body) {
-    const resp = await apiRequest('POST', '/api/v1/sync', body);
-    return resp.data;
-  },
-
-  async check(since) {
-    const resp = await apiRequest('GET', '/api/v1/sync/check', null, { since });
-    return resp.data;
-  },
-
-  async pull(since) {
-    const resp = await apiRequest('GET', '/api/v1/sync/pull', null, { since });
     return resp.data;
   }
 };
@@ -598,7 +565,6 @@ if (typeof window !== 'undefined') {
     notes: NotesAPI,
     pipeline: PipelineAPI,
     sequences: SequencesAPI,
-    sync: SyncAPI,
     user: UserAPI,
     feedback: FeedbackAPI,
     events: {

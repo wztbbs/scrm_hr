@@ -9,9 +9,9 @@ spring:
     name: linkedin-scrm
 
   datasource:
-    url: jdbc:mysql://localhost:3306/admin?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&useSSL=false
-    username: admin
-    password: w123456
+    url: jdbc:mysql://usw-cdb-mfdtb99z.sql.tencentcdb.com:27301/hrscrm?useUnicode=true&characterEncoding=utf-8&serverTimezone=UTC&useSSL=false
+    username: hrscrm
+    password: Li0523.nhn
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   mail:

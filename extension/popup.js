@@ -134,11 +134,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     $(`tab-${currentTab}`).classList.add('active');
     if (currentTab === 'pipeline') {
-      if (!hasSyncedData) {
-        syncDataFromBackend().then(() => renderPipeline());
-      } else {
-        renderPipeline();
-      }
+      renderPipeline();
     }
     if (currentTab === 'sequence') renderSequence();
     if (currentTab === 'history') renderHistory();
@@ -437,11 +433,11 @@ async function renderOverviewTodayTasks() {
         candidates = resp.data.items;
       }
     } catch (e) {
-      console.warn('[Popup] Backend tasks fetch failed, falling back to local:', e.message);
-      candidates = await getTodaysTasks();
+      console.warn('[Popup] Backend tasks fetch failed:', e.message);
+      candidates = [];
     }
   } else {
-    candidates = await getTodaysTasks();
+    candidates = [];
   }
 
   const countEl = $('ovTodayCount');
@@ -559,10 +555,18 @@ $('ovSaveBtn').addEventListener('click', async () => {
   isSavingCandidate = true;
   showLoading();
   try {
-    const savedId = await saveCandidate(currentCandidate);
-    if (!currentCandidate.id) currentCandidate.id = savedId;
+    const body = window.API.utils.candidateToBackend(currentCandidate);
+    let saved;
+    if (currentCandidate.id) {
+      saved = await window.API.candidates.update(currentCandidate.id, body);
+    } else {
+      saved = await window.API.candidates.create(body);
+      if (saved) {
+        currentCandidate.id = saved.id;
+      }
+    }
     // Sync sequence binding if needed (backend auto-records history)
-    if (currentCandidate.sequenceId && currentCandidate.serverId) {
+    if (currentCandidate.sequenceId && currentCandidate.id) {
       try {
         await bindCandidateToSequence(currentCandidate.id, currentCandidate.sequenceId);
       } catch (e) {
@@ -834,7 +838,15 @@ async function renderPipeline() {
     </div>
   `).join('');
 
-  let allCandidates = await getAllCandidates();
+  let allCandidates = [];
+  try {
+    const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
+    if (resp.data && resp.data.items) {
+      allCandidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+    }
+  } catch (e) {
+    console.warn('[Pipeline] Failed to fetch candidates:', e.message);
+  }
   if (currentFilter !== 'All Roles') {
     allCandidates = allCandidates.filter(c => c.headline === currentFilter);
   }
@@ -929,7 +941,7 @@ function bindPipelineDragEvents() {
   document.querySelectorAll('.board-card').forEach(card => {
     card.addEventListener('dragstart', (e) => {
       isDraggingCard = true;
-      draggedId = parseInt(card.dataset.id);
+      draggedId = card.dataset.id;
       card.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
@@ -954,13 +966,17 @@ function bindPipelineDragEvents() {
       col.classList.remove('drag-over');
       if (!draggedId) return;
       const newStage = col.dataset.status;
-      const candidate = await getCandidateById(draggedId);
-      if (candidate && (candidate.pipelineStage || 'new') !== newStage) {
-        const oldStage = candidate.pipelineStage || 'new';
-        candidate.pipelineStage = newStage;
-        await updateCandidate(candidate);
-        trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
-        renderPipeline();
+      try {
+        const candidate = await window.API.candidates.get(draggedId);
+        if (candidate && (candidate.pipelineStage || 'new') !== newStage) {
+          const oldStage = candidate.pipelineStage || 'new';
+          candidate.pipelineStage = newStage;
+          await window.API.candidates.update(draggedId, candidate);
+          trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
+          renderPipeline();
+        }
+      } catch (e) {
+        console.warn('[Pipeline] Move failed:', e.message);
       }
     });
   });
@@ -983,21 +999,25 @@ function bindPipelineDeleteEvents() {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const candidateId = parseInt(btn.dataset.id);
-      const candidate = await getCandidateById(candidateId);
-      if (!candidate) return;
-      const confirmed = await showConfirm(`Are you sure you want to delete "${candidate.name}"?`);
-      if (confirmed) {
-        showLoading();
-        try {
-          await deleteCandidate(candidateId);
-          showToast('Candidate deleted');
-          renderPipeline();
-          if (currentTab === 'history') renderHistory();
-        } catch (err) {
-          showToast('Delete failed: ' + err.message);
-        } finally {
-          hideLoading();
+      try {
+        const candidate = await window.API.candidates.get(candidateId);
+        if (!candidate) return;
+        const confirmed = await showConfirm(`Are you sure you want to delete "${candidate.name}"?`);
+        if (confirmed) {
+          showLoading();
+          try {
+            await window.API.candidates.delete(candidateId, false);
+            showToast('Candidate deleted');
+            renderPipeline();
+            if (currentTab === 'history') renderHistory();
+          } catch (err) {
+            showToast('Delete failed: ' + err.message);
+          } finally {
+            hideLoading();
+          }
         }
+      } catch (e) {
+        console.warn('[Pipeline] Delete fetch failed:', e.message);
       }
     });
   });
@@ -1008,20 +1028,24 @@ function bindPipelineSaveToNewEvents() {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const candidateId = parseInt(btn.dataset.id);
-      const candidate = await getCandidateById(candidateId);
-      if (!candidate) return;
-      showLoading();
       try {
-        candidate.pipelineStage = 'new';
-        await updateCandidate(candidate);
-        trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
-        showToast('Candidate saved to New');
-        renderPipeline();
-        if (currentTab === 'history') renderHistory();
-      } catch (err) {
-        showToast('Save failed: ' + err.message);
-      } finally {
-        hideLoading();
+        const candidate = await window.API.candidates.get(candidateId);
+        if (!candidate) return;
+        showLoading();
+        try {
+          candidate.pipelineStage = 'new';
+          await window.API.candidates.update(candidateId, candidate);
+          trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
+          showToast('Candidate saved to New');
+          renderPipeline();
+          if (currentTab === 'history') renderHistory();
+        } catch (err) {
+          showToast('Save failed: ' + err.message);
+        } finally {
+          hideLoading();
+        }
+      } catch (e) {
+        console.warn('[Pipeline] Promote fetch failed:', e.message);
       }
     });
   });
@@ -1278,7 +1302,15 @@ async function handleQuotaError(err) {
 }
 
 async function updateFilterDropdown() {
-  const candidates = await getAllCandidates();
+  let candidates = [];
+  try {
+    const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
+    if (resp.data && resp.data.items) {
+      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+    }
+  } catch (e) {
+    console.warn('[Filter] Failed to fetch candidates:', e.message);
+  }
   const roles = ['All Roles', ...new Set(candidates.map(c => c.headline).filter(Boolean))];
   const dropdown = $('pipelineFilterDropdown');
   dropdown.innerHTML = roles.map(r =>
@@ -1342,65 +1374,78 @@ async function loadSequenceOptions(selectEl, selectedId = '') {
 async function bindCandidateToSequence(candidateId, sequenceId) {
   console.log('[BIND_SEQ] START candidateId=', candidateId, 'sequenceId=', sequenceId);
 
-  // Ensure candidate is saved to local DB first
+  // Ensure candidate is saved to backend first
   if (!candidateId && currentCandidate) {
-    console.log('[BIND_SEQ] candidateId empty, saving candidate...');
+    console.log('[BIND_SEQ] candidateId empty, creating candidate on backend...');
     const canSave = await checkCandidateLimit();
     if (!canSave) return;
-    candidateId = await saveCandidate(currentCandidate);
-    currentCandidate.id = candidateId;
-    console.log('[BIND_SEQ] saved candidateId=', candidateId);
+    try {
+      const created = await window.API.candidates.create(currentCandidate);
+      if (created && created.id) {
+        candidateId = created.id;
+        currentCandidate.id = candidateId;
+      }
+      console.log('[BIND_SEQ] created candidateId=', candidateId);
+    } catch (e) {
+      console.error('[BIND_SEQ] create candidate failed:', e);
+      return;
+    }
   }
 
-  let candidate = await getCandidateById(candidateId);
-  console.log('[BIND_SEQ] candidate=', candidate ? { id: candidate.id, localId: candidate.localId, serverId: candidate.serverId, name: candidate.name } : null);
+  let candidate = null;
+  if (candidateId) {
+    try {
+      candidate = await window.API.candidates.get(candidateId);
+    } catch (e) {
+      console.warn('[BIND_SEQ] get candidate from API failed:', e);
+    }
+  }
+  console.log('[BIND_SEQ] candidate=', candidate ? { id: candidate.id, name: candidate.name } : null);
 
   if (!sequenceId) {
     console.log('[BIND_SEQ] sequenceId empty, unbinding');
-    if (candidate) {
-      delete candidate.sequenceId;
-      await dbPut(STORES.candidates, candidate);
+    if (candidate && candidate.id) {
+      try {
+        const updated = { ...candidate };
+        delete updated.sequenceId;
+        await window.API.candidates.update(candidate.id, updated);
+      } catch (e) {
+        console.warn('[BIND_SEQ] unbind sequence failed:', e);
+      }
     }
     return;
   }
 
   const seq = await getSequenceById(sequenceId);
-  console.log('[BIND_SEQ] seq=', seq ? { id: seq.id, serverId: seq.serverId, name: seq.name, stepsLength: seq.steps ? seq.steps.length : 'NO_STEPS' } : null);
+  console.log('[BIND_SEQ] seq=', seq ? { id: seq.id, name: seq.name, stepsLength: seq.steps ? seq.steps.length : 'NO_STEPS' } : null);
   if (!seq || !seq.steps || seq.steps.length === 0) {
     console.warn('[BIND_SEQ] ABORT: seq missing or no steps');
     return;
   }
 
-  // Update candidate with bound sequence id
-  if (candidate) {
-    candidate.sequenceId = sequenceId;
-    await dbPut(STORES.candidates, candidate);
+  // Update candidate with bound sequence id on backend
+  if (candidate && candidate.id) {
+    try {
+      const updated = { ...candidate, sequenceId: sequenceId };
+      await window.API.candidates.update(candidate.id, updated);
+    } catch (e) {
+      console.warn('[BIND_SEQ] update candidate sequence failed:', e);
+    }
   }
 
   // Sync candidate-sequence binding to backend
   if (typeof window !== 'undefined' && window.API) {
     try {
       console.log('[BIND_SEQ] syncing to backend...');
-      // Ensure candidate has serverId; sync to backend if needed
-      if (candidate && !candidate.serverId) {
-        console.log('[BIND_SEQ] candidate.serverId missing, creating on backend...');
-        const created = await window.API.candidates.create(candidate);
-        console.log('[BIND_SEQ] backend create result=', created);
-        if (created && created.serverId) {
-          candidate.serverId = created.serverId;
-          await dbPut(STORES.candidates, candidate);
-          console.log('[BIND_SEQ] serverId saved to DB:', candidate.serverId);
-        }
-      }
 
-      const candidateServerId = candidate ? (candidate.serverId || candidate.id) : null;
-      const sequenceServerId = seq.serverId || seq.id;
+      const candidateIdForSeq = candidate ? candidate.id : null;
+      const sequenceIdForSeq = seq.id;
       console.log('[BIND_SEQ] candidateServerId=', candidateServerId, 'sequenceServerId=', sequenceServerId);
-      if (candidateServerId && sequenceServerId) {
+      if (candidateIdForSeq && sequenceIdForSeq) {
         console.log('[BIND_SEQ] calling createCandidateSequence...');
         await window.API.sequences.createCandidateSequence(
-          candidateServerId,
-          sequenceServerId,
+          candidateIdForSeq,
+          sequenceIdForSeq,
           { stepIndex: 0, totalSteps: seq.steps.length, status: 'active' }
         );
         console.log('[BIND_SEQ] createCandidateSequence success');
@@ -1427,23 +1472,19 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     if (choice && choice.accepted) {
       const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
       const source = choice.edited ? 'manual' : 'sequence';
-      candidate.nextFollowup = `${new Date(followupTime).getFullYear()}-${String(new Date(followupTime).getMonth()+1).padStart(2,'0')}-${String(new Date(followupTime).getDate()).padStart(2,'0')}T${String(new Date(followupTime).getHours()).padStart(2,'0')}:${String(new Date(followupTime).getMinutes()).padStart(2,'0')}`;
-      candidate.nextFollowupSource = source;
-      candidate.nextFollowupSequenceStepId = source === 'sequence' ? nextStep.stepNumber : null;
-      await dbPut(STORES.candidates, candidate);
-      if (candidate.serverId || candidate.localId) {
+      if (candidate.id) {
         try {
           await window.API.candidates.updateFollowup(
-            candidate.serverId || candidate.localId,
+            candidate.id,
             new Date(followupTime),
             source,
             source === 'sequence' ? nextStep.stepNumber : null
           );
+          renderOverviewNextFollowup();
         } catch (e) {
           console.warn('[BIND_SEQ] update followup failed:', e);
         }
       }
-      renderOverviewNextFollowup();
     }
   }
 
@@ -1461,7 +1502,7 @@ function openManualEntryModal(candidateId = null) {
     ).join('');
   }
   if (candidateId) {
-    getCandidateById(candidateId).then(async candidate => {
+    window.API.candidates.get(candidateId).then(async candidate => {
       if (!candidate) return;
       $('meName').value = candidate.name || '';
       $('meHeadline').value = candidate.headline || '';
@@ -1478,6 +1519,9 @@ function openManualEntryModal(candidateId = null) {
       // Load current bound sequence
       await loadSequenceOptions($('meSequence'), candidate.sequenceId || '');
       $('modalManualEntry').classList.add('active');
+    }).catch(e => {
+      console.warn('[MANUAL_ENTRY] load candidate failed:', e);
+      showToast('Failed to load candidate');
     });
   } else {
     $('meName').value = '';
@@ -1521,7 +1565,11 @@ $('meSaveBtn').addEventListener('click', async () => {
   try {
     let candidate;
     if (manualEntryCandidateId) {
-      candidate = await getCandidateById(manualEntryCandidateId);
+      try {
+        candidate = await window.API.candidates.get(manualEntryCandidateId);
+      } catch (e) {
+        candidate = null;
+      }
       if (!candidate) {
         showToast('Candidate not found');
         hideLoading();
@@ -1557,7 +1605,23 @@ $('meSaveBtn').addEventListener('click', async () => {
     const canSave = await checkCandidateLimit();
     if (!canSave) { hideLoading(); return; }
     isSavingCandidate = true;
-    const savedId = await saveCandidate(candidate);
+
+    let savedId;
+    try {
+      if (manualEntryCandidateId) {
+        await window.API.candidates.update(manualEntryCandidateId, candidate);
+        savedId = manualEntryCandidateId;
+      } else {
+        const created = await window.API.candidates.create(candidate);
+        savedId = created?.id;
+      }
+    } catch (e) {
+      isSavingCandidate = false;
+      hideLoading();
+      const handled = await handleQuotaError(e);
+      if (!handled) showToast('Save failed: ' + e.message);
+      return;
+    }
 
     // Handle sequence binding
     const sequenceId = $('meSequence').value;
@@ -1638,7 +1702,15 @@ async function renderTodayTasks() {
   const now = new Date();
   $('todayDate').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-  const candidates = await getTodaysTasks();
+  let candidates = [];
+  try {
+    const resp = await window.API.candidates.tasks();
+    if (resp.data && resp.data.items) {
+      candidates = resp.data.items;
+    }
+  } catch (e) {
+    console.warn('[TodayTasks] Failed to fetch:', e.message);
+  }
   $('todayTasksTitle').textContent = `Today's Tasks (${candidates.length})`;
 
   const container = $('seqTodayList');
@@ -1807,8 +1879,24 @@ $('modalNewSequence').addEventListener('click', (e) => {
 });
 
 // ========== History ==========
+async function getHistoryByCandidate(candidateId) {
+  try {
+    const resp = await window.API.history.list({ candidateId });
+    return resp.data?.items || [];
+  } catch (e) {
+    console.warn('[getHistoryByCandidate] failed:', e);
+    return [];
+  }
+}
+
 async function renderHistoryContent(candidateId) {
-  const candidate = await getCandidateById(candidateId);
+  let candidate = null;
+  try {
+    candidate = await window.API.candidates.get(candidateId);
+  } catch (e) {
+    console.warn('[renderHistoryContent] get candidate failed:', e);
+    return;
+  }
   if (!candidate) return;
 
   const history = await getHistoryByCandidate(candidateId);
@@ -1853,7 +1941,15 @@ async function renderHistoryContent(candidateId) {
 }
 
 async function renderHistory() {
-  const candidates = await getAllCandidates();
+  let candidates = [];
+  try {
+    const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
+    if (resp.data && resp.data.items) {
+      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+    }
+  } catch (e) {
+    console.warn('[History] Failed to fetch candidates:', e.message);
+  }
   const select = $('historyCandidateSelect');
   select.innerHTML = '<option value="">Select a candidate...</option>' +
     candidates.map(c => `<option value="${c.id}">${escapeHtml(c.name)} · ${escapeHtml(c.headline || '')}</option>`).join('');
@@ -1921,52 +2017,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ========== Data Sync from Backend ==========
-async function syncDataFromBackend() {
-  if (typeof window === 'undefined' || !window.API) return;
-  try {
-    // Sync candidates
-    const candidatesResp = await window.API.candidates.list({ page: 1, pageSize: 100 });
-    if (candidatesResp.data && candidatesResp.data.items) {
-      for (const backendCand of candidatesResp.data.items) {
-        const fc = window.API.utils.candidateFromBackend(backendCand);
-        // Try to find existing by linkedInId or localId
-        let existing = null;
-        if (fc.linkedInId) {
-          existing = await getCandidateByLinkedInId(fc.linkedInId);
-        }
-        if (!existing && fc.localId) {
-          const all = await getAllCandidates();
-          existing = all.find(c => c.localId === fc.localId);
-        }
-        if (existing) {
-          fc.id = existing.id;
-          // Merge: preserve local extra fields if backend list doesn't include rawProfileData
-          fc.keyMemory = existing.keyMemory || fc.keyMemory;
-          fc.voiceMemo = existing.voiceMemo || fc.voiceMemo;
-          fc.contactMode = existing.contactMode || fc.contactMode;
-          fc.skills = (fc.skills && fc.skills.length) ? fc.skills : (existing.skills || []);
-          fc.workExperiences = (fc.workExperiences && fc.workExperiences.length) ? fc.workExperiences : (existing.workExperiences || []);
-          fc.educationExperiences = (fc.educationExperiences && fc.educationExperiences.length) ? fc.educationExperiences : (existing.educationExperiences || []);
-          fc.websites = (fc.websites && fc.websites.length) ? fc.websites : (existing.websites || []);
-          fc.updatedAt = Date.now();
-          await dbPut(STORES.candidates, fc);
-        } else {
-          delete fc.id;
-          fc.createdAt = fc.createdAt || Date.now();
-          fc.updatedAt = Date.now();
-          await dbAdd(STORES.candidates, fc);
-        }
-      }
-    }
 
-    // Sequences and pipeline are now fetched directly from backend on init
-    console.log('[Popup] Data synced from backend');
-    hasSyncedData = true;
-  } catch (e) {
-    console.warn('[Popup] Sync from backend failed:', e.message);
-  }
-}
 
 // ========== Init Backend Data ==========
 async function initBackendData() {
@@ -2004,8 +2055,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   } finally {
     hideLoading();
   }
-  // 5. Sync full candidates list in background (heavy, non-blocking)
-  setTimeout(() => syncDataFromBackend(), 0);
 });
 
 // ========== Custom DateTime Picker ==========
@@ -2335,15 +2384,23 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
   try {
     // Call backend mark follow-up done
     let result = null;
-    if (typeof window !== 'undefined' && window.API && (currentCandidate.serverId || currentCandidate.localId)) {
-      result = await window.API.candidates.markFollowupDone(currentCandidate.serverId || currentCandidate.localId);
+    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+      result = await window.API.candidates.markFollowupDone(currentCandidate.id);
     }
 
     // Clear local follow-up
-    currentCandidate.nextFollowup = '';
-    currentCandidate.nextFollowupSource = 'none';
-    currentCandidate.nextFollowupSequenceStepId = null;
-    await dbPut(STORES.candidates, currentCandidate);
+    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+      try {
+        await window.API.candidates.updateFollowup(
+          currentCandidate.id,
+          null,
+          'none',
+          null
+        );
+      } catch (e) {
+        console.warn('[MarkDone] clear followup failed:', e);
+      }
+    }
 
     // If sequence has next suggestion, prompt user
     if (result && result.has_suggestion) {
@@ -2354,17 +2411,17 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
       if (choice && choice.accepted) {
         const followupTime = choice.time || suggested;
         const source = choice.edited ? 'manual' : 'sequence';
-        currentCandidate.nextFollowup = `${followupTime.getFullYear()}-${String(followupTime.getMonth()+1).padStart(2,'0')}-${String(followupTime.getDate()).padStart(2,'0')}T${String(followupTime.getHours()).padStart(2,'0')}:${String(followupTime.getMinutes()).padStart(2,'0')}`;
-        currentCandidate.nextFollowupSource = source;
-        currentCandidate.nextFollowupSequenceStepId = source === 'sequence' ? (result.sequence_step_id || null) : null;
-        await dbPut(STORES.candidates, currentCandidate);
-        if (typeof window !== 'undefined' && window.API && (currentCandidate.serverId || currentCandidate.localId)) {
-          await window.API.candidates.updateFollowup(
-            currentCandidate.serverId || currentCandidate.localId,
-            followupTime,
-            source,
-            source === 'sequence' ? (result.sequence_step_id || null) : null
-          );
+        if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+          try {
+            await window.API.candidates.updateFollowup(
+              currentCandidate.id,
+              followupTime,
+              source,
+              source === 'sequence' ? (result.sequence_step_id || null) : null
+            );
+          } catch (e) {
+            console.warn('[MarkDone] update followup failed:', e);
+          }
         }
       }
     } else if (result && result.sequence_completed) {
@@ -2390,17 +2447,17 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
     if (seq && seq.steps && seq.steps.length >= 2) {
       const nextStep = seq.steps[1]; // step 2
       const d = new Date(Date.now() + nextStep.delayDays * 86400000);
-      currentCandidate.nextFollowup = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-      currentCandidate.nextFollowupSource = 'sequence';
-      currentCandidate.nextFollowupSequenceStepId = null;
-      await dbPut(STORES.candidates, currentCandidate);
-      if (typeof window !== 'undefined' && window.API && (currentCandidate.serverId || currentCandidate.localId)) {
-        await window.API.candidates.updateFollowup(
-          currentCandidate.serverId || currentCandidate.localId,
-          d,
-          'sequence',
-          null
-        );
+      if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+        try {
+          await window.API.candidates.updateFollowup(
+            currentCandidate.id,
+            d,
+            'sequence',
+            null
+          );
+        } catch (e) {
+          console.warn('[SyncToSeq] update followup failed:', e);
+        }
       }
       renderOverviewNextFollowup();
       showToast('Synced to sequence');
