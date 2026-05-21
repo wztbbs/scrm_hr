@@ -26,4 +26,53 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
+  <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.BaseResultMap">
+    SELECT * FROM candidates
+    WHERE user_id = #{userId}
+    <if test="search != null and search != ''">
+      AND (full_name LIKE CONCAT('%', #{search}, '%')
+        OR company LIKE CONCAT('%', #{search}, '%')
+        OR job_title LIKE CONCAT('%', #{search}, '%'))
+    </if>
+    <if test="temperature != null and temperature != ''">
+      AND temperature = #{temperature}
+    </if>
+    <if test="source != null and source != ''">
+      AND source = #{source}
+    </if>
+    <if test="syncSince != null">
+      AND updated_at &gt;= #{syncSince}
+    </if>
+    ORDER BY
+    <choose>
+      <when test="sortBy == 'last_activity_at'">last_activity_at</when>
+      <when test="sortBy == 'full_name'">full_name</when>
+      <otherwise>created_at</otherwise>
+    </choose>
+    <choose>
+      <when test="sortOrder == 'asc'">ASC</when>
+      <otherwise>DESC</otherwise>
+    </choose>
+    LIMIT #{pageSize} OFFSET #{offset}
+  </select>
+
+  <select id="countSearchByKeyword" resultType="long">
+    SELECT COUNT(*) FROM candidates
+    WHERE user_id = #{userId}
+    <if test="search != null and search != ''">
+      AND (full_name LIKE CONCAT('%', #{search}, '%')
+        OR company LIKE CONCAT('%', #{search}, '%')
+        OR job_title LIKE CONCAT('%', #{search}, '%'))
+    </if>
+    <if test="temperature != null and temperature != ''">
+      AND temperature = #{temperature}
+    </if>
+    <if test="source != null and source != ''">
+      AND source = #{source}
+    </if>
+    <if test="syncSince != null">
+      AND updated_at &gt;= #{syncSince}
+    </if>
+  </select>
+
 </mapper>

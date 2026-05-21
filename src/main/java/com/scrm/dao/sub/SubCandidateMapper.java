@@ -1,6 +1,7 @@
 package com.scrm.dao.sub;
 
 import com.scrm.dao.CandidateMapper;
+import com.scrm.entity.Candidate;
 import com.scrm.entity.CandidateWithBLOBs;
 import org.apache.ibatis.annotations.Param;
 
@@ -17,4 +18,22 @@ public interface SubCandidateMapper extends CandidateMapper {
                            @Param("nextFollowupAt") Date nextFollowupAt,
                            @Param("nextFollowupSource") String nextFollowupSource,
                            @Param("nextFollowupSequenceStepId") Long nextFollowupSequenceStepId);
+
+    List<Candidate> searchByKeyword(@Param("userId") Long userId,
+                                    @Param("search") String search,
+                                    @Param("temperature") String temperature,
+                                    @Param("status") String status,
+                                    @Param("source") String source,
+                                    @Param("syncSince") Date syncSince,
+                                    @Param("sortBy") String sortBy,
+                                    @Param("sortOrder") String sortOrder,
+                                    @Param("offset") int offset,
+                                    @Param("pageSize") int pageSize);
+
+    long countSearchByKeyword(@Param("userId") Long userId,
+                              @Param("search") String search,
+                              @Param("temperature") String temperature,
+                              @Param("status") String status,
+                              @Param("source") String source,
+                              @Param("syncSince") Date syncSince);
 }

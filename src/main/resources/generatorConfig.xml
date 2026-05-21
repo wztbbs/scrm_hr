@@ -37,43 +37,57 @@
         <table tableName="users" domainObjectName="User"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 候选人主表 -->
         <table tableName="candidates" domainObjectName="Candidate"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 序列模板表 -->
         <table tableName="sequences" domainObjectName="Sequence"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 序列步骤表 -->
         <table tableName="sequence_steps" domainObjectName="SequenceStep"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 候选人笔记表 -->
         <table tableName="candidate_notes" domainObjectName="CandidateNote"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 候选人与序列绑定表 -->
         <table tableName="candidate_sequences" domainObjectName="CandidateSequence"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 候选人历史互动记录 -->
         <table tableName="candidate_history" domainObjectName="CandidateHistory"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- pipeline_boards, pipeline_stages, pipeline_candidates 已废弃，字段合并到 candidates 表 -->
 
@@ -81,18 +95,24 @@
         <table tableName="orders" domainObjectName="Order"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 订阅表 -->
         <table tableName="subscriptions" domainObjectName="Subscription"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
 
         <!-- 埋点事件表 -->
         <table tableName="events" domainObjectName="Event"
                enableCountByExample="true" enableUpdateByExample="true"
                enableDeleteByExample="false" enableSelectByExample="true"
-               selectByExampleQueryId="true"/>
+               selectByExampleQueryId="true">
+            <generatedKey column="id" sqlStatement="MySql" identity="true"/>
+        </table>
     </context>
 </generatorConfiguration>

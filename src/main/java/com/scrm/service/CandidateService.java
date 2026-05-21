@@ -2,7 +2,6 @@ package com.scrm.service;
 
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
-import com.scrm.dao.CandidateExtMapper;
 import com.scrm.dao.CandidateMapper;
 import com.scrm.dao.sub.SubCandidateMapper;
 import com.scrm.entity.Candidate;
@@ -23,8 +22,6 @@ public class CandidateService {
     @Qualifier("candidateMapper")
     private CandidateMapper candidateMapper;
     @Autowired
-    private CandidateExtMapper candidateExtMapper;
-    @Autowired
     private SubCandidateMapper subCandidateMapper;
     @Autowired
     private SequenceService sequenceService;
@@ -38,14 +35,14 @@ public class CandidateService {
                                           Date syncSince, int page, int pageSize) {
         Long userId = RequestContext.getCurrentUserId();
         int offset = (page - 1) * pageSize;
-        return candidateExtMapper.searchByKeyword(userId, search, temperature, status, source,
+        return subCandidateMapper.searchByKeyword(userId, search, temperature, status, source,
                 syncSince, sortBy, sortOrder, offset, pageSize);
     }
 
     public long countCandidates(String search, String temperature, String status,
                                 String source, Date syncSince) {
         Long userId = RequestContext.getCurrentUserId();
-        return candidateExtMapper.countSearchByKeyword(userId, search, temperature, status, source, syncSince);
+        return subCandidateMapper.countSearchByKeyword(userId, search, temperature, status, source, syncSince);
     }
 
     public CandidateWithBLOBs getCandidate(String id) {
