@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -13,6 +14,17 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public org.springframework.http.ResponseEntity<Void> handleNoResourceFoundException(NoResourceFoundException e) {
+        String path = e.getResourcePath();
+        if ("/favicon.ico".equals(path)) {
+            // Silently ignore favicon.ico 404 to avoid log noise
+            return org.springframework.http.ResponseEntity.noContent().build();
+        }
+        log.warn("[GlobalExceptionHandler] NoResourceFoundException: {}", path);
+        return org.springframework.http.ResponseEntity.notFound().build();
+    }
 
     @ExceptionHandler(QuotaExceededException.class)
     public ApiResponse<Map<String, Object>> handleQuotaExceededException(QuotaExceededException e) {
@@ -37,7 +49,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ApiResponse<Void> handleException(Exception e) {
-        log.error("[GlobalExceptionHandler] Exception: {}", e.getMessage(), e);
-        return ApiResponse.error(500, e.getMessage());
+        log.error("[GlobalExceptionHandler] {}: {}", e.getClass().getSimpleName(), e.getMessage(), e);
+        return ApiResponse.error(500, e.getClass().getSimpleName() + ": " + e.getMessage());
     }
 }

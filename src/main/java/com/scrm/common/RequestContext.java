@@ -61,7 +61,11 @@ public class RequestContext {
             newUser.setCreatedAt(new Date());
             newUser.setUpdatedAt(new Date());
             staticUserMapper.insert(newUser);
-            return newUser.getId();
+            // Re-fetch to get auto-generated id (insert does not populate id)
+            UserExample refetch = new UserExample();
+            refetch.createCriteria().andUuidEqualTo(userIdHeader);
+            List<User> inserted = staticUserMapper.selectByExample(refetch);
+            return !inserted.isEmpty() ? inserted.get(0).getId() : 1L;
         }
 
         return 1L;
