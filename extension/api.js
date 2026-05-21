@@ -82,7 +82,12 @@ async function apiRequest(method, path, body = null, query = null) {
     return json;
   } catch (err) {
     console.warn('[API] Request failed:', method, url, err.message);
-    throw err;
+    // 抛给上层/用户的必须是干净错误，但保留内部属性供业务判断（如 handleQuotaError）
+    const cleanErr = new Error('Something went wrong. Please try again.');
+    cleanErr.status = err.status;
+    cleanErr.code = err.code;
+    cleanErr.data = err.data;
+    throw cleanErr;
   }
 }
 
@@ -110,7 +115,7 @@ function candidateToBackend(frontendCandidate) {
     email: (frontendCandidate.emails && frontendCandidate.emails[0]) || '',
     phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || '',
     temperature: frontendCandidate.temperature || 'Cold',
-    source: frontendCandidate.source || 'extension',
+    source: frontendCandidate.source || 'linkedin_profile',
     pipelineStage: frontendCandidate.pipelineStage || 'new',
     pipelinePosition: frontendCandidate.pipelinePosition || 0,
     pipelineEnteredAt: frontendCandidate.pipelineEnteredAt ? new Date(frontendCandidate.pipelineEnteredAt).toISOString() : null,
@@ -495,6 +500,14 @@ const SequencesAPI = {
   }
 };
 
+async function getAllSequences() {
+  const resp = await SequencesAPI.list();
+  if (resp.data && resp.data.items) {
+    return resp.data.items;
+  }
+  return [];
+}
+
 // ==================== User ====================
 
 const UserAPI = {
@@ -579,6 +592,6 @@ if (typeof window !== 'undefined') {
       }
     },
     subscription: SubscriptionAPI,
-    utils: { toISOString, toTimestamp, generateLocalId, candidateToBackend, candidateFromBackend, sequenceToBackend, sequenceFromBackend }
+    utils: { toISOString, toTimestamp, generateLocalId, candidateToBackend, candidateFromBackend, sequenceToBackend, sequenceFromBackend, getAllSequences }
   };
 }

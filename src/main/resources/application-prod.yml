@@ -37,7 +37,7 @@ mybatis:
   type-aliases-package: com.scrm.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 # OpenRouter 额外标识（部分模型要求）
 openrouter:

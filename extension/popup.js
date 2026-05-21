@@ -10,6 +10,12 @@ let pipelineStages = [];
 let isSavingCandidate = false;
 let hasSyncedData = false;
 
+// 全局 Promise 未处理异常兜底
+window.addEventListener('unhandledrejection', event => {
+  event.preventDefault(); // 阻止控制台打印丑陋堆栈
+  showToast('Something went wrong. Please refresh.');
+});
+
 // ========== Draft Cache (localStorage) ==========
 function getDraftKey(candidate) {
   const id = candidate?.id || candidate?.linkedInId || candidate?.linkedinId || 'unknown';
@@ -560,6 +566,7 @@ $('ovSaveBtn').addEventListener('click', async () => {
     if (currentCandidate.id) {
       saved = await window.API.candidates.update(currentCandidate.id, body);
     } else {
+      body.source = 'linkedin_profile';
       saved = await window.API.candidates.create(body);
       if (saved) {
         currentCandidate.id = saved.id;
@@ -1380,6 +1387,7 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     const canSave = await checkCandidateLimit();
     if (!canSave) return;
     try {
+      currentCandidate.source = 'linkedin_profile';
       const created = await window.API.candidates.create(currentCandidate);
       if (created && created.id) {
         candidateId = created.id;
@@ -1612,6 +1620,7 @@ $('meSaveBtn').addEventListener('click', async () => {
         await window.API.candidates.update(manualEntryCandidateId, candidate);
         savedId = manualEntryCandidateId;
       } else {
+        candidate.source = 'manual_entry';
         const created = await window.API.candidates.create(candidate);
         savedId = created?.id;
       }
@@ -2023,9 +2032,6 @@ function escapeHtml(text) {
 async function initBackendData() {
   if (typeof window === 'undefined' || !window.API) return;
   try {
-    // Refresh sequences from backend
-    await refreshSequences();
-
     // Fetch pipeline stages from backend (fixed enum, no boards)
     const stagesResp = await window.API.pipeline.listStages();
     if (stagesResp.data && stagesResp.data.items) {
