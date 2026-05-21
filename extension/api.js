@@ -104,7 +104,7 @@ function candidateToBackend(frontendCandidate) {
     websites: frontendCandidate.websites || []
   };
 
-  return {
+  const body = {
     // localId removed: backend uses auto-increment id only
     fullName: frontendCandidate.name || '',
     headline: frontendCandidate.headline || '',
@@ -125,6 +125,8 @@ function candidateToBackend(frontendCandidate) {
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null
   };
+  console.log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
+  return body;
 }
 
 function candidateFromBackend(backend) {
@@ -219,7 +221,9 @@ const CandidatesAPI = {
 
   async getByLinkedInId(linkedinId) {
     const resp = await apiRequest('GET', '/api/v1/candidates/by-linkedin-id', null, { linkedin_id: linkedinId });
-    return resp.data ? candidateFromBackend(resp.data) : null;
+    const result = resp.data ? candidateFromBackend(resp.data) : null;
+    console.log('[SCRM_TEMPLATE] api.js getByLinkedInId result:', JSON.stringify(result));
+    return result;
   },
 
   async tasks() {

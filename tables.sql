@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_linkedin_id` (`user_id`, `linkedin_id`),
+  KEY `uk_user_linkedin_id` (`user_id`, `linkedin_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_temperature` (`temperature`),
   KEY `idx_created_at` (`created_at`),

@@ -307,6 +307,7 @@ async function fetchAndCacheData(force = false) {
         linkedInId: linkedInId,
         cachedAt: Date.now()
     };
+    console.log('[SCRM_BASE] content.js scraped data:', JSON.stringify(data));
 
     await chrome.storage.local.set({ [cacheKey]: data });
     return data;

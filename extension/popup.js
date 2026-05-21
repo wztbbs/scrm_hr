@@ -180,6 +180,7 @@ async function loadCurrentCandidate() {
     const tabUrl = tab.url || '';
     if (response && response.success && response.data) {
       const data = response.data;
+      console.log('[SCRM_BASE] popup.js received data from content:', JSON.stringify(data));
       // Build candidate immediately from scraped data for instant render
       currentCandidate = {
         linkedInId: data.linkedInId,
@@ -208,6 +209,8 @@ async function loadCurrentCandidate() {
         try {
           const backendCandidate = await window.API.candidates.getByLinkedInId(data.linkedInId);
           if (backendCandidate) {
+            console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
+            console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
             // Merge backend data into currentCandidate
             Object.assign(currentCandidate, backendCandidate, {
               linkedInUrl: tabUrl || backendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
@@ -219,6 +222,7 @@ async function loadCurrentCandidate() {
               educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (backendCandidate.educationExperiences || currentCandidate.educationExperiences),
               websites: data.websites?.length ? data.websites : (backendCandidate.websites || currentCandidate.websites),
             });
+            console.log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
             renderOverview();
           }
         } catch (e) {
@@ -238,8 +242,11 @@ async function loadCurrentCandidate() {
 
 function renderOverview() {
   if (!currentCandidate) return;
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview currentCandidate:', JSON.stringify(currentCandidate));
   // Apply draft if exists (before rendering)
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview before applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
   applyDraft(currentCandidate);
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview after applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
 
   $('ovAvatar').textContent = getInitials(currentCandidate.name);
   $('ovAvatar').style.background = getAvatarColor(currentCandidate.name);
@@ -561,13 +568,12 @@ $('ovSaveBtn').addEventListener('click', async () => {
   isSavingCandidate = true;
   showLoading();
   try {
-    const body = window.API.utils.candidateToBackend(currentCandidate);
     let saved;
     if (currentCandidate.id) {
-      saved = await window.API.candidates.update(currentCandidate.id, body);
+      saved = await window.API.candidates.update(currentCandidate.id, currentCandidate);
     } else {
-      body.source = 'linkedin_profile';
-      saved = await window.API.candidates.create(body);
+      currentCandidate.source = 'linkedin_profile';
+      saved = await window.API.candidates.create(currentCandidate);
       if (saved) {
         currentCandidate.id = saved.id;
       }
