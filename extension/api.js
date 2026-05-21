@@ -120,7 +120,7 @@ function candidateToBackend(frontendCandidate) {
     pipelinePosition: frontendCandidate.pipelinePosition || 0,
     pipelineEnteredAt: frontendCandidate.pipelineEnteredAt ? new Date(frontendCandidate.pipelineEnteredAt).toISOString() : null,
     rawProfileData: JSON.stringify(raw),
-    tags: frontendCandidate.tags || '',
+    tags: frontendCandidate.tags || '[]',
     nextFollowupAt: frontendCandidate.nextFollowup ? new Date(frontendCandidate.nextFollowup).toISOString() : null,
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null
@@ -157,7 +157,7 @@ function candidateFromBackend(backend) {
     workExperiences: extra.workExperiences || [],
     educationExperiences: extra.educationExperiences || [],
     websites: extra.websites || [],
-    tags: backend.tags || '',
+    tags: backend.tags || '[]',
     nextFollowup: backend.nextFollowupAt ? toTimestamp(backend.nextFollowupAt) : null,
     nextFollowupSource: backend.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: backend.nextFollowupSequenceStepId || null,
