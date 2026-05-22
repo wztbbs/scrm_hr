@@ -253,7 +253,11 @@ function renderOverview() {
   $('ovName').textContent = currentCandidate.name || 'Unknown';
   $('ovTitle').textContent = currentCandidate.company || '-';
 
-  $('ovTemperature').value = currentCandidate.temperature || 'Cold';
+  const ovTempEl = $('ovTemperature');
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature options:', Array.from(ovTempEl.options).map(o => o.value));
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'Cold');
+  ovTempEl.value = currentCandidate.temperature || 'Cold';
+  console.log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature.value after set:', ovTempEl.value, 'selectedIndex:', ovTempEl.selectedIndex);
 
   const isRecruiting = currentCandidate.contactMode === 'recruiting';
   $('ovModeRecruiting').classList.toggle('active', isRecruiting);

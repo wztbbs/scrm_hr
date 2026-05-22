@@ -114,7 +114,7 @@ function candidateToBackend(frontendCandidate) {
     linkedinUrl: frontendCandidate.linkedInUrl || '',
     email: (frontendCandidate.emails && frontendCandidate.emails[0]) || '',
     phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || '',
-    temperature: frontendCandidate.temperature || 'Cold',
+    temperature: (frontendCandidate.temperature ? frontendCandidate.temperature.toLowerCase() : null) || 'cold',
     source: frontendCandidate.source || 'linkedin_profile',
     pipelineStage: frontendCandidate.pipelineStage || 'new',
     pipelinePosition: frontendCandidate.pipelinePosition || 0,
@@ -125,6 +125,7 @@ function candidateToBackend(frontendCandidate) {
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null
   };
+  console.log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
   console.log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
   return body;
 }
@@ -137,6 +138,9 @@ function candidateFromBackend(backend) {
     }
   } catch (e) { /* ignore */ }
 
+  const tempRaw = backend.temperature;
+  const tempConverted = (tempRaw ? tempRaw.charAt(0).toUpperCase() + tempRaw.slice(1).toLowerCase() : null) || 'Cold';
+  console.log('[SCRM_BASE] api.js candidateFromBackend temperature conversion:', tempRaw, '->', tempConverted);
   const fc = {
     id: backend.id || '',
     name: backend.fullName || '',
@@ -147,7 +151,7 @@ function candidateFromBackend(backend) {
     linkedInUrl: backend.linkedinUrl || '',
     emails: backend.email ? [backend.email] : [],
     phones: backend.phone ? [backend.phone] : [],
-    temperature: backend.temperature || 'Cold',
+    temperature: tempConverted,
     source: backend.source || 'extension',
     pipelineStage: backend.pipelineStage || 'new',
     pipelinePosition: backend.pipelinePosition || 0,
