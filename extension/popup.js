@@ -1391,6 +1391,12 @@ async function loadSequenceOptions(selectEl, selectedId = '') {
     sequences.map(s => `<option value="${s.id}" ${s.id == selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 }
 
+async function getSequenceById(id) {
+  if (!id) return null;
+  const sequences = await getAllSequences();
+  return sequences.find(s => String(s.id) === String(id)) || null;
+}
+
 async function bindCandidateToSequence(candidateId, sequenceId) {
   console.log('[BIND_SEQ] START candidateId=', candidateId, 'sequenceId=', sequenceId);
 
@@ -1457,7 +1463,7 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
 
       const candidateIdForSeq = candidate ? candidate.id : null;
       const sequenceIdForSeq = seq.id;
-      console.log('[BIND_SEQ] candidateServerId=', candidateServerId, 'sequenceServerId=', sequenceServerId);
+      console.log('[BIND_SEQ] candidateIdForSeq=', candidateIdForSeq, 'sequenceIdForSeq=', sequenceIdForSeq);
       if (candidateIdForSeq && sequenceIdForSeq) {
         console.log('[BIND_SEQ] calling createCandidateSequence...');
         await window.API.sequences.createCandidateSequence(
@@ -1468,7 +1474,7 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
         console.log('[BIND_SEQ] createCandidateSequence success');
         trackEvent('sequence_bound', { category: 'engagement', label: 'sequence_' + sequenceId });
       } else {
-        console.warn('[BIND_SEQ] SKIP backend sync: missing id', { candidateServerId, sequenceServerId });
+        console.warn('[BIND_SEQ] SKIP backend sync: missing id', { candidateIdForSeq, sequenceIdForSeq });
       }
     } catch (e) {
       console.warn('[BIND_SEQ] Sync candidate-sequence to backend failed:', e);

@@ -115,5 +115,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.type === 'PRECONNECT') {
+        (async () => {
+            try {
+                const base = await getApiBase();
+                const userId = await getOrCreateUserId();
+                console.log(`[SCRM] Preconnect ping → ${base}/api/v1/pipeline/stages`);
+                fetch(`${base}/api/v1/pipeline/stages`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-User-Id': userId
+                    }
+                }).catch(() => {});
+            } catch (e) {}
+        })();
+        return false;
+    }
+
+    if (request.type === 'API_REQUEST') {
+        (async () => {
+            try {
+                const resp = await fetch(request.payload.url, request.payload.options);
+                const text = await resp.text();
+                let json = null;
+                try { json = JSON.parse(text); } catch (e) {}
+                sendResponse({
+                    ok: true,
+                    status: resp.status,
+                    statusText: resp.statusText,
+                    text,
+                    json
+                });
+            } catch (err) {
+                sendResponse({ ok: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     return false;
 });

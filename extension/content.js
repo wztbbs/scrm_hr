@@ -898,6 +898,28 @@ if (isLinkedInPage()) {
     startChatPresenceObserver();
 }
 
+// ========== Preconnect: keep background SW alive & connection warm ==========
+let preconnectInterval = null;
+
+function startPreconnect() {
+    if (preconnectInterval) return;
+    const doPing = () => {
+        console.log('[SCRM] Preconnect ping → background');
+        chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
+    };
+    doPing(); // 立即执行一次
+    preconnectInterval = setInterval(doPing, 25000);
+    console.log('[SCRM] Preconnect started, interval=25s');
+}
+
+function stopPreconnect() {
+    if (preconnectInterval) {
+        clearInterval(preconnectInterval);
+        preconnectInterval = null;
+        console.log('[SCRM] Preconnect stopped');
+    }
+}
+
 // SPA 路由变化监听（离开 LinkedIn 时停止一切）
 let lastUrl = location.href;
 new MutationObserver(() => {
@@ -908,6 +930,7 @@ new MutationObserver(() => {
         if (!isLinkedInPage()) {
             console.log('[SCRM] 已离开 LinkedIn，停止所有监听');
             stopMessageScraper();
+            stopPreconnect();
             if (chatObserver) {
                 chatObserver.disconnect();
                 chatObserver = null;
@@ -917,7 +940,21 @@ new MutationObserver(() => {
             startChatPresenceObserver();
             setTimeout(startMessageScraper, 1500);
         }
+        // 在 LinkedIn 任何页面保持预连接
+        if (isLinkedInPage()) {
+            startPreconnect();
+        } else {
+            stopPreconnect();
+        }
     }
 }).observe(document, { subtree: true, childList: true });
 
-window.addEventListener('beforeunload', () => stopMessageScraper());
+// 初始检查
+if (isLinkedInPage()) {
+    startPreconnect();
+}
+
+window.addEventListener('beforeunload', () => {
+    stopMessageScraper();
+    stopPreconnect();
+});
