@@ -12,11 +12,14 @@ async function getSetting(key, defaultValue = null) {
 
 // ========== UUID & User ==========
 async function ensureUserId() {
+  console.log('[PLUGIN_INIT] ensureUserId START');
+  const start = performance.now();
   let userId = await getSetting('userId');
   if (!userId) {
     userId = crypto.randomUUID();
     await setSetting('userId', userId);
   }
+  console.log(`[PLUGIN_INIT] ensureUserId END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   return userId;
 }
 

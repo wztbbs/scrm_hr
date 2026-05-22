@@ -167,6 +167,8 @@ document.querySelectorAll('.sub-tab').forEach(tab => {
 
 // ========== Overview: Load Candidate from LinkedIn ==========
 async function loadCurrentCandidate() {
+  console.log('[PLUGIN_INIT] loadCurrentCandidate START');
+  const start = performance.now();
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url || !tab.url.includes('linkedin.com/in/')) {
@@ -204,10 +206,9 @@ async function loadCurrentCandidate() {
       };
       renderOverview();
 
-      // Fetch backend details asynchronously (non-blocking)
+      // Fetch backend details asynchronously (non-blocking, parallel with tasks/me)
       if (typeof window !== 'undefined' && window.API) {
-        try {
-          const backendCandidate = await window.API.candidates.getByLinkedInId(data.linkedInId);
+        window.API.candidates.getByLinkedInId(data.linkedInId).then(backendCandidate => {
           if (backendCandidate) {
             console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
             console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
@@ -225,9 +226,9 @@ async function loadCurrentCandidate() {
             console.log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
             renderOverview();
           }
-        } catch (e) {
+        }).catch(e => {
           console.warn('[Popup] Backend candidate fetch failed:', e.message);
-        }
+        });
       }
     } else {
       $('ovName').textContent = 'Unable to load';
@@ -237,6 +238,8 @@ async function loadCurrentCandidate() {
     console.log('Load candidate error:', e);
     $('ovName').textContent = 'Error';
     $('ovTitle').textContent = e.message || 'Please open a LinkedIn profile';
+  } finally {
+    console.log(`[PLUGIN_INIT] loadCurrentCandidate END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
 
@@ -441,6 +444,8 @@ function renderOverviewVoiceMemo() {
 }
 
 async function renderOverviewTodayTasks() {
+  console.log('[PLUGIN_INIT] renderOverviewTodayTasks START');
+  const start = performance.now();
   let candidates = [];
   // Try backend API first; fallback to IndexedDB if offline
   if (typeof window !== 'undefined' && window.API) {
@@ -464,36 +469,36 @@ async function renderOverviewTodayTasks() {
 
   if (candidates.length === 0) {
     listEl.innerHTML = '<div class="text-gray text-sm text-center" style="padding:12px;">No tasks for today</div>';
-    return;
-  }
+  } else {
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-  const now = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+    listEl.innerHTML = candidates.map(candidate => {
+      const followupTime = new Date(candidate.nextFollowup).getTime();
+      const isOverdue = followupTime < now;
+      const isToday = !isOverdue && followupTime <= todayEnd.getTime();
 
-  listEl.innerHTML = candidates.map(candidate => {
-    const followupTime = new Date(candidate.nextFollowup).getTime();
-    const isOverdue = followupTime < now;
-    const isToday = !isOverdue && followupTime <= todayEnd.getTime();
+      let statusLabel = isOverdue ? `${Math.ceil((now - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
+      let statusClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
+      let borderClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
 
-    let statusLabel = isOverdue ? `${Math.ceil((now - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
-    let statusClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
-    let borderClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
+      const timeStr = new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    const timeStr = new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <div class="today-task-item">
-        <div class="today-task-border ${borderClass}"></div>
-        <div class="today-task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
-        <div class="today-task-info">
-          <div class="today-task-name">${escapeHtml(candidate.name)}</div>
-          <div class="today-task-desc">Follow-up · ${timeStr}</div>
+      return `
+        <div class="today-task-item">
+          <div class="today-task-border ${borderClass}"></div>
+          <div class="today-task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
+          <div class="today-task-info">
+            <div class="today-task-name">${escapeHtml(candidate.name)}</div>
+            <div class="today-task-desc">Follow-up · ${timeStr}</div>
+          </div>
+          <span class="today-task-status ${statusClass}">${statusLabel}</span>
         </div>
-        <span class="today-task-status ${statusClass}">${statusLabel}</span>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+  }
+  console.log(`[PLUGIN_INIT] renderOverviewTodayTasks END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // Overview events
@@ -859,7 +864,7 @@ async function renderPipeline() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      allCandidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      allCandidates = resp.data.items;
     }
   } catch (e) {
     console.warn('[Pipeline] Failed to fetch candidates:', e.message);
@@ -987,8 +992,7 @@ function bindPipelineDragEvents() {
         const candidate = await window.API.candidates.get(draggedId);
         if (candidate && (candidate.pipelineStage || 'new') !== newStage) {
           const oldStage = candidate.pipelineStage || 'new';
-          candidate.pipelineStage = newStage;
-          await window.API.candidates.update(draggedId, candidate);
+          await window.API.candidates.updatePipelineStage(draggedId, newStage);
           trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
           renderPipeline();
         }
@@ -1050,8 +1054,7 @@ function bindPipelineSaveToNewEvents() {
         if (!candidate) return;
         showLoading();
         try {
-          candidate.pipelineStage = 'new';
-          await window.API.candidates.update(candidateId, candidate);
+          await window.API.candidates.updatePipelineStage(candidateId, 'new');
           trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
           showToast('Candidate saved to New');
           renderPipeline();
@@ -1323,7 +1326,7 @@ async function updateFilterDropdown() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      candidates = resp.data.items;
     }
   } catch (e) {
     console.warn('[Filter] Failed to fetch candidates:', e.message);
@@ -1424,9 +1427,15 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     console.log('[BIND_SEQ] sequenceId empty, unbinding');
     if (candidate && candidate.id) {
       try {
-        const updated = { ...candidate };
-        delete updated.sequenceId;
-        await window.API.candidates.update(candidate.id, updated);
+        const resp = await window.API.sequences.listCandidateSequences({ candidate_id: candidate.id });
+        if (resp.data && resp.data.items) {
+          for (const cs of resp.data.items) {
+            if (cs.id) {
+              await window.API.sequences.deleteCandidateSequence(cs.id);
+            }
+          }
+        }
+        console.log('[BIND_SEQ] unbind success');
       } catch (e) {
         console.warn('[BIND_SEQ] unbind sequence failed:', e);
       }
@@ -1439,16 +1448,6 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
   if (!seq || !seq.steps || seq.steps.length === 0) {
     console.warn('[BIND_SEQ] ABORT: seq missing or no steps');
     return;
-  }
-
-  // Update candidate with bound sequence id on backend
-  if (candidate && candidate.id) {
-    try {
-      const updated = { ...candidate, sequenceId: sequenceId };
-      await window.API.candidates.update(candidate.id, updated);
-    } catch (e) {
-      console.warn('[BIND_SEQ] update candidate sequence failed:', e);
-    }
   }
 
   // Sync candidate-sequence binding to backend
@@ -1964,7 +1963,7 @@ async function renderHistory() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      candidates = resp.data.items;
     }
   } catch (e) {
     console.warn('[History] Failed to fetch candidates:', e.message);
@@ -2001,6 +2000,8 @@ $('historyCandidateSelect').addEventListener('change', async () => {
 
 // ========== Content Script Communication ==========
 async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
+  console.log(`[PLUGIN_INIT] sendMessageToContentScript START action=${message.action}`);
+  const start = performance.now();
   return new Promise((resolve, reject) => {
     let retries = 0;
     const trySend = () => {
@@ -2008,19 +2009,23 @@ async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
         if (chrome.runtime.lastError) {
           if (retries < maxRetries) {
             retries++;
+            console.log(`[PLUGIN_INIT] sendMessageToContentScript retry ${retries}/${maxRetries}`);
             chrome.scripting.executeScript({
               target: { tabId }, files: ['content.js']
             }, () => {
               if (chrome.runtime.lastError) {
+                console.warn(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`, chrome.runtime.lastError.message);
                 reject(new Error('Unable to inject content script'));
                 return;
               }
               setTimeout(trySend, 500);
             });
           } else {
+            console.warn(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`);
             reject(new Error('Content script not responding'));
           }
         } else {
+          console.log(`[PLUGIN_INIT] sendMessageToContentScript END 耗时=${(performance.now() - start).toFixed(1)}ms`);
           resolve(response);
         }
       });
@@ -2039,36 +2044,73 @@ function escapeHtml(text) {
 
 
 // ========== Init Backend Data ==========
-async function initBackendData() {
-  if (typeof window === 'undefined' || !window.API) return;
+const PIPELINE_CACHE_KEY = 'cachedPipelineStages';
+const PIPELINE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+async function loadPipelineStagesFromCache() {
   try {
-    // Fetch pipeline stages from backend (fixed enum, no boards)
+    const cached = await getSetting(PIPELINE_CACHE_KEY, null);
+    if (cached && cached.stages && cached.ts && (Date.now() - cached.ts) < PIPELINE_CACHE_TTL_MS) {
+      pipelineStages = cached.stages;
+      console.log('[PLUGIN_INIT] pipeline stages loaded from cache, count=' + pipelineStages.length);
+      return true;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
+async function initBackendData() {
+  console.log('[PLUGIN_INIT] initBackendData START');
+  const start = performance.now();
+  if (typeof window === 'undefined' || !window.API) {
+    console.log(`[PLUGIN_INIT] initBackendData END (skipped, no API) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    return;
+  }
+
+  // 1. Try cache first — pipeline stages are hardcoded enum, never change
+  const hadCache = await loadPipelineStagesFromCache();
+  if (hadCache) {
+    console.log(`[PLUGIN_INIT] initBackendData END (cache hit, no network) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    return;
+  }
+
+  // 2. No cache: fetch from backend and save
+  try {
     const stagesResp = await window.API.pipeline.listStages();
     if (stagesResp.data && stagesResp.data.items) {
       pipelineStages = stagesResp.data.items.map(s => ({
         id: s.id,
         name: s.name,
         color: s.color,
-        sortOrder: s.sort_order || s.sortOrder
+        sortOrder: s.sortOrder
       })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      await setSetting(PIPELINE_CACHE_KEY, { stages: pipelineStages, ts: Date.now() });
     }
   } catch (e) {
     console.warn('[Popup] Init backend data failed:', e.message);
   }
+
+  console.log(`[PLUGIN_INIT] initBackendData END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[PLUGIN_INIT] ===== 插件初始化开始 =====');
+  const totalStart = performance.now();
   showLoading();
   try {
     await ensureUserId();
-    await initBackendData();        // 1. sequences + pipeline stages (fast)
-    await loadCurrentCandidate();   // 2. scrape current page → render overview instantly
-    await renderOverviewTodayTasks(); // 3. fetch today's tasks from backend (small payload)
-    await initBindEmailState();     // 4. init bind email button state
+    await initBackendData();        // 1. sequences + pipeline stages (fast, cached)
+    await loadCurrentCandidate();   // 2. scrape current page → render overview instantly (non-blocking backend merge)
+    // 3. fetch tasks & user info in parallel
+    await Promise.all([
+      renderOverviewTodayTasks(),
+      initBindEmailState()
+    ]);
   } catch (e) {
     console.error('Init error:', e);
   } finally {
+    console.log(`[PLUGIN_INIT] ===== 插件初始化完成 总耗时=${(performance.now() - totalStart).toFixed(1)}ms =====`);
     hideLoading();
   }
 });
@@ -2549,6 +2591,8 @@ let currentUserEmail = null;
 let currentUserNeedBindEmail = false;
 
 async function initBindEmailState() {
+  console.log('[PLUGIN_INIT] initBindEmailState START');
+  const start = performance.now();
   try {
     const user = await window.API.user.me();
     currentUserEmail = user.email || null;
@@ -2557,6 +2601,8 @@ async function initBindEmailState() {
     renderEmailAlertCard();
   } catch (e) {
     console.error('[BindEmail] Failed to get user:', e);
+  } finally {
+    console.log(`[PLUGIN_INIT] initBindEmailState END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
 

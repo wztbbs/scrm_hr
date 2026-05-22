@@ -75,13 +75,13 @@ public class SequenceController {
         data.put("id", seq.getId());
         data.put("name", seq.getName());
         data.put("description", seq.getDescription());
-        data.put("job_title", seq.getJobTitle());
-        data.put("job_function", seq.getJobFunction());
-        data.put("is_active", seq.getIsActive());
-        data.put("step_count", seq.getStepCount());
-        data.put("is_template", seq.getIsTemplate());
+        data.put("jobTitle", seq.getJobTitle());
+        data.put("jobFunction", seq.getJobFunction());
+        data.put("isActive", seq.getIsActive());
+        data.put("stepCount", seq.getStepCount());
+        data.put("isTemplate", seq.getIsTemplate());
         data.put("steps", steps);
-        data.put("created_at", seq.getCreatedAt());
+        data.put("createdAt", seq.getCreatedAt());
         return ApiResponse.success(data);
     }
 

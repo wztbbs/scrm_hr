@@ -37,7 +37,17 @@ function toTimestamp(iso) {
 }
 
 async function apiRequest(method, path, body = null, query = null) {
+  const perfLabel = `[API_PERF] ${method} ${path}`;
+  const start = performance.now();
+  console.log(`${perfLabel} START`);
+
+  const t1 = performance.now();
   const base = await getApiBase();
+  const t2 = performance.now();
+  const userId = await getSetting('userId', '');
+  const t3 = performance.now();
+  console.log(`${perfLabel} storageReady apiBase=${(t2-t1).toFixed(1)}ms userId=${(t3-t2).toFixed(1)}ms`);
+
   let url = `${base}${path}`;
   if (query && Object.keys(query).length > 0) {
     const qs = new URLSearchParams();
@@ -48,7 +58,6 @@ async function apiRequest(method, path, body = null, query = null) {
     if (qstr) url += (url.includes('?') ? '&' : '?') + qstr;
   }
 
-  const userId = await getSetting('userId', '');
   const options = {
     method,
     headers: {
@@ -61,8 +70,32 @@ async function apiRequest(method, path, body = null, query = null) {
     options.body = JSON.stringify(body);
   }
 
+  const t4 = performance.now();
   try {
-    const resp = await fetch(url, options);
+    let resp;
+    try {
+      // Route through background service worker to reuse persistent connections
+      const bgResp = await chrome.runtime.sendMessage({
+        type: 'API_REQUEST',
+        payload: { url, options }
+      });
+      if (!bgResp.ok) {
+        throw new Error(bgResp.error || 'Background proxy failed');
+      }
+      resp = {
+        status: bgResp.status,
+        ok: bgResp.status >= 200 && bgResp.status < 300,
+        json: async () => bgResp.json,
+        text: async () => bgResp.text
+      };
+    } catch (bgErr) {
+      // Fallback: background unavailable (e.g. service worker killed), fetch directly
+      console.warn(`${perfLabel} background proxy failed, fallback to direct fetch:`, bgErr.message);
+      resp = await fetch(url, options);
+    }
+
+    const t5 = performance.now();
+    console.log(`${perfLabel} networkDone fetch=${(t5-t4).toFixed(1)}ms`);
     if (resp.status === 429) {
       const json = await resp.json().catch(() => null);
       const err = new Error(json && json.message ? json.message : 'Rate limit exceeded');
@@ -79,9 +112,10 @@ async function apiRequest(method, path, body = null, query = null) {
     if (json.code !== 0) {
       throw new Error(json.message || 'API error');
     }
+    console.log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);
     return json;
   } catch (err) {
-    console.warn('[API] Request failed:', method, url, err.message);
+    console.warn(`${perfLabel} FAILED total=${(performance.now() - start).toFixed(1)}ms fetch=${(performance.now()-t4).toFixed(1)}ms`, err.message);
     // 抛给上层/用户的必须是干净错误，但保留内部属性供业务判断（如 handleQuotaError）
     const cleanErr = new Error('Something went wrong. Please try again.');
     cleanErr.status = err.status;
@@ -106,14 +140,14 @@ function candidateToBackend(frontendCandidate) {
 
   const body = {
     // localId removed: backend uses auto-increment id only
-    fullName: frontendCandidate.name || '',
+    fullName: frontendCandidate.name || frontendCandidate.fullName || '',
     headline: frontendCandidate.headline || '',
     company: frontendCandidate.company || '',
     location: frontendCandidate.location || '',
-    linkedinId: frontendCandidate.linkedInId || '',
-    linkedinUrl: frontendCandidate.linkedInUrl || '',
-    email: (frontendCandidate.emails && frontendCandidate.emails[0]) || '',
-    phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || '',
+    linkedinId: frontendCandidate.linkedInId || frontendCandidate.linkedinId || '',
+    linkedinUrl: frontendCandidate.linkedInUrl || frontendCandidate.linkedinUrl || '',
+    email: (frontendCandidate.emails && frontendCandidate.emails[0]) || frontendCandidate.email || '',
+    phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || frontendCandidate.phone || '',
     temperature: (frontendCandidate.temperature ? frontendCandidate.temperature.toLowerCase() : null) || 'cold',
     source: frontendCandidate.source || 'linkedin_profile',
     pipelineStage: frontendCandidate.pipelineStage || 'new',
@@ -176,12 +210,15 @@ function candidateFromBackend(backend) {
 const CandidatesAPI = {
   async list(params = {}) {
     const resp = await apiRequest('GET', '/api/v1/candidates', null, params);
+    if (resp.data && resp.data.items) {
+      resp.data.items = resp.data.items.map(candidateFromBackend);
+    }
     return resp;
   },
 
   async get(id) {
     const resp = await apiRequest('GET', `/api/v1/candidates/${id}`);
-    return resp.data;
+    return resp.data ? candidateFromBackend(resp.data) : null;
   },
 
   async create(candidate) {
@@ -202,9 +239,8 @@ const CandidatesAPI = {
     return resp.data;
   },
 
-  async batch(items) {
-    const bodyItems = items.map(candidateToBackend);
-    const resp = await apiRequest('POST', '/api/v1/candidates/batch', { items: bodyItems });
+  async updatePipelineStage(id, stage) {
+    const resp = await apiRequest('PUT', `/api/v1/candidates/${id}/pipeline-stage`, { pipeline_stage: stage });
     return resp.data;
   },
 

@@ -15,9 +15,6 @@
         <encoder>
             <pattern>${LOG_PATTERN}</pattern>
         </encoder>
-        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>INFO</level>
-        </filter>
     </appender>
 
     <!-- 错误日志：仅 error -->

@@ -19,7 +19,7 @@ public class PipelineService {
             stageMap.put("id", stage.getValue());
             stageMap.put("name", stage.getLabel());
             stageMap.put("color", stage.getColor());
-            stageMap.put("sort_order", stage.getSortOrder());
+            stageMap.put("sortOrder", stage.getSortOrder());
             items.add(stageMap);
         }
         Map<String, Object> data = new HashMap<>();

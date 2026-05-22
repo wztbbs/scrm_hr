@@ -178,69 +178,6 @@ public class CandidateService {
     }
 
     @Transactional
-    public Map<String, Object> batchCandidates(List<Map<String, Object>> items) {
-        Long userId = RequestContext.getCurrentUserId();
-        List<Map<String, Object>> results = new ArrayList<>();
-        for (Map<String, Object> item : items) {
-            Map<String, Object> result = new HashMap<>();
-            String action = (String) item.getOrDefault("_sync_action", "create");
-            try {
-                // Resolve candidate by id or linkedin_id
-                CandidateWithBLOBs existing = null;
-                Object idObj = item.get("id");
-                if (idObj != null) {
-                    try {
-                        existing = candidateMapper.selectByPrimaryKey(Long.parseLong(idObj.toString()));
-                        if (existing != null && !existing.getUserId().equals(userId)) {
-                            existing = null;
-                        }
-                    } catch (NumberFormatException ignored) {}
-                }
-                if (existing == null && item.get("linkedin_id") != null) {
-                    CandidateExample ex = new CandidateExample();
-                    ex.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo((String) item.get("linkedin_id"));
-                    List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(ex);
-                    if (!list.isEmpty()) {
-                        existing = list.get(0);
-                    }
-                }
-
-                if ("delete".equals(action)) {
-                    if (existing != null) {
-                        candidateMapper.deleteByPrimaryKey(existing.getId());
-                    }
-                    result.put("status", "deleted");
-                } else {
-                    CandidateWithBLOBs candidate = mapToCandidate(item);
-                    candidate.setUserId(userId);
-                    if (existing == null) {
-                        subscriptionService.checkCandidateLimit(userId);
-                        candidateMapper.insertSelective(candidate);
-                        result.put("status", "created");
-                        result.put("id", candidate.getId());
-                    } else {
-                        candidate.setId(existing.getId());
-                        candidate.setUserId(null);
-                        candidate.setCreatedAt(null);
-                        candidate.setUpdatedAt(new Date());
-                        candidateMapper.updateByPrimaryKeySelective(candidate);
-                        result.put("status", "updated");
-                        result.put("id", existing.getId());
-                    }
-                }
-            } catch (Exception e) {
-                result.put("status", "failed");
-                result.put("error", e.getMessage());
-            }
-            results.add(result);
-        }
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("results", results);
-        resp.put("sync_token", UUID.randomUUID().toString());
-        return resp;
-    }
-
-    @Transactional
     public void updateFollowup(String id, Date nextFollowupAt, String source, Long sequenceStepId) {
         Long userId = RequestContext.getCurrentUserId();
         CandidateWithBLOBs existing = findById(userId, id);
@@ -250,6 +187,19 @@ public class CandidateService {
         subCandidateMapper.updateNextFollowup(existing.getId(), nextFollowupAt, source, sequenceStepId);
         historyService.recordHistory(existing.getId(), "follow_up_scheduled",
                 "Follow-up scheduled for " + nextFollowupAt, "user");
+    }
+
+    @Transactional
+    public void updatePipelineStage(String id, String pipelineStage) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateWithBLOBs existing = findById(userId, id);
+        if (existing == null) {
+            throw new BusinessException("Candidate not found");
+        }
+        String oldStage = existing.getPipelineStage();
+        subCandidateMapper.updatePipelineStage(existing.getId(), pipelineStage);
+        historyService.recordHistory(existing.getId(), "status_change",
+                "Moved from " + oldStage + " to " + pipelineStage, "user");
     }
 
     public CandidateWithBLOBs getCandidateByLinkedInId(String linkedInId) {
@@ -292,32 +242,5 @@ public class CandidateService {
         return result;
     }
 
-    private CandidateWithBLOBs mapToCandidate(Map<String, Object> map) {
-        CandidateWithBLOBs c = new CandidateWithBLOBs();
 
-        c.setFullName((String) map.get("full_name"));
-        c.setHeadline((String) map.get("headline"));
-        c.setJobTitle((String) map.get("job_title"));
-        c.setCompany((String) map.get("company"));
-        c.setLocation((String) map.get("location"));
-        c.setLinkedinUrl((String) map.get("linkedin_url"));
-        c.setLinkedinId((String) map.get("linkedin_id"));
-        c.setEmail((String) map.get("email"));
-        c.setPhone((String) map.get("phone"));
-        c.setAvatarUrl((String) map.get("avatar_url"));
-        c.setConnectionDegree((String) map.get("connection_degree"));
-        c.setTemperature((String) map.get("temperature"));
-        if (map.containsKey("is_ai_suggested_temp")) {
-            c.setIsAiSuggestedTemp((Boolean) map.get("is_ai_suggested_temp"));
-        }
-
-        c.setSource((String) map.get("source"));
-        if (map.get("tags") != null) {
-            c.setTags(map.get("tags").toString());
-        }
-        if (map.get("raw_profile_data") != null) {
-            c.setRawProfileData(map.get("raw_profile_data").toString());
-        }
-        return c;
-    }
 }

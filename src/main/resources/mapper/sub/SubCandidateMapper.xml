@@ -26,6 +26,14 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
+  <update id="updatePipelineStage">
+    update candidates
+    set pipeline_stage = #{pipelineStage,jdbcType=CHAR},
+        pipeline_entered_at = now(),
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
   <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.BaseResultMap">
     SELECT * FROM candidates
     WHERE user_id = #{userId}

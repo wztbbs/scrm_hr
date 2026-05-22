@@ -84,11 +84,14 @@ public class CandidateController {
         return ApiResponse.success(result);
     }
 
-    @PostMapping("/batch")
-    public ApiResponse<Map<String, Object>> batch(@RequestBody Map<String, Object> body) {
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
-        return ApiResponse.success(candidateService.batchCandidates(items));
+    @PutMapping("/{id}/pipeline-stage")
+    public ApiResponse<Map<String, Object>> updatePipelineStage(@PathVariable String id,
+                                                                 @RequestBody Map<String, Object> body) {
+        String stage = (String) body.get("pipeline_stage");
+        candidateService.updatePipelineStage(id, stage);
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        return ApiResponse.success(result);
     }
 
     @PutMapping("/{id}/follow-up")

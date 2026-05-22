@@ -19,6 +19,9 @@ public interface SubCandidateMapper extends CandidateMapper {
                            @Param("nextFollowupSource") String nextFollowupSource,
                            @Param("nextFollowupSequenceStepId") Long nextFollowupSequenceStepId);
 
+    int updatePipelineStage(@Param("id") Long id,
+                            @Param("pipelineStage") String pipelineStage);
+
     List<Candidate> searchByKeyword(@Param("userId") Long userId,
                                     @Param("search") String search,
                                     @Param("temperature") String temperature,
