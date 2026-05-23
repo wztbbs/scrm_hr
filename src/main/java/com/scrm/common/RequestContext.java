@@ -53,7 +53,6 @@ public class RequestContext {
             // Auto-create user for this UUID
             User newUser = new User();
             newUser.setUuid(userIdHeader);
-            newUser.setEmail("anonymous_" + userIdHeader.substring(0, 8) + "@local");
             newUser.setTimezone("UTC");
             newUser.setLocale("en-US");
             newUser.setIsActive(true);
