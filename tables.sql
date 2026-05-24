@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `users` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '自增主键',
   `uuid` VARCHAR(64) NOT NULL UNIQUE COMMENT '浏览器端生成的 UUID（前端 userId）',
-  `email` varchar(255) NOT NULL COMMENT '用户邮箱（登录账号）',
+  `email` varchar(255) NOT NULL DEFAULT '' COMMENT '用户邮箱（登录账号）',
   `password_hash` varchar(255) DEFAULT NULL COMMENT '密码哈希（支持邮箱登录）',
   `timezone` varchar(64) DEFAULT 'UTC' COMMENT '用户时区',
   `locale` varchar(16) DEFAULT 'en-US' COMMENT '语言设置',

@@ -59,7 +59,7 @@ public class RequestContext {
             newUser.setDailyAiUsed(0);
             newUser.setCreatedAt(new Date());
             newUser.setUpdatedAt(new Date());
-            staticUserMapper.insert(newUser);
+            staticUserMapper.insertSelective(newUser);
             // Re-fetch to get auto-generated id (insert does not populate id)
             UserExample refetch = new UserExample();
             refetch.createCriteria().andUuidEqualTo(userIdHeader);
