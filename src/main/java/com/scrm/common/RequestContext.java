@@ -43,7 +43,7 @@ public class RequestContext {
         try {
             return Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            log.error("Failed to parse userId as Long, treating as UUID: {}", userIdHeader, e);
+            log.warn("Failed to parse userId as Long, treating as UUID: {}", userIdHeader);
         }
 
         // Lookup user by UUID, auto-create if not exists

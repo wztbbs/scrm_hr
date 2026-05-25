@@ -201,6 +201,7 @@ function candidateFromBackend(backend) {
     nextFollowup: backend.nextFollowupAt ? toTimestamp(backend.nextFollowupAt) : null,
     nextFollowupSource: backend.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: backend.nextFollowupSequenceStepId || null,
+    sequenceId: backend.sequenceId || null,
     createdAt: toTimestamp(backend.createdAt) || Date.now(),
     updatedAt: toTimestamp(backend.updatedAt) || Date.now()
   };
