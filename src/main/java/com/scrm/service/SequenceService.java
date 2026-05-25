@@ -207,18 +207,33 @@ public class SequenceService {
     @Transactional
     public CandidateSequence createCandidateSequence(CandidateSequence cs) {
         Long userId = RequestContext.getCurrentUserId();
+
+        // 1. Check if candidate already has an active binding to the SAME sequence
+        CandidateSequenceExample existingExample = new CandidateSequenceExample();
+        existingExample.createCriteria()
+                .andUserIdEqualTo(userId)
+                .andCandidateIdEqualTo(cs.getCandidateId())
+                .andStatusEqualTo("active");
+        List<CandidateSequence> existingList = candidateSequenceMapper.selectByExample(existingExample);
+        if (!existingList.isEmpty()) {
+            CandidateSequence existing = existingList.get(0);
+            if (existing.getSequenceId().equals(cs.getSequenceId())) {
+                // Same sequence, no change needed, no popup
+                existing.setRebound(false);
+                return existing;
+            }
+            // Different sequence: delete old binding (rebound)
+            for (CandidateSequence old : existingList) {
+                candidateSequenceMapper.deleteByPrimaryKey(old.getId());
+            }
+        }
+
+        // 2. Create new binding (first time or rebound)
         cs.setUserId(userId);
         cs.setCreatedAt(new Date());
         cs.setUpdatedAt(new Date());
         cs.setCurrentStepNumber(1);
-
-        // Abandon any existing active binding for this candidate before creating a new one
-        CandidateSequenceExample abandonExample = new CandidateSequenceExample();
-        abandonExample.createCriteria().andUserIdEqualTo(userId)
-                .andCandidateIdEqualTo(cs.getCandidateId());
-        for (CandidateSequence old : candidateSequenceMapper.selectByExample(abandonExample)) {
-            candidateSequenceMapper.deleteByPrimaryKey(old.getId());
-        }
+        cs.setStatus("active");
 
         // get sequence steps to set total_steps
         SequenceStepExample example = new SequenceStepExample();
@@ -232,9 +247,7 @@ public class SequenceService {
         historyService.recordHistory(cs.getCandidateId(), "sequence_started",
                 "Sequence started (step 1/" + cs.getTotalSteps() + ")", "system");
 
-        // Note: next_followup is NO LONGER set here automatically.
-        // The frontend will prompt the user to accept or edit the suggested follow-up time.
-
+        cs.setRebound(true);
         return cs;
     }
 

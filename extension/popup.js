@@ -1504,13 +1504,48 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
       console.log('[BIND_SEQ] candidateIdForSeq=', candidateIdForSeq, 'sequenceIdForSeq=', sequenceIdForSeq);
       if (candidateIdForSeq && sequenceIdForSeq) {
         console.log('[BIND_SEQ] calling createCandidateSequence...');
-        await window.API.sequences.createCandidateSequence(
+        const csResult = await window.API.sequences.createCandidateSequence(
           candidateIdForSeq,
           sequenceIdForSeq,
           { stepIndex: 0, totalSteps: seq.steps.length, status: 'active' }
         );
-        console.log('[BIND_SEQ] createCandidateSequence success');
+        console.log('[BIND_SEQ] createCandidateSequence success, rebound=', csResult ? csResult.rebound : 'N/A');
         trackEvent('sequence_bound', { category: 'engagement', label: 'sequence_' + sequenceId });
+
+        // Prompt user to confirm the suggested follow-up time only on first bind or rebound
+        if (csResult && csResult.rebound !== false && seq.steps.length >= 2 && candidate) {
+          const nextStep = seq.steps[1]; // step 2
+          const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
+          const suggestedDate = new Date(suggestedTime);
+          const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
+
+          // Hide loading overlay so the modal is clickable
+          hideLoading();
+          const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
+          if (choice && choice.accepted) {
+            showLoading();
+            const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
+            const source = choice.edited ? 'manual' : 'sequence';
+            if (candidate.id) {
+              try {
+                await window.API.candidates.updateFollowup(
+                  candidate.id,
+                  new Date(followupTime),
+                  source,
+                  source === 'sequence' ? nextStep.stepNumber : null
+                );
+                renderOverviewNextFollowup();
+              } catch (e) {
+                console.warn('[BIND_SEQ] update followup failed:', e);
+              } finally {
+                hideLoading();
+              }
+            } else {
+              hideLoading();
+            }
+          }
+        }
       } else {
         console.warn('[BIND_SEQ] SKIP backend sync: missing id', { candidateIdForSeq, sequenceIdForSeq });
       }
@@ -1519,41 +1554,6 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     }
   } else {
     console.warn('[BIND_SEQ] window.API not available');
-  }
-
-  // Prompt user to confirm the suggested follow-up time (Step 2 if exists)
-  if (seq.steps.length >= 2 && candidate) {
-    const nextStep = seq.steps[1]; // step 2
-    const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
-    const suggestedDate = new Date(suggestedTime);
-    const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
-
-    // Hide loading overlay so the modal is clickable
-    hideLoading();
-    const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
-    if (choice && choice.accepted) {
-      showLoading();
-      const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
-      const source = choice.edited ? 'manual' : 'sequence';
-      if (candidate.id) {
-        try {
-          await window.API.candidates.updateFollowup(
-            candidate.id,
-            new Date(followupTime),
-            source,
-            source === 'sequence' ? nextStep.stepNumber : null
-          );
-          renderOverviewNextFollowup();
-        } catch (e) {
-          console.warn('[BIND_SEQ] update followup failed:', e);
-        } finally {
-          hideLoading();
-        }
-      } else {
-        hideLoading();
-      }
-    }
   }
 
   console.log('[BIND_SEQ] END');

@@ -506,7 +506,8 @@ function candidateSequenceFromBackend(backend) {
     currentStepNumber: backend.currentStepNumber || 1,
     totalSteps: backend.totalSteps || 1,
     startedAt: toTimestamp(backend.startedAt),
-    completedAt: toTimestamp(backend.completedAt)
+    completedAt: toTimestamp(backend.completedAt),
+    rebound: backend.rebound !== false
   };
 }
 
