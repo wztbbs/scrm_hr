@@ -166,7 +166,7 @@ document.querySelectorAll('.sub-tab').forEach(tab => {
 });
 
 // ========== Overview: Load Candidate from LinkedIn ==========
-async function loadCurrentCandidate() {
+async function loadCurrentCandidate(preloadedBackendCandidate = null) {
   console.log('[PLUGIN_INIT] loadCurrentCandidate START');
   const start = performance.now();
   try {
@@ -206,13 +206,28 @@ async function loadCurrentCandidate() {
       };
       renderOverview();
 
-      // Fetch backend details asynchronously (non-blocking, parallel with tasks/me)
-      if (typeof window !== 'undefined' && window.API) {
+      // Merge preloaded backend candidate if available
+      if (preloadedBackendCandidate) {
+        console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(preloadedBackendCandidate));
+        console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
+        Object.assign(currentCandidate, preloadedBackendCandidate, {
+          linkedInUrl: tabUrl || preloadedBackendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
+          name: data.name || preloadedBackendCandidate.name || currentCandidate.name,
+          headline: data.headline || preloadedBackendCandidate.headline || currentCandidate.headline,
+          company: data.company || preloadedBackendCandidate.company || currentCandidate.company,
+          skills: data.skills?.length ? data.skills : (preloadedBackendCandidate.skills || currentCandidate.skills),
+          workExperiences: data.workExperiences?.length ? data.workExperiences : (preloadedBackendCandidate.workExperiences || currentCandidate.workExperiences),
+          educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (preloadedBackendCandidate.educationExperiences || currentCandidate.educationExperiences),
+          websites: data.websites?.length ? data.websites : (preloadedBackendCandidate.websites || currentCandidate.websites),
+        });
+        console.log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
+        renderOverview();
+      } else if (typeof window !== 'undefined' && window.API) {
+        // Fallback: fetch backend details asynchronously
         window.API.candidates.getByLinkedInId(data.linkedInId).then(backendCandidate => {
           if (backendCandidate) {
             console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
             console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
-            // Merge backend data into currentCandidate
             Object.assign(currentCandidate, backendCandidate, {
               linkedInUrl: tabUrl || backendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
               name: data.name || backendCandidate.name || currentCandidate.name,
@@ -443,12 +458,12 @@ function renderOverviewVoiceMemo() {
   }
 }
 
-async function renderOverviewTodayTasks() {
+async function renderOverviewTodayTasks(preloadedTasks = null) {
   console.log('[PLUGIN_INIT] renderOverviewTodayTasks START');
   const start = performance.now();
-  let candidates = [];
+  let candidates = preloadedTasks;
   // Try backend API first; fallback to IndexedDB if offline
-  if (typeof window !== 'undefined' && window.API) {
+  if (candidates === null && typeof window !== 'undefined' && window.API) {
     try {
       const resp = await window.API.candidates.tasks();
       if (resp.data && resp.data.items) {
@@ -458,7 +473,8 @@ async function renderOverviewTodayTasks() {
       console.warn('[Popup] Backend tasks fetch failed:', e.message);
       candidates = [];
     }
-  } else {
+  }
+  if (!candidates) {
     candidates = [];
   }
 
@@ -576,13 +592,22 @@ $('ovSaveBtn').addEventListener('click', async () => {
   if (!canSave) return;
   isSavingCandidate = true;
   showLoading();
+  const savePerfStart = performance.now();
+  const perfLabel = '[SCRM_SAVE_PERF]';
+  console.log(`${perfLabel} SAVE_START id=${currentCandidate.id || 'new'} mode=${currentCandidate.id ? 'UPDATE' : 'CREATE'}`);
   try {
     let saved;
     if (currentCandidate.id) {
+      console.log(`${perfLabel} UPDATE_API_START id=${currentCandidate.id}`);
+      const updateStart = performance.now();
       saved = await window.API.candidates.update(currentCandidate.id, currentCandidate);
+      console.log(`${perfLabel} UPDATE_API_END duration=${(performance.now() - updateStart).toFixed(1)}ms`);
     } else {
+      console.log(`${perfLabel} CREATE_API_START`);
+      const createStart = performance.now();
       currentCandidate.source = 'linkedin_profile';
       saved = await window.API.candidates.create(currentCandidate);
+      console.log(`${perfLabel} CREATE_API_END duration=${(performance.now() - createStart).toFixed(1)}ms`);
       if (saved) {
         currentCandidate.id = saved.id;
       }
@@ -590,7 +615,10 @@ $('ovSaveBtn').addEventListener('click', async () => {
     // Sync sequence binding if needed (backend auto-records history)
     if (currentCandidate.sequenceId && currentCandidate.id) {
       try {
+        console.log(`${perfLabel} BIND_SEQ_START seqId=${currentCandidate.sequenceId}`);
+        const bindStart = performance.now();
         await bindCandidateToSequence(currentCandidate.id, currentCandidate.sequenceId);
+        console.log(`${perfLabel} BIND_SEQ_END duration=${(performance.now() - bindStart).toFixed(1)}ms`);
       } catch (e) {
         console.warn('[Save] Sequence binding failed:', e.message);
       }
@@ -598,9 +626,16 @@ $('ovSaveBtn').addEventListener('click', async () => {
     clearDraft(currentCandidate);
     showToast('Saved & tracked!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'overview' });
+
+    console.log(`${perfLabel} RENDER_OVERVIEW_START`);
+    const renderOvStart = performance.now();
     await renderOverviewNextFollowup();
     await renderOverviewActiveSequence();
+    console.log(`${perfLabel} RENDER_OVERVIEW_END duration=${(performance.now() - renderOvStart).toFixed(1)}ms`);
+
     // Switch to pipeline tab after saving
+    console.log(`${perfLabel} SWITCH_TAB_START`);
+    const tabStart = performance.now();
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelector('.nav-tab[data-tab="pipeline"]').classList.add('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -611,12 +646,15 @@ $('ovSaveBtn').addEventListener('click', async () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
+    console.log(`${perfLabel} SWITCH_TAB_END duration=${(performance.now() - tabStart).toFixed(1)}ms`);
   } catch (e) {
+    console.error(`${perfLabel} SAVE_FAILED`, e);
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
   } finally {
     isSavingCandidate = false;
     hideLoading();
+    console.log(`${perfLabel} SAVE_TOTAL duration=${(performance.now() - savePerfStart).toFixed(1)}ms`);
   }
   trackEvent('plugin_opened', { category: 'engagement' });
 });
@@ -1491,8 +1529,11 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
     const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
 
+    // Hide loading overlay so the modal is clickable
+    hideLoading();
     const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
     if (choice && choice.accepted) {
+      showLoading();
       const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
       const source = choice.edited ? 'manual' : 'sequence';
       if (candidate.id) {
@@ -1506,7 +1547,11 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
           renderOverviewNextFollowup();
         } catch (e) {
           console.warn('[BIND_SEQ] update followup failed:', e);
+        } finally {
+          hideLoading();
         }
+      } else {
+        hideLoading();
       }
     }
   }
@@ -1553,7 +1598,7 @@ function openManualEntryModal(candidateId = null) {
     $('meLocation').value = '';
     $('meLinkedInUrl').value = '';
     $('meEmail').value = '';
-    $('meStatus').value = pipelineStages[0]?.id || 'new';
+    $('meStatus').value = 'new';
     $('meNotes').value = '';
     document.querySelectorAll('.temp-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.temp === 'Warm');
@@ -2106,13 +2151,59 @@ document.addEventListener('DOMContentLoaded', async () => {
   showLoading();
   try {
     await ensureUserId();
-    await initBackendData();        // 1. sequences + pipeline stages (fast, cached)
-    await loadCurrentCandidate();   // 2. scrape current page → render overview instantly (non-blocking backend merge)
-    // 3. fetch tasks & user info in parallel
-    await Promise.all([
-      renderOverviewTodayTasks(),
-      initBindEmailState()
-    ]);
+
+    // Determine if on LinkedIn profile page and get linkedInId
+    let linkedInId = null;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url && tab.url.includes('linkedin.com/in/')) {
+        const response = await sendMessageToContentScript(tab.id, { action: 'scrape' });
+        if (response && response.success && response.data) {
+          linkedInId = response.data.linkedInId;
+        }
+      }
+    } catch (e) {
+      console.warn('[PLUGIN_INIT] Failed to scrape linkedinId, fallback to no-candidate mode');
+    }
+
+    // Try facade overview API first (single request)
+    let overview = null;
+    let useOverview = false;
+    if (typeof window !== 'undefined' && window.API) {
+      try {
+        console.log('[PLUGIN_INIT] calling overview API, linkedinId=' + linkedInId);
+        overview = await window.API.overview.get(linkedInId);
+        useOverview = true;
+        console.log('[PLUGIN_INIT] overview API success');
+      } catch (e) {
+        console.warn('[PLUGIN_INIT] overview API failed, fallback to legacy init:', e.message);
+      }
+    }
+
+    if (useOverview && overview) {
+      // 1. Pipeline stages
+      if (overview.pipelineStages) {
+        pipelineStages = overview.pipelineStages;
+        await setSetting(PIPELINE_CACHE_KEY, { stages: pipelineStages, ts: Date.now() });
+      }
+
+      // 2. User + Subscription
+      await initBindEmailState(overview.user, overview.subscription);
+
+      // 3. Today tasks
+      await renderOverviewTodayTasks(overview.todayTasks);
+
+      // 4. Candidate (scrape + merge with backend data)
+      await loadCurrentCandidate(overview.candidate);
+    } else {
+      // Fallback to legacy multi-request init
+      await initBackendData();
+      await loadCurrentCandidate();
+      await Promise.all([
+        renderOverviewTodayTasks(),
+        initBindEmailState()
+      ]);
+    }
   } catch (e) {
     console.error('Init error:', e);
   } finally {
@@ -2338,10 +2429,10 @@ function showSeqFollowupConfirm(messageHtml) {
 
     textEl.innerHTML = messageHtml;
     editRow.style.display = 'none';
-    overlay.classList.remove('hidden');
+    overlay.classList.add('active');
 
     const cleanup = () => {
-      overlay.classList.add('hidden');
+      overlay.classList.remove('active');
       acceptBtn.onclick = null;
       editBtn.onclick = null;
       overlay.onclick = null;
@@ -2596,15 +2687,20 @@ let currentUserEmail = null;
 
 let currentUserNeedBindEmail = false;
 
-async function initBindEmailState() {
+async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
   console.log('[PLUGIN_INIT] initBindEmailState START');
   const start = performance.now();
   try {
-    const user = await window.API.user.me();
-    currentUserEmail = user.email || null;
-    currentUserNeedBindEmail = user.needBindEmail || false;
-    updateBindEmailButton();
-    renderEmailAlertCard();
+    let user = preloadedUser;
+    if (!user && typeof window !== 'undefined' && window.API) {
+      user = await window.API.user.me();
+    }
+    if (user) {
+      currentUserEmail = user.email || null;
+      currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
+      updateBindEmailButton();
+      renderEmailAlertCard();
+    }
   } catch (e) {
     console.error('[BindEmail] Failed to get user:', e);
   } finally {

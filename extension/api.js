@@ -276,6 +276,26 @@ const CandidatesAPI = {
   }
 };
 
+// ==================== Overview ====================
+
+const OverviewAPI = {
+  async get(linkedinId) {
+    const query = linkedinId ? { linkedin_id: linkedinId } : null;
+    const resp = await apiRequest('GET', '/api/v1/overview', null, query);
+    const data = resp.data || {};
+
+    // Transform nested candidate if present
+    if (data.candidate) {
+      data.candidate = candidateFromBackend(data.candidate);
+    }
+    // Transform today tasks if present
+    if (data.todayTasks) {
+      data.todayTasks = data.todayTasks.map(candidateFromBackend);
+    }
+    return data;
+  }
+};
+
 // ==================== History ====================
 
 function historyToBackend(frontendHistory) {
@@ -618,6 +638,7 @@ const SubscriptionAPI = {
 if (typeof window !== 'undefined') {
   window.API = {
     base: { getApiBase, setApiBase },
+    overview: OverviewAPI,
     candidates: CandidatesAPI,
     history: HistoryAPI,
     notes: NotesAPI,

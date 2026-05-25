@@ -157,7 +157,8 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   KEY `idx_temperature` (`temperature`),
   KEY `idx_created_at` (`created_at`),
   KEY `idx_last_activity` (`last_activity_at`),
-  KEY `idx_pipeline_stage` (`pipeline_stage`)
+  KEY `idx_pipeline_stage` (`pipeline_stage`),
+  KEY `idx_user_next_followup` (`user_id`, `next_followup_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候选人主表';
 
 CREATE TABLE IF NOT EXISTS `candidate_notes` (
