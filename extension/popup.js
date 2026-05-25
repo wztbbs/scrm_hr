@@ -1432,8 +1432,11 @@ async function loadSequenceOptions(selectEl, selectedId = '') {
 
 async function getSequenceById(id) {
   if (!id) return null;
-  const sequences = await getAllSequences();
-  return sequences.find(s => String(s.id) === String(id)) || null;
+  try {
+    return await window.API.sequences.get(id);
+  } catch (e) {
+    return null;
+  }
 }
 
 async function bindCandidateToSequence(candidateId, sequenceId) {
@@ -1747,16 +1750,20 @@ async function renderSequenceTemplates() {
 
     const div = document.createElement('div');
     div.className = 'seq-item';
+    const isTemplate = seq.isTemplate === true;
+    const actionsHtml = isTemplate ? '' : `
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn-sm seq-item-toggle" data-action="edit" data-id="${seq.id}" style="flex:1;background:#fff;color:#5b4cdb;border:1px solid #5b4cdb;">Edit</button>
+        <button class="btn-sm seq-item-delete" data-id="${seq.id}" style="flex:1;background:#fff;color:#ef4444;border:1px solid #ef4444;">Delete</button>
+      </div>
+    `;
     div.innerHTML = `
       <div class="seq-item-header">
         <span class="seq-item-name">${escapeHtml(seq.name)}</span>
         <span class="seq-item-count">${totalSteps} step${totalSteps !== 1 ? 's' : ''}</span>
       </div>
       <ul class="seq-steps">${stepsHtml}</ul>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn-sm seq-item-toggle" data-action="use" data-id="${seq.id}" style="flex:1;">Use</button>
-        <button class="btn-sm seq-item-toggle" data-action="edit" data-id="${seq.id}" style="flex:1;background:#fff;color:#5b4cdb;border:1px solid #5b4cdb;">Edit</button>
-      </div>
+      ${actionsHtml}
     `;
     container.appendChild(div);
   }
@@ -1843,6 +1850,7 @@ const SEQ_DELAY_OPTIONS = [
 ];
 
 let seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
+let editingSequenceId = null;
 
 function renderSeqStepRows() {
   const container = $('modalSeqStepsContainer');
@@ -1864,8 +1872,7 @@ function renderSeqStepRows() {
           <input type="text" class="form-input seq-step-name" placeholder="Step name" value="${escapeHtml(step.name)}" style="flex:1;">
           <select class="form-select seq-step-delay" style="width:140px;flex-shrink:0;">
             ${SEQ_DELAY_OPTIONS.map(opt => {
-              const disabled = opt.value < prevDelay;
-              return `<option value="${opt.value}" ${opt.value === step.delayDays ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${opt.label}</option>`;
+              return `<option value="${opt.value}" ${opt.value === step.delayDays ? 'selected' : ''}>${opt.label}</option>`;
             }).join('')}
           </select>
         </div>
@@ -1880,13 +1887,6 @@ function renderSeqStepRows() {
   container.querySelectorAll('.seq-step-delay').forEach((select, idx) => {
     select.addEventListener('change', () => {
       seqSteps[idx].delayDays = parseInt(select.value);
-      let lastDelay = seqSteps[idx].delayDays;
-      for (let i = idx + 1; i < seqSteps.length; i++) {
-        if (seqSteps[i].delayDays < lastDelay) {
-          seqSteps[i].delayDays = lastDelay;
-        }
-        lastDelay = seqSteps[i].delayDays;
-      }
       renderSeqStepRows();
     });
   });
@@ -1900,6 +1900,8 @@ function renderSeqStepRows() {
 }
 
 $('btnNewSequence').addEventListener('click', () => {
+  editingSequenceId = null;
+  $('modalSeqTitle').textContent = 'New Sequence';
   seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
   $('modalSeqName').value = '';
   renderSeqStepRows();
@@ -1920,9 +1922,6 @@ $('modalSeqSave').addEventListener('click', async () => {
   const name = $('modalSeqName').value.trim();
   if (!name) { showToast('Please enter a sequence name'); return; }
 
-  const canCreate = await checkSequenceLimit();
-  if (!canCreate) return;
-
   const steps = seqSteps.filter(s => s.name.trim()).map(s => ({
     name: s.name.trim(),
     delayDays: s.delayDays
@@ -1931,12 +1930,21 @@ $('modalSeqSave').addEventListener('click', async () => {
   if (steps.length === 0) { showToast('Please enter at least one step'); return; }
 
   try {
-    await saveSequence({ name, steps });
-    showToast('Sequence saved!');
+    if (editingSequenceId) {
+      await window.API.sequences.update(editingSequenceId, { name, steps });
+      showToast('Sequence updated!');
+    } else {
+      const canCreate = await checkSequenceLimit();
+      if (!canCreate) return;
+      await window.API.sequences.create({ name, steps });
+      showToast('Sequence saved!');
+    }
     $('modalNewSequence').classList.remove('active');
     $('modalSeqName').value = '';
     seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
     renderSeqStepRows();
+    editingSequenceId = null;
+    $('modalSeqTitle').textContent = 'New Sequence';
     renderSequenceTemplates();
   } catch (e) {
     const handled = await handleQuotaError(e);
@@ -2150,6 +2158,46 @@ document.addEventListener('DOMContentLoaded', async () => {
   console.log('[PLUGIN_INIT] ===== 插件初始化开始 =====');
   const totalStart = performance.now();
   showLoading();
+
+  // Sequence list edit / delete handler (event delegation)
+  $('seqTemplatesList').addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.seq-item-delete');
+    if (deleteBtn) {
+      const id = deleteBtn.dataset.id;
+      if (!id || !confirm('Are you sure you want to delete this sequence?')) return;
+      try {
+        await window.API.sequences.delete(id);
+        showToast('Sequence deleted');
+        renderSequenceTemplates();
+      } catch (err) {
+        showToast('Delete failed: ' + (err.message || 'Unknown error'));
+      }
+      return;
+    }
+
+    const editBtn = e.target.closest('.seq-item-toggle[data-action="edit"]');
+    if (editBtn) {
+      const id = editBtn.dataset.id;
+      try {
+        const seq = await window.API.sequences.get(id);
+        editingSequenceId = id;
+        $('modalSeqTitle').textContent = 'Edit Sequence';
+        $('modalSeqName').value = seq.name || '';
+        seqSteps = (seq.steps || []).map(s => ({
+          name: s.name || '',
+          delayDays: s.delayDays || 0
+        }));
+        if (seqSteps.length === 0) {
+          seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
+        }
+        renderSeqStepRows();
+        $('modalNewSequence').classList.add('active');
+      } catch (err) {
+        showToast('Failed to load sequence: ' + (err.message || 'Unknown error'));
+      }
+    }
+  });
+
   try {
     await ensureUserId();
 

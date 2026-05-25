@@ -171,19 +171,9 @@ public class SequenceService {
         Long userId = RequestContext.getCurrentUserId();
         Sequence existing = findSequence(userId, id);
         if (existing == null) throw new BusinessException("Sequence not found");
-        // delete steps
-        SequenceStepExample ex = new SequenceStepExample();
-        ex.createCriteria().andSequenceIdEqualTo(existing.getId());
-        for (SequenceStep s : sequenceStepMapper.selectByExample(ex)) {
-            sequenceStepMapper.deleteByPrimaryKey(s.getId());
-        }
-        // delete candidate bindings
-        CandidateSequenceExample cse = new CandidateSequenceExample();
-        cse.createCriteria().andSequenceIdEqualTo(existing.getId());
-        for (CandidateSequence cs : candidateSequenceMapper.selectByExample(cse)) {
-            candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
-        }
-        sequenceMapper.deleteByPrimaryKey(existing.getId());
+        existing.setIsActive(false);
+        existing.setUpdatedAt(new Date());
+        sequenceMapper.updateByPrimaryKeySelective(existing);
     }
 
     // Candidate Sequences

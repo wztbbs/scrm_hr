@@ -451,7 +451,7 @@ function sequenceToBackend(frontendSeq) {
     stepNumber: idx + 1,
     name: s.name || '',
     actionType: s.actionType || 'message',
-    delayType: 'day',
+    delayType: s.delayDays === 0 ? 'immediately' : 'days',
     delayValue: s.delayDays || 0
   }));
 
@@ -567,7 +567,7 @@ const SequencesAPI = {
 };
 
 async function getAllSequences() {
-  const resp = await SequencesAPI.list();
+  const resp = await SequencesAPI.list({ is_active: true });
   if (resp.data && resp.data.items) {
     return resp.data.items;
   }
