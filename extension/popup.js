@@ -1024,13 +1024,14 @@ function bindPipelineDragEvents() {
     col.addEventListener('drop', async (e) => {
       e.preventDefault();
       col.classList.remove('drag-over');
-      if (!draggedId) return;
+      const candidateId = draggedId;
+      if (!candidateId) return;
       const newStage = col.dataset.status;
       try {
-        const candidate = await window.API.candidates.get(draggedId);
+        const candidate = await window.API.candidates.get(candidateId);
         if (candidate && (candidate.pipelineStage || 'new') !== newStage) {
           const oldStage = candidate.pipelineStage || 'new';
-          await window.API.candidates.updatePipelineStage(draggedId, newStage);
+          await window.API.candidates.updatePipelineStage(candidateId, newStage);
           trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
           renderPipeline();
         }

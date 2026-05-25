@@ -152,6 +152,13 @@ public class CandidateService {
             throw new BusinessException("Candidate not found");
         }
 
+        // Auto-recover from delete stage
+        if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existing.getPipelineStage())) {
+            candidate.setPipelineStage(PipelineStageEnum.NEW.getValue());
+            historyService.recordHistory(existing.getId(), "status_change",
+                    "Recovered from delete to new", "system");
+        }
+
         // Detect pipeline stage change for history
         String newStage = candidate.getPipelineStage();
         if (newStage != null && !newStage.equalsIgnoreCase(existing.getPipelineStage())) {
