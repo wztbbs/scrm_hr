@@ -13,6 +13,9 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
@@ -22,6 +25,8 @@ import java.util.UUID;
 
 @Service
 public class ChatMessageService {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatMessageService.class);
 
     @Autowired
     @Qualifier("candidateMapper")
@@ -141,9 +146,11 @@ public class ChatMessageService {
         try {
             return new Date(Instant.parse(timestamp).toEpochMilli());
         } catch (Exception e) {
+            log.error("Failed to parse timestamp as Instant: {}", timestamp, e);
             try {
                 return new Date(Long.parseLong(timestamp));
             } catch (Exception e2) {
+                log.error("Failed to parse timestamp as Long: {}", timestamp, e2);
                 return null;
             }
         }

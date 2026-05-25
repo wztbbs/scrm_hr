@@ -12,10 +12,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.*;
 
 @Service
 public class SequenceService {
+
+    private static final Logger log = LoggerFactory.getLogger(SequenceService.class);
 
     @Autowired
     @Qualifier("sequenceMapper")
@@ -85,6 +90,7 @@ public class SequenceService {
         try {
             return sequenceMapper.selectByPrimaryKey(Long.parseLong(id));
         } catch (NumberFormatException e) {
+            log.error("Invalid sequence id format", e);
             return null;
         }
     }
@@ -209,12 +215,9 @@ public class SequenceService {
         // Abandon any existing active binding for this candidate before creating a new one
         CandidateSequenceExample abandonExample = new CandidateSequenceExample();
         abandonExample.createCriteria().andUserIdEqualTo(userId)
-                .andCandidateIdEqualTo(cs.getCandidateId())
-                .andStatusEqualTo("active");
+                .andCandidateIdEqualTo(cs.getCandidateId());
         for (CandidateSequence old : candidateSequenceMapper.selectByExample(abandonExample)) {
-            old.setStatus("abandoned");
-            old.setUpdatedAt(new Date());
-            candidateSequenceMapper.updateByPrimaryKeySelective(old);
+            candidateSequenceMapper.deleteByPrimaryKey(old.getId());
         }
 
         // get sequence steps to set total_steps
@@ -415,6 +418,7 @@ public class SequenceService {
         try {
             return candidateSequenceMapper.selectByPrimaryKey(Long.parseLong(id));
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate sequence id format", e);
             return null;
         }
     }
@@ -423,6 +427,7 @@ public class SequenceService {
         try {
             return Long.parseLong(id);
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate id format", e);
             return null;
         }
     }

@@ -1,5 +1,7 @@
 package com.scrm.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -9,6 +11,8 @@ import java.util.Base64;
 
 @Component
 public class PaddleWebhookVerifier {
+
+    private static final Logger log = LoggerFactory.getLogger(PaddleWebhookVerifier.class);
 
     public boolean verify(String payload, String signatureHeader, String secret) {
         if (signatureHeader == null || secret == null) {
@@ -40,6 +44,7 @@ public class PaddleWebhookVerifier {
             String expected = Base64.getEncoder().encodeToString(hash);
             return expected.equals(h1);
         } catch (Exception e) {
+            log.error("Paddle webhook signature verification failed", e);
             return false;
         }
     }

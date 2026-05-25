@@ -3,9 +3,14 @@ package com.scrm.service;
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
 import com.scrm.dao.CandidateMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.scrm.dao.CandidateSequenceMapper;
 import com.scrm.dao.sub.SubCandidateMapper;
 import com.scrm.entity.Candidate;
 import com.scrm.entity.CandidateExample;
+import com.scrm.entity.CandidateSequence;
+import com.scrm.entity.CandidateSequenceExample;
 import com.scrm.entity.CandidateWithBLOBs;
 import com.scrm.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +23,8 @@ import java.util.*;
 @Service
 public class CandidateService {
 
+    private static final Logger log = LoggerFactory.getLogger(CandidateService.class);
+
     @Autowired
     @Qualifier("candidateMapper")
     private CandidateMapper candidateMapper;
@@ -29,6 +36,8 @@ public class CandidateService {
     private SubscriptionService subscriptionService;
     @Autowired
     private HistoryService historyService;
+    @Autowired
+    private CandidateSequenceMapper candidateSequenceMapper;
 
     public List<Candidate> listCandidates(String search, String temperature, String status,
                                           String source, String sortBy, String sortOrder,
@@ -51,6 +60,7 @@ public class CandidateService {
         if (candidate == null) {
             throw new BusinessException("Candidate not found");
         }
+        fillSequenceId(candidate);
         return candidate;
     }
 
@@ -63,6 +73,7 @@ public class CandidateService {
             }
             return c;
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate id format", e);
             return null;
         }
     }
@@ -207,7 +218,24 @@ public class CandidateService {
         CandidateExample example = new CandidateExample();
         example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(linkedInId);
         List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-        return list.isEmpty() ? null : list.get(0);
+        if (list.isEmpty()) {
+            return null;
+        }
+        CandidateWithBLOBs candidate = list.get(0);
+        fillSequenceId(candidate);
+        return candidate;
+    }
+
+    private void fillSequenceId(CandidateWithBLOBs candidate) {
+        if (candidate == null || candidate.getId() == null) {
+            return;
+        }
+        CandidateSequenceExample example = new CandidateSequenceExample();
+        example.createCriteria().andCandidateIdEqualTo(candidate.getId());
+        List<CandidateSequence> bindings = candidateSequenceMapper.selectByExample(example);
+        if (!bindings.isEmpty()) {
+            candidate.setSequenceId(bindings.get(0).getSequenceId());
+        }
     }
 
     public List<Candidate> listTodayTasks() {

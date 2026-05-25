@@ -252,6 +252,7 @@ public class WebhookService {
             java.time.Instant instant = java.time.Instant.parse(iso);
             return Date.from(instant);
         } catch (Exception e) {
+            log.error("Failed to parse ISO date: {}", iso, e);
             return null;
         }
     }

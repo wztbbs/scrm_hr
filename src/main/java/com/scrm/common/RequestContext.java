@@ -4,6 +4,8 @@ import com.scrm.dao.UserMapper;
 import com.scrm.entity.User;
 import com.scrm.entity.UserExample;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -15,6 +17,8 @@ import java.util.List;
 
 @Component
 public class RequestContext {
+
+    private static final Logger log = LoggerFactory.getLogger(RequestContext.class);
 
     private static UserMapper staticUserMapper;
 
@@ -39,7 +43,7 @@ public class RequestContext {
         try {
             return Long.parseLong(userIdHeader);
         } catch (NumberFormatException e) {
-            // Treat as UUID
+            log.error("Failed to parse userId as Long, treating as UUID: {}", userIdHeader, e);
         }
 
         // Lookup user by UUID, auto-create if not exists
