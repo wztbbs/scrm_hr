@@ -28,6 +28,16 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
 
+    /**
+     * 跳过指定接口的日志打印
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String method = request.getMethod();
+        String uri = request.getRequestURI();
+        return "GET".equals(method) && "/api/v1/pipeline/stages".equals(uri);
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
