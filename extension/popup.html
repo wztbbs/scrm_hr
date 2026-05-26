@@ -1183,6 +1183,14 @@
       font-weight: 600;
       flex-shrink: 0;
     }
+    .today-task-right {
+      text-align: right;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
     .today-task-status.overdue { color: #ef4444; }
     .today-task-status.today { color: #f59e0b; }
     .today-footer {
@@ -1767,7 +1775,30 @@
     </div>
     <div class="form-row">
       <label class="form-label">Next Follow-up</label>
-      <input type="datetime-local" class="form-input" id="meNextFollowup">
+      <div class="datetime-picker-wrapper">
+        <input type="text" class="form-input" id="meNextFollowup" placeholder="Select date &amp; time" readonly>
+        <div class="datetime-picker-popup hidden" id="meDatetimePicker">
+          <div class="dtp-header">
+            <button class="dtp-nav-btn" id="meDtpPrevMonth">&#10094;</button>
+            <span class="dtp-month-year" id="meDtpMonthYear"></span>
+            <button class="dtp-nav-btn" id="meDtpNextMonth">&#10095;</button>
+          </div>
+          <div class="dtp-weekdays">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+          <div class="dtp-days" id="meDtpDays"></div>
+          <div class="dtp-time-row">
+            <select id="meDtpHour"></select>
+            <span>:</span>
+            <select id="meDtpMinute"></select>
+          </div>
+          <div class="dtp-footer">
+            <button class="dtp-btn dtp-btn-text" id="meDtpBtnToday">Today</button>
+            <button class="dtp-btn dtp-btn-text" id="meDtpBtnClear">Clear</button>
+            <button class="dtp-btn dtp-btn-primary" id="meDtpBtnOk">OK</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="form-row">
       <label class="form-label">Notes (Optional)</label>

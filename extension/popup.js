@@ -305,10 +305,9 @@ async function renderOverviewActiveSequence() {
   }
 
   const sequences = await getAllSequences();
-  const selectHtml = '<option value="">None (manual follow-up only)</option>' +
-    sequences.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
-
   const boundSeqId = currentCandidate.sequenceId;
+  const selectHtml = '<option value="">None (manual follow-up only)</option>' +
+    sequences.map(s => `<option value="${s.id}" ${s.id == boundSeqId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 
   if (!boundSeqId) {
     // Not bound
@@ -522,6 +521,7 @@ async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueC
       const timeStr = candidate.nextFollowup
         ? new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
         : '';
+      const showMarkDone = candidate.taskStatus === 'OVERDUE' || candidate.taskStatus === 'DUE_SOON';
 
       return `
         <div class="today-task-item ${status.borderClass}">
@@ -531,9 +531,22 @@ async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueC
             <div class="today-task-desc" style="color:${status.color};font-weight:500;">${status.label}</div>
             <div class="today-task-desc">Follow-up · ${timeStr}</div>
           </div>
+          <div class="today-task-right">
+            <span class="today-task-status" style="color:${status.color};">${status.label}</span>
+            <button class="btn-sm task-mark-done-btn" data-id="${candidate.id}" style="display:${showMarkDone ? 'inline-block' : 'none'};width:auto;padding:4px 10px;font-size:12px;background:#10b981;">✓ Mark Done</button>
+          </div>
         </div>
       `;
     }).join('');
+
+    listEl.querySelectorAll('.task-mark-done-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const candidateId = parseInt(btn.dataset.id);
+        await doMarkFollowupDone(candidateId, () => {
+          renderOverviewTodayTasks();
+        });
+      });
+    });
   }
   console.log(`[PLUGIN_INIT] renderOverviewTodayTasks END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
@@ -1472,6 +1485,7 @@ async function getSequenceById(id) {
 
 async function bindCandidateToSequence(candidateId, sequenceId) {
   console.log('[BIND_SEQ] START candidateId=', candidateId, 'sequenceId=', sequenceId);
+  console.log('[BIND_SEQ] currentCandidate.sequenceId before=', currentCandidate ? currentCandidate.sequenceId : 'N/A');
 
   // Ensure candidate is saved to backend first
   if (!candidateId && currentCandidate) {
@@ -1514,7 +1528,7 @@ async function bindCandidateToSequence(candidateId, sequenceId) {
             }
           }
         }
-        console.log('[BIND_SEQ] unbind success');
+        if (currentCandidate) currentCandidate.sequenceId = null;
       } catch (e) {
         console.warn('[BIND_SEQ] unbind sequence failed:', e);
       }
@@ -2311,32 +2325,36 @@ function fmtDateTimeInput(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-(function initDatetimePicker() {
-  const input = $('ovNextFollowupInput');
-  const picker = $('ovDatetimePicker');
-  const monthYear = $('dtpMonthYear');
-  const daysGrid = $('dtpDays');
-  const hourSel = $('dtpHour');
-  const minuteSel = $('dtpMinute');
+function initDatetimePicker(config) {
+  const input = $(config.inputId);
+  const picker = $(config.pickerId);
+  const monthYear = $(config.monthYearId);
+  const daysGrid = $(config.daysId);
+  const hourSel = $(config.hourId);
+  const minuteSel = $(config.minuteId);
 
   let viewDate = new Date();
   let selectedDate = null;
   let longPressTimer = null;
   const LONG_PRESS_MS = 400;
 
-  // Init hour options
-  for (let i = 0; i < 24; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i.toString().padStart(2, '0');
-    hourSel.appendChild(opt);
+  // Init hour options (only once)
+  if (hourSel.options.length === 0) {
+    for (let i = 0; i < 24; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = i.toString().padStart(2, '0');
+      hourSel.appendChild(opt);
+    }
   }
-  // Init minute options
-  for (let i = 0; i < 60; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i.toString().padStart(2, '0');
-    minuteSel.appendChild(opt);
+  // Init minute options (only once)
+  if (minuteSel.options.length === 0) {
+    for (let i = 0; i < 60; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = i.toString().padStart(2, '0');
+      minuteSel.appendChild(opt);
+    }
   }
 
   function renderCalendar() {
@@ -2409,9 +2427,10 @@ function fmtDateTimeInput(d) {
   function openPicker() {
     picker.classList.remove('hidden');
     let val = '';
-    if (currentCandidate && currentCandidate.nextFollowup) {
-      val = currentCandidate.nextFollowup;
-    } else if (input.value) {
+    if (config.getInitialValue) {
+      val = config.getInitialValue();
+    }
+    if (!val && input.value) {
       val = input.value;
     }
     if (val) {
@@ -2440,13 +2459,7 @@ function fmtDateTimeInput(d) {
     if (selectedDate) {
       const d = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), parseInt(hourSel.value, 10), parseInt(minuteSel.value, 10));
       input.value = fmtDateTimeInput(d);
-      if (currentCandidate) {
-        const pad = n => n.toString().padStart(2, '0');
-        currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        // Manual edit → source becomes manual (sacred)
-        currentCandidate.nextFollowupSource = 'manual';
-        currentCandidate.nextFollowupSequenceStepId = null;
-      }
+      if (config.onConfirm) config.onConfirm(d);
     }
     closePicker();
   }
@@ -2460,19 +2473,19 @@ function fmtDateTimeInput(d) {
     }
   });
 
-  $('dtpPrevMonth').addEventListener('click', (e) => {
+  $(config.prevMonthId).addEventListener('click', (e) => {
     e.stopPropagation();
     viewDate.setMonth(viewDate.getMonth() - 1);
     renderCalendar();
   });
 
-  $('dtpNextMonth').addEventListener('click', (e) => {
+  $(config.nextMonthId).addEventListener('click', (e) => {
     e.stopPropagation();
     viewDate.setMonth(viewDate.getMonth() + 1);
     renderCalendar();
   });
 
-  $('dtpBtnToday').addEventListener('click', (e) => {
+  $(config.btnTodayId).addEventListener('click', (e) => {
     e.stopPropagation();
     const now = new Date();
     selectedDate = now;
@@ -2483,15 +2496,15 @@ function fmtDateTimeInput(d) {
     confirmAndClose();
   });
 
-  $('dtpBtnClear').addEventListener('click', (e) => {
+  $(config.btnClearId).addEventListener('click', (e) => {
     e.stopPropagation();
     selectedDate = null;
     input.value = '';
-    if (currentCandidate) currentCandidate.nextFollowup = '';
+    if (config.onClear) config.onClear();
     closePicker();
   });
 
-  $('dtpBtnOk').addEventListener('click', (e) => {
+  $(config.btnOkId).addEventListener('click', (e) => {
     e.stopPropagation();
     confirmAndClose();
   });
@@ -2507,7 +2520,49 @@ function fmtDateTimeInput(d) {
   picker.addEventListener('click', (e) => {
     e.stopPropagation();
   });
-})();
+}
+
+// Initialize Overview datetime picker
+initDatetimePicker({
+  inputId: 'ovNextFollowupInput',
+  pickerId: 'ovDatetimePicker',
+  monthYearId: 'dtpMonthYear',
+  daysId: 'dtpDays',
+  hourId: 'dtpHour',
+  minuteId: 'dtpMinute',
+  prevMonthId: 'dtpPrevMonth',
+  nextMonthId: 'dtpNextMonth',
+  btnTodayId: 'dtpBtnToday',
+  btnClearId: 'dtpBtnClear',
+  btnOkId: 'dtpBtnOk',
+  getInitialValue: () => (currentCandidate && currentCandidate.nextFollowup) ? currentCandidate.nextFollowup : '',
+  onConfirm: (d) => {
+    if (currentCandidate) {
+      const pad = n => n.toString().padStart(2, '0');
+      currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      currentCandidate.nextFollowupSource = 'manual';
+      currentCandidate.nextFollowupSequenceStepId = null;
+    }
+  },
+  onClear: () => {
+    if (currentCandidate) currentCandidate.nextFollowup = '';
+  }
+});
+
+// Initialize Manual Entry (Pipeline) datetime picker
+initDatetimePicker({
+  inputId: 'meNextFollowup',
+  pickerId: 'meDatetimePicker',
+  monthYearId: 'meDtpMonthYear',
+  daysId: 'meDtpDays',
+  hourId: 'meDtpHour',
+  minuteId: 'meDtpMinute',
+  prevMonthId: 'meDtpPrevMonth',
+  nextMonthId: 'meDtpNextMonth',
+  btnTodayId: 'meDtpBtnToday',
+  btnClearId: 'meDtpBtnClear',
+  btnOkId: 'meDtpBtnOk'
+});
 
 // ========== Sequence Follow-up Confirm Modal ==========
 function showSeqFollowupConfirm(messageHtml) {
@@ -2577,10 +2632,10 @@ function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
     textEl.innerHTML = messageHtml;
     editRow.style.display = 'none';
     skipBtn.style.display = showSkip ? 'inline-block' : 'none';
-    overlay.classList.remove('hidden');
+    overlay.classList.add('active');
 
     const cleanup = () => {
-      overlay.classList.add('hidden');
+      overlay.classList.remove('active');
       acceptBtn.onclick = null;
       editBtn.onclick = null;
       skipBtn.onclick = null;
@@ -2655,6 +2710,12 @@ async function doMarkFollowupDone(candidateId, onComplete) {
             source,
             source === 'sequence' ? (result.sequence_step_id || null) : null
           );
+          if (currentCandidate && currentCandidate.id === candidateId) {
+            const d = new Date(followupTime);
+            const pad = n => n.toString().padStart(2, '0');
+            currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            currentCandidate.nextFollowupSource = source;
+          }
         } catch (e) {
           console.warn('[MarkDone] update followup failed:', e);
         }
@@ -2664,6 +2725,10 @@ async function doMarkFollowupDone(candidateId, onComplete) {
     }
 
     if (onComplete) onComplete();
+    if (currentCandidate && currentCandidate.id === candidateId) {
+      renderOverviewNextFollowup();
+      renderOverviewTodayTasks();
+    }
     showToast('Marked as done');
   } catch (e) {
     console.error('[MarkDone] error:', e);

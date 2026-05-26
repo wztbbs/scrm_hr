@@ -21,38 +21,38 @@ public class HistoryController {
 
     @GetMapping
     public ApiResponse<Map<String, Object>> list(
-            @RequestParam(required = false) Long candidate_id,
-            @RequestParam(required = false) String history_type,
-            @RequestParam(required = false) String actor_type,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date date_from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date date_to,
+            @RequestParam(name = "candidateId", required = false) Long candidateId,
+            @RequestParam(name = "historyType", required = false) String historyType,
+            @RequestParam(name = "actorType", required = false) String actorType,
+            @RequestParam(name = "dateFrom", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date dateFrom,
+            @RequestParam(name = "dateTo", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) Date dateTo,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false, defaultValue = "false") Boolean include_deleted,
+            @RequestParam(name = "includeDeleted", required = false, defaultValue = "false") Boolean includeDeleted,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int page_size,
-            @RequestParam(defaultValue = "history_time") String sort_by,
-            @RequestParam(defaultValue = "desc") String sort_order) {
-        if (page_size > 100) page_size = 100;
+            @RequestParam(name = "pageSize", defaultValue = "20") int pageSize,
+            @RequestParam(name = "sortBy", defaultValue = "history_time") String sortBy,
+            @RequestParam(name = "sortOrder", defaultValue = "desc") String sortOrder) {
+        if (pageSize > 100) pageSize = 100;
         List<CandidateHistoryWithBLOBs> allItems = historyService.listHistory(
-                candidate_id, history_type, actor_type,
-                date_from, date_to, keyword, include_deleted,
-                sort_by, sort_order, page, page_size);
+                candidateId, historyType, actorType,
+                dateFrom, dateTo, keyword, includeDeleted,
+                sortBy, sortOrder, page, pageSize);
         long total = historyService.countHistory(
-                candidate_id, history_type, actor_type,
-                date_from, date_to, keyword, include_deleted);
+                candidateId, historyType, actorType,
+                dateFrom, dateTo, keyword, includeDeleted);
 
         // in-memory pagination
-        int fromIndex = (page - 1) * page_size;
-        int toIndex = Math.min(fromIndex + page_size, allItems.size());
+        int fromIndex = (page - 1) * pageSize;
+        int toIndex = Math.min(fromIndex + pageSize, allItems.size());
         List<CandidateHistoryWithBLOBs> items = fromIndex < allItems.size() ? allItems.subList(fromIndex, toIndex) : List.of();
 
         Map<String, Object> data = new HashMap<>();
         data.put("items", items);
         ApiResponse.Pagination pagination = new ApiResponse.Pagination();
         pagination.setPage(page);
-        pagination.setPageSize(page_size);
+        pagination.setPageSize(pageSize);
         pagination.setTotal(total);
-        pagination.setTotalPages((int) Math.ceil((double) total / page_size));
+        pagination.setTotalPages((int) Math.ceil((double) total / pageSize));
         return ApiResponse.success(data, pagination);
     }
 }
