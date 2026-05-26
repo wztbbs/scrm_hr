@@ -248,11 +248,11 @@ public class CandidateService {
 
     private static final int DUE_SOON_MINUTES = 60;
 
-    private TaskStatus evaluateTaskStatus(Date nextFollowupAt) {
+    private TaskStatus evaluateTaskStatus(Date nextFollowupAt, long clientTimeMs) {
         if (nextFollowupAt == null) {
             return null;
         }
-        long diffMs = nextFollowupAt.getTime() - System.currentTimeMillis();
+        long diffMs = nextFollowupAt.getTime() - clientTimeMs;
         if (diffMs < 0) {
             return TaskStatus.OVERDUE;
         }
@@ -262,17 +262,17 @@ public class CandidateService {
         return TaskStatus.UPCOMING;
     }
 
-    public List<Candidate> listTodayTasks() {
+    public List<Candidate> listTodayTasks(Long clientTimeMs) {
         Long userId = RequestContext.getCurrentUserId();
-        Date threshold = new Date(System.currentTimeMillis() + DUE_SOON_MINUTES * 60000L);
-        List<Candidate> tasks = subCandidateMapper.selectTodayTasks(userId, threshold);
-        tasks.forEach(c -> c.setTaskStatus(evaluateTaskStatus(c.getNextFollowupAt())));
+        long thresholdMs = clientTimeMs + DUE_SOON_MINUTES * 60000L;
+        List<Candidate> tasks = subCandidateMapper.selectTodayTasks(userId, clientTimeMs, thresholdMs);
+        tasks.forEach(c -> c.setTaskStatus(evaluateTaskStatus(c.getNextFollowupAt(), clientTimeMs)));
         return tasks;
     }
 
-    public long countOverdueTasks() {
+    public long countOverdueTasks(Long clientTimeMs) {
         Long userId = RequestContext.getCurrentUserId();
-        return subCandidateMapper.countOverdueTasks(userId);
+        return subCandidateMapper.countOverdueTasks(userId, clientTimeMs);
     }
 
     public Map<String, Object> markFollowupDone(String id) {

@@ -27,7 +27,7 @@ public class OverviewService {
     @Autowired
     private CandidateService candidateService;
 
-    public OverviewVO buildOverview(String linkedInId) {
+    public OverviewVO buildOverview(String linkedInId, Long clientTimeMs) {
         Long userId = RequestContext.getCurrentUserId();
         OverviewVO vo = new OverviewVO();
 
@@ -70,8 +70,8 @@ public class OverviewService {
 
         // 3. Today tasks
         try {
-            vo.setTodayTasks(candidateService.listTodayTasks());
-            vo.setTodayTaskOverdueCount((int) candidateService.countOverdueTasks());
+            vo.setTodayTasks(candidateService.listTodayTasks(clientTimeMs));
+            vo.setTodayTaskOverdueCount((int) candidateService.countOverdueTasks(clientTimeMs));
         } catch (Exception e) {
             log.error("[Overview] Failed to load today tasks", e);
         }

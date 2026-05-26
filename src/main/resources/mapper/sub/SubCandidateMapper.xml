@@ -88,12 +88,12 @@
     WHERE user_id = #{userId}
       AND next_followup_at IS NOT NULL
       AND next_followup_source != 'none'
-      AND next_followup_at &lt;= #{threshold}
+      AND next_followup_at &lt;= FROM_UNIXTIME(#{thresholdMs} / 1000)
       AND pipeline_stage != 'delete'
     ORDER BY
       CASE
-        WHEN next_followup_at &lt; NOW() THEN 0
-        WHEN next_followup_at &lt;= DATE_ADD(NOW(), INTERVAL 60 MINUTE) THEN 1
+        WHEN next_followup_at &lt; FROM_UNIXTIME(#{clientTimeMs} / 1000) THEN 0
+        WHEN next_followup_at &lt;= FROM_UNIXTIME(#{thresholdMs} / 1000) THEN 1
         ELSE 2
       END ASC,
       next_followup_at ASC
@@ -103,7 +103,7 @@
     SELECT COUNT(*) FROM candidates
     WHERE user_id = #{userId}
       AND next_followup_at IS NOT NULL
-      AND next_followup_at &lt; NOW()
+      AND next_followup_at &lt; FROM_UNIXTIME(#{clientTimeMs} / 1000)
       AND next_followup_source != 'none'
       AND pipeline_stage != 'delete'
   </select>

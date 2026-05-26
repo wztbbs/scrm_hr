@@ -40,7 +40,7 @@ public interface SubCandidateMapper extends CandidateMapper {
                               @Param("source") String source,
                               @Param("syncSince") Date syncSince);
 
-    List<Candidate> selectTodayTasks(@Param("userId") Long userId, @Param("threshold") Date threshold);
+    List<Candidate> selectTodayTasks(@Param("userId") Long userId, @Param("clientTimeMs") Long clientTimeMs, @Param("thresholdMs") Long thresholdMs);
 
-    long countOverdueTasks(@Param("userId") Long userId);
+    long countOverdueTasks(@Param("userId") Long userId, @Param("clientTimeMs") Long clientTimeMs);
 }

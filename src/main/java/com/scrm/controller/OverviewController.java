@@ -5,6 +5,7 @@ import com.scrm.dto.OverviewVO;
 import com.scrm.service.OverviewService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,8 +18,12 @@ public class OverviewController {
     private OverviewService overviewService;
 
     @GetMapping
-    public ApiResponse<OverviewVO> getOverview(@RequestParam(required = false) String linkedin_id) {
-        OverviewVO vo = overviewService.buildOverview(linkedin_id);
+    public ApiResponse<OverviewVO> getOverview(@RequestParam(required = false) String linkedin_id,
+                                                @RequestHeader(value = "X-Client-Time", required = false) Long clientTimeMs) {
+        if (clientTimeMs == null) {
+            clientTimeMs = System.currentTimeMillis();
+        }
+        OverviewVO vo = overviewService.buildOverview(linkedin_id, clientTimeMs);
         return ApiResponse.success(vo);
     }
 }

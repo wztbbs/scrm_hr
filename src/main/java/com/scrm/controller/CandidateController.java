@@ -27,9 +27,12 @@ public class CandidateController {
     }
 
     @GetMapping("/tasks")
-    public ApiResponse<Map<String, Object>> listTasks() {
-        List<Candidate> items = candidateService.listTodayTasks();
-        long overdueCount = candidateService.countOverdueTasks();
+    public ApiResponse<Map<String, Object>> listTasks(@RequestHeader(value = "X-Client-Time", required = false) Long clientTimeMs) {
+        if (clientTimeMs == null) {
+            clientTimeMs = System.currentTimeMillis();
+        }
+        List<Candidate> items = candidateService.listTodayTasks(clientTimeMs);
+        long overdueCount = candidateService.countOverdueTasks(clientTimeMs);
         Map<String, Object> data = new HashMap<>();
         data.put("items", items);
         data.put("overdueCount", overdueCount);

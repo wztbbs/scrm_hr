@@ -63,7 +63,8 @@ async function apiRequest(method, path, body = null, query = null) {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'X-User-Id': userId
+      'X-User-Id': userId,
+      'X-Client-Time': Date.now()
     }
   };
   if (body !== null) {
