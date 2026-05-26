@@ -71,6 +71,7 @@ public class OverviewService {
         // 3. Today tasks
         try {
             vo.setTodayTasks(candidateService.listTodayTasks());
+            vo.setTodayTaskOverdueCount((int) candidateService.countOverdueTasks());
         } catch (Exception e) {
             log.error("[Overview] Failed to load today tasks", e);
         }

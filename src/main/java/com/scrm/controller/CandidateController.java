@@ -29,8 +29,10 @@ public class CandidateController {
     @GetMapping("/tasks")
     public ApiResponse<Map<String, Object>> listTasks() {
         List<Candidate> items = candidateService.listTodayTasks();
+        long overdueCount = candidateService.countOverdueTasks();
         Map<String, Object> data = new HashMap<>();
         data.put("items", items);
+        data.put("overdueCount", overdueCount);
         return ApiResponse.success(data);
     }
 

@@ -1310,6 +1310,74 @@
       color: #fff;
     }
     .dtp-btn-primary:hover { background: #4c3ec7; }
+
+    /* Overdue banner */
+    .overdue-banner {
+      background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+      border: 1px solid #ef4444;
+      color: #991b1b;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.2s ease;
+      box-shadow: 0 1px 3px rgba(239, 68, 68, 0.1);
+    }
+    .overdue-banner:hover {
+      background: linear-gradient(135deg, #fecaca 0%, #fca5a5 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+    }
+    .banner-icon { font-size: 16px; }
+    .banner-text { flex: 1; }
+    .banner-action { font-size: 12px; opacity: 0.8; }
+
+    /* Tab badge */
+    .tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .badge-gray {
+      background-color: #e5e7eb;
+      color: #374151;
+    }
+    .badge-red {
+      background-color: #ef4444;
+      color: #fff;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* Today task border colors */
+    .task-border-overdue { border-left: 4px solid #ef4444 !important; background: #fef2f2; }
+    .task-border-due-soon { border-left: 4px solid #f97316 !important; background: #fff7ed; }
+    .task-border-upcoming { border-left: 4px solid #3b82f6 !important; }
+
+    /* Status pill */
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -1421,6 +1489,12 @@
       You have an active Pro subscription. To prevent losing your data when clearing browser cache, please bind your email now.
     </div>
     <button class="email-alert-btn" id="ovEmailAlertBtn">Bind Email Now</button>
+  </div>
+
+  <div class="overdue-banner hidden" id="ovOverdueBanner">
+    <span class="banner-icon">⚠️</span>
+    <span class="banner-text"><span id="ovOverdueCount">0</span> follow-up<span id="ovOverduePlural">s</span> overdue</span>
+    <span class="banner-action">Click to view →</span>
   </div>
 
   <div class="card" id="ovTodayCard">
@@ -1574,7 +1648,7 @@
 <div class="tab-content" id="tab-sequence">
   <div class="sub-tabs">
     <div class="sub-tab active" data-subtab="templates">Templates</div>
-    <div class="sub-tab" data-subtab="today">Today's Tasks</div>
+    <div class="sub-tab" data-subtab="today">Today's Tasks <span class="tab-badge hidden" id="seqTodayBadge">0</span></div>
   </div>
 
   <div class="sub-content active" id="sub-templates">
@@ -1690,6 +1764,10 @@
         <option value="Talking">Talking</option>
         <option value="Done">Done</option>
       </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Next Follow-up</label>
+      <input type="datetime-local" class="form-input" id="meNextFollowup">
     </div>
     <div class="form-row">
       <label class="form-label">Notes (Optional)</label>

@@ -11,6 +11,7 @@ public class OverviewVO {
     private Map<String, Object> user;
     private Map<String, Object> subscription;
     private List<Candidate> todayTasks;
+    private Integer todayTaskOverdueCount;
     private List<Map<String, Object>> pipelineStages;
     private CandidateWithBLOBs candidate;
 
@@ -36,6 +37,14 @@ public class OverviewVO {
 
     public void setTodayTasks(List<Candidate> todayTasks) {
         this.todayTasks = todayTasks;
+    }
+
+    public Integer getTodayTaskOverdueCount() {
+        return todayTaskOverdueCount;
+    }
+
+    public void setTodayTaskOverdueCount(Integer todayTaskOverdueCount) {
+        this.todayTaskOverdueCount = todayTaskOverdueCount;
     }
 
     public List<Map<String, Object>> getPipelineStages() {

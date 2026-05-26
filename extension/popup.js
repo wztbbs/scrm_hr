@@ -131,6 +131,15 @@ function formatTime(timestamp) {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+function getTaskStatusConfig(taskStatus) {
+  const map = {
+    'OVERDUE':  { label: 'Follow up now — overdue',      color: '#ef4444', borderClass: 'task-border-overdue',  bgClass: 'task-border-overdue' },
+    'DUE_SOON': { label: 'Due soon — ready to contact',   color: '#f97316', borderClass: 'task-border-due-soon', bgClass: 'task-border-due-soon' },
+    'UPCOMING': { label: 'Follow-up scheduled',           color: '#3b82f6', borderClass: 'task-border-upcoming', bgClass: 'task-border-upcoming' }
+  };
+  return map[taskStatus] || map['UPCOMING'];
+}
+
 // ========== Tab Switching ==========
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -458,58 +467,70 @@ function renderOverviewVoiceMemo() {
   }
 }
 
-async function renderOverviewTodayTasks(preloadedTasks = null) {
+async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueCount = null) {
   console.log('[PLUGIN_INIT] renderOverviewTodayTasks START');
   const start = performance.now();
   let candidates = preloadedTasks;
-  // Try backend API first; fallback to IndexedDB if offline
+  let overdueCount = preloadedOverdueCount;
+
   if (candidates === null && typeof window !== 'undefined' && window.API) {
     try {
       const resp = await window.API.candidates.tasks();
       if (resp.data && resp.data.items) {
         candidates = resp.data.items;
       }
+      if (resp.data && typeof resp.data.overdueCount === 'number') {
+        overdueCount = resp.data.overdueCount;
+      }
     } catch (e) {
       console.warn('[Popup] Backend tasks fetch failed:', e.message);
       candidates = [];
+      overdueCount = 0;
     }
   }
-  if (!candidates) {
-    candidates = [];
-  }
+  if (!candidates) candidates = [];
+  if (typeof overdueCount !== 'number') overdueCount = 0;
 
   const countEl = $('ovTodayCount');
   const listEl = $('ovTodayTaskList');
+  const content = $('ovTodayContent');
+  const banner = $('ovOverdueBanner');
 
-  countEl.textContent = `${candidates.length} task${candidates.length !== 1 ? 's' : ''} ▼`;
+  // Default expand/collapse based on task count
+  if (candidates.length > 0) {
+    content.classList.remove('hidden');
+    countEl.textContent = `${candidates.length} task${candidates.length !== 1 ? 's' : ''} ▲`;
+  } else {
+    content.classList.add('hidden');
+    countEl.textContent = '0 tasks ▼';
+  }
+
+  // Overdue banner
+  if (overdueCount > 0) {
+    banner.classList.remove('hidden');
+    $('ovOverdueCount').textContent = overdueCount;
+    $('ovOverduePlural').textContent = overdueCount > 1 ? 's' : '';
+  } else {
+    banner.classList.add('hidden');
+  }
 
   if (candidates.length === 0) {
     listEl.innerHTML = '<div class="text-gray text-sm text-center" style="padding:12px;">No tasks for today</div>';
   } else {
-    const now = Date.now();
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
     listEl.innerHTML = candidates.map(candidate => {
-      const followupTime = new Date(candidate.nextFollowup).getTime();
-      const isOverdue = followupTime < now;
-      const isToday = !isOverdue && followupTime <= todayEnd.getTime();
-
-      let statusLabel = isOverdue ? `${Math.ceil((now - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
-      let statusClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
-      let borderClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
-
-      const timeStr = new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const status = getTaskStatusConfig(candidate.taskStatus);
+      const timeStr = candidate.nextFollowup
+        ? new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        : '';
 
       return `
-        <div class="today-task-item">
-          <div class="today-task-border ${borderClass}"></div>
+        <div class="today-task-item ${status.borderClass}">
           <div class="today-task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
           <div class="today-task-info">
             <div class="today-task-name">${escapeHtml(candidate.name)}</div>
+            <div class="today-task-desc" style="color:${status.color};font-weight:500;">${status.label}</div>
             <div class="today-task-desc">Follow-up · ${timeStr}</div>
           </div>
-          <span class="today-task-status ${statusClass}">${statusLabel}</span>
         </div>
       `;
     }).join('');
@@ -524,6 +545,16 @@ $('ovTodayHeader').addEventListener('click', () => {
   content.classList.toggle('hidden');
   const countEl = $('ovTodayCount');
   countEl.textContent = countEl.textContent.replace(isExpanded ? '▲' : '▼', isExpanded ? '▼' : '▲');
+});
+
+$('ovOverdueBanner').addEventListener('click', () => {
+  const content = $('ovTodayContent');
+  content.classList.remove('hidden');
+  const countEl = $('ovTodayCount');
+  if (countEl.textContent.includes('▼')) {
+    countEl.textContent = countEl.textContent.replace('▼', '▲');
+  }
+  $('ovTodayCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 $('ovTodayViewAll').addEventListener('click', (e) => {
@@ -1583,6 +1614,11 @@ function openManualEntryModal(candidateId = null) {
       $('meLinkedInUrl').value = candidate.linkedInUrl || '';
       $('meEmail').value = candidate.emails?.[0] || '';
       $('meStatus').value = candidate.pipelineStage || (pipelineStages[0]?.id || 'new');
+      if (candidate.nextFollowup) {
+        $('meNextFollowup').value = fmtDateTimeInput(new Date(candidate.nextFollowup));
+      } else {
+        $('meNextFollowup').value = '';
+      }
       $('meNotes').value = candidate.keyMemory || '';
       const temp = candidate.temperature || 'Warm';
       document.querySelectorAll('.temp-btn').forEach(btn => {
@@ -1603,6 +1639,7 @@ function openManualEntryModal(candidateId = null) {
     $('meLinkedInUrl').value = '';
     $('meEmail').value = '';
     $('meStatus').value = 'new';
+    $('meNextFollowup').value = '';
     $('meNotes').value = '';
     document.querySelectorAll('.temp-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.temp === 'Warm');
@@ -1672,6 +1709,8 @@ $('meSaveBtn').addEventListener('click', async () => {
     candidate.emails = $('meEmail').value.trim() ? [$('meEmail').value.trim()] : [];
     candidate.temperature = temperature;
     candidate.pipelineStage = $('meStatus').value;
+    const nextFollowupVal = $('meNextFollowup').value;
+    candidate.nextFollowup = nextFollowupVal ? new Date(nextFollowupVal).getTime() : '';
     candidate.keyMemory = $('meNotes').value.trim();
 
     const canSave = await checkCandidateLimit();
@@ -1771,7 +1810,7 @@ async function renderSequenceTemplates() {
   // Safety tip
   const tip = document.createElement('div');
   tip.className = 'seq-safety-tip';
-  tip.textContent = 'Safety: Max 20 connects/day · 1-2 per day · Manual approval. This sequence completes in 10 days.';
+  tip.textContent = 'LinkedIn safety tip: Limit connection requests to ~20/day to avoid account restrictions.';
   container.appendChild(tip);
 }
 
@@ -1780,15 +1819,29 @@ async function renderTodayTasks() {
   $('todayDate').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   let candidates = [];
+  let overdueCount = 0;
   try {
     const resp = await window.API.candidates.tasks();
     if (resp.data && resp.data.items) {
       candidates = resp.data.items;
     }
+    if (resp.data && typeof resp.data.overdueCount === 'number') {
+      overdueCount = resp.data.overdueCount;
+    }
   } catch (e) {
     console.warn('[TodayTasks] Failed to fetch:', e.message);
   }
+
   $('todayTasksTitle').textContent = `Today's Tasks (${candidates.length})`;
+
+  const badge = $('seqTodayBadge');
+  if (candidates.length > 0) {
+    badge.classList.remove('hidden');
+    badge.textContent = candidates.length;
+    badge.className = 'tab-badge ' + (overdueCount > 0 ? 'badge-red' : 'badge-gray');
+  } else {
+    badge.classList.add('hidden');
+  }
 
   const container = $('seqTodayList');
   if (candidates.length === 0) {
@@ -1796,44 +1849,34 @@ async function renderTodayTasks() {
     return;
   }
 
-  const nowTs = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
   container.innerHTML = '';
   for (const candidate of candidates) {
-    const followupTime = new Date(candidate.nextFollowup).getTime();
-    const isOverdue = followupTime < nowTs;
-    const isToday = !isOverdue && followupTime <= todayEnd.getTime();
-
-    let statusLabel = isOverdue ? `${Math.ceil((nowTs - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
-    let statusClass = isOverdue ? 'status-overdue' : isToday ? 'status-today' : 'status-tomorrow';
-    let btnText = isOverdue ? 'Quick Send' : 'Go to Profile';
+    const status = getTaskStatusConfig(candidate.taskStatus);
+    const showMarkDone = candidate.taskStatus === 'OVERDUE' || candidate.taskStatus === 'DUE_SOON';
 
     const div = document.createElement('div');
-    div.className = 'task-item';
+    div.className = 'task-item ' + status.borderClass;
     div.innerHTML = `
       <div class="task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
       <div class="task-info">
         <div class="task-name">${escapeHtml(candidate.name)}</div>
-        <div class="task-desc">Follow-up scheduled</div>
-        <div class="task-schedule">${new Date(candidate.nextFollowup).toLocaleString()}</div>
+        <div class="task-desc" style="color:${status.color};font-weight:600;font-size:12px;">${status.label}</div>
+        <div class="task-schedule">${candidate.nextFollowup ? new Date(candidate.nextFollowup).toLocaleString() : ''}</div>
       </div>
       <div class="task-right">
-        <span class="task-status ${statusClass}">${statusLabel}</span>
-        <button class="btn-sm task-action-btn" data-id="${candidate.id}">${btnText}</button>
+        <span class="task-status" style="color:${status.color};">${status.label}</span>
+        <button class="btn-sm task-mark-done-btn" data-id="${candidate.id}" style="display:${showMarkDone ? 'block' : 'none'};margin-top:6px;width:auto;padding:4px 10px;font-size:12px;background:#10b981;">✓ Mark Done</button>
       </div>
     `;
     container.appendChild(div);
   }
 
-  container.querySelectorAll('.task-action-btn').forEach(btn => {
+  container.querySelectorAll('.task-mark-done-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const candidateId = parseInt(btn.dataset.id);
-      const candidate = candidates.find(c => c.id === candidateId);
-      if (candidate) {
-        showToast(`Opening ${candidate.name}'s profile...`);
-      }
+      await doMarkFollowupDone(candidateId, () => {
+        renderTodayTasks();
+      });
     });
   });
 }
@@ -2240,7 +2283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await initBindEmailState(overview.user, overview.subscription);
 
       // 3. Today tasks
-      await renderOverviewTodayTasks(overview.todayTasks);
+      await renderOverviewTodayTasks(overview.todayTasks, overview.todayTaskOverdueCount);
 
       // 4. Candidate (scrape + merge with backend data)
       await loadCurrentCandidate(overview.candidate);
@@ -2581,32 +2624,22 @@ function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
   });
 }
 
-// Mark Done button
-$('ovMarkDoneBtn').addEventListener('click', async () => {
-  if (!currentCandidate) return;
+async function doMarkFollowupDone(candidateId, onComplete) {
   showLoading();
   try {
-    // Call backend mark follow-up done
     let result = null;
-    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-      result = await window.API.candidates.markFollowupDone(currentCandidate.id);
+    if (typeof window !== 'undefined' && window.API && candidateId) {
+      result = await window.API.candidates.markFollowupDone(candidateId);
     }
 
-    // Clear local follow-up
-    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+    if (typeof window !== 'undefined' && window.API && candidateId) {
       try {
-        await window.API.candidates.updateFollowup(
-          currentCandidate.id,
-          null,
-          'none',
-          null
-        );
+        await window.API.candidates.updateFollowup(candidateId, null, 'none', null);
       } catch (e) {
         console.warn('[MarkDone] clear followup failed:', e);
       }
     }
 
-    // If sequence has next suggestion, prompt user
     if (result && result.has_suggestion) {
       const suggested = result.suggested_time ? new Date(result.suggested_time) : null;
       const dateStr = suggested ? suggested.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -2615,24 +2648,22 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
       if (choice && choice.accepted) {
         const followupTime = choice.time || suggested;
         const source = choice.edited ? 'manual' : 'sequence';
-        if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-          try {
-            await window.API.candidates.updateFollowup(
-              currentCandidate.id,
-              followupTime,
-              source,
-              source === 'sequence' ? (result.sequence_step_id || null) : null
-            );
-          } catch (e) {
-            console.warn('[MarkDone] update followup failed:', e);
-          }
+        try {
+          await window.API.candidates.updateFollowup(
+            candidateId,
+            followupTime,
+            source,
+            source === 'sequence' ? (result.sequence_step_id || null) : null
+          );
+        } catch (e) {
+          console.warn('[MarkDone] update followup failed:', e);
         }
       }
     } else if (result && result.sequence_completed) {
       showToast('All sequence steps completed');
     }
 
-    renderOverviewNextFollowup();
+    if (onComplete) onComplete();
     showToast('Marked as done');
   } catch (e) {
     console.error('[MarkDone] error:', e);
@@ -2640,6 +2671,14 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
   } finally {
     hideLoading();
   }
+}
+
+// Mark Done button
+$('ovMarkDoneBtn').addEventListener('click', async () => {
+  if (!currentCandidate) return;
+  await doMarkFollowupDone(currentCandidate.id, () => {
+    renderOverviewNextFollowup();
+  });
 });
 
 // Sync to Sequence button

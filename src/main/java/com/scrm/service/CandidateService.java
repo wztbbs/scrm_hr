@@ -2,6 +2,7 @@ package com.scrm.service;
 
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
+import com.scrm.common.TaskStatus;
 import com.scrm.dao.CandidateMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -245,24 +246,33 @@ public class CandidateService {
         }
     }
 
+    private static final int DUE_SOON_MINUTES = 60;
+
+    private TaskStatus evaluateTaskStatus(Date nextFollowupAt) {
+        if (nextFollowupAt == null) {
+            return null;
+        }
+        long diffMs = nextFollowupAt.getTime() - System.currentTimeMillis();
+        if (diffMs < 0) {
+            return TaskStatus.OVERDUE;
+        }
+        if (diffMs <= DUE_SOON_MINUTES * 60000L) {
+            return TaskStatus.DUE_SOON;
+        }
+        return TaskStatus.UPCOMING;
+    }
+
     public List<Candidate> listTodayTasks() {
         Long userId = RequestContext.getCurrentUserId();
-        // End of today
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.HOUR_OF_DAY, 23);
-        cal.set(Calendar.MINUTE, 59);
-        cal.set(Calendar.SECOND, 59);
-        cal.set(Calendar.MILLISECOND, 999);
-        Date endOfDay = cal.getTime();
+        Date threshold = new Date(System.currentTimeMillis() + DUE_SOON_MINUTES * 60000L);
+        List<Candidate> tasks = subCandidateMapper.selectTodayTasks(userId, threshold);
+        tasks.forEach(c -> c.setTaskStatus(evaluateTaskStatus(c.getNextFollowupAt())));
+        return tasks;
+    }
 
-        CandidateExample example = new CandidateExample();
-        example.createCriteria()
-                .andUserIdEqualTo(userId)
-                .andNextFollowupAtIsNotNull()
-                .andNextFollowupAtLessThanOrEqualTo(endOfDay)
-                .andPipelineStageNotEqualTo(PipelineStageEnum.DELETE.getValue());
-        example.setOrderByClause("next_followup_at ASC");
-        return candidateMapper.selectByExample(example);
+    public long countOverdueTasks() {
+        Long userId = RequestContext.getCurrentUserId();
+        return subCandidateMapper.countOverdueTasks(userId);
     }
 
     public Map<String, Object> markFollowupDone(String id) {
