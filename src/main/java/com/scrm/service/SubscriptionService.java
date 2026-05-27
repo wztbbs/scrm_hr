@@ -248,14 +248,17 @@ public class SubscriptionService {
             user.setDailyAiResetAt(java.sql.Timestamp.valueOf(now));
         }
 
-        SubscriptionPlan plan = getCurrentPlan(userId);
-        int limit = plan != null ? plan.getDailyConnectLimit() : 10;
-        int used = user.getDailyAiUsed() != null ? user.getDailyAiUsed() : 0;
-        if (used >= limit) {
-            throw new QuotaExceededException("ai", used, limit,
-                    "You've used " + used + "/" + limit + " AI messages today.");
-        }
+        // === 调试期间临时关闭 AI 消息额度限制 ===
+        // SubscriptionPlan plan = getCurrentPlan(userId);
+        // int limit = plan != null ? plan.getDailyConnectLimit() : 10;
+        // int used = user.getDailyAiUsed() != null ? user.getDailyAiUsed() : 0;
+        // if (used >= limit) {
+        //     throw new QuotaExceededException("ai", used, limit,
+        //             "You've used " + used + "/" + limit + " AI messages today.");
+        // }
+        // ============================================
 
+        int used = user.getDailyAiUsed() != null ? user.getDailyAiUsed() : 0;
         user.setDailyAiUsed(used + 1);
         user.setDailyAiResetAt(user.getDailyAiResetAt());
         subUserMapper.updateAiUsage(user);

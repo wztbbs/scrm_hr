@@ -74,8 +74,8 @@ public class AnalysisStrategySkill {
         String systemPrompt = "You are an expert recruiter analyst. Analyze candidate profiles and interaction history to identify key signals and determine the optimal messaging strategy. Output must be valid JSON only.";
 
         log.info("[AnalysisStrategySkill] >>> CALL LLM START | model=qwen3.7-max");
-        log.debug("[AnalysisStrategySkill] System Prompt:\n{}", systemPrompt);
-        log.debug("[AnalysisStrategySkill] User Prompt:\n{}", renderedPrompt);
+        log.info("[AnalysisStrategySkill] System Prompt:\n{}", systemPrompt);
+        log.info("[AnalysisStrategySkill] User Prompt:\n{}", renderedPrompt);
 
         long start = System.currentTimeMillis();
 
@@ -89,7 +89,7 @@ public class AnalysisStrategySkill {
 
         long duration = System.currentTimeMillis() - start;
         log.info("[AnalysisStrategySkill] <<< CALL LLM END | duration={}ms", duration);
-        log.debug("[AnalysisStrategySkill] Raw Response:\n{}", rawContent);
+        log.info("[AnalysisStrategySkill] Raw Response:\n{}", rawContent);
 
         try {
             return objectMapper.readValue(rawContent, StrategyResult.class);

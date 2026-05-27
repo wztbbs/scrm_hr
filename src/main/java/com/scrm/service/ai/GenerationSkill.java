@@ -64,8 +64,8 @@ public class GenerationSkill {
         String systemPrompt = "You are an expert recruitment copywriter specializing in LinkedIn outreach. You write highly personalized, natural-sounding messages that sound like they were written by a human, not an AI.";
 
         log.info("[GenerationSkill] >>> CALL LLM START | model=qwen3.6-plus");
-        log.debug("[GenerationSkill] System Prompt:\n{}", systemPrompt);
-        log.debug("[GenerationSkill] User Prompt:\n{}", renderedPrompt);
+        log.info("[GenerationSkill] System Prompt:\n{}", systemPrompt);
+        log.info("[GenerationSkill] User Prompt:\n{}", renderedPrompt);
 
         long start = System.currentTimeMillis();
 
@@ -79,7 +79,7 @@ public class GenerationSkill {
 
         long duration = System.currentTimeMillis() - start;
         log.info("[GenerationSkill] <<< CALL LLM END | duration={}ms", duration);
-        log.debug("[GenerationSkill] Raw Response:\n{}", rawContent);
+        log.info("[GenerationSkill] Raw Response:\n{}", rawContent);
 
         return rawContent;
     }

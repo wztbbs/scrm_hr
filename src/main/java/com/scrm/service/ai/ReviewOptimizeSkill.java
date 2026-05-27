@@ -65,8 +65,8 @@ public class ReviewOptimizeSkill {
         String systemPrompt = "You are a sharp editor reviewing recruitment messages. Your job is to detect AI-generated patterns, repetition, and pushy sales language. You must output valid JSON only.";
 
         log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3.6-plus");
-        log.debug("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
-        log.debug("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
+        log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
+        log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
 
         long start = System.currentTimeMillis();
 
@@ -80,7 +80,7 @@ public class ReviewOptimizeSkill {
 
         long duration = System.currentTimeMillis() - start;
         log.info("[ReviewOptimizeSkill] <<< CALL LLM END | duration={}ms", duration);
-        log.debug("[ReviewOptimizeSkill] Raw Response:\n{}", rawContent);
+        log.info("[ReviewOptimizeSkill] Raw Response:\n{}", rawContent);
 
         try {
             return objectMapper.readValue(rawContent, OptimizeResult.class);
