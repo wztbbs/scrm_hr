@@ -18,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,16 +100,36 @@ public class AnalysisStrategySkill {
         }
     }
 
+    private static final SimpleDateFormat HISTORY_TIME_FMT = new SimpleDateFormat("MM-dd HH:mm");
+
     private String formatHistory(List<CandidateHistoryWithBLOBs> history) {
         if (history == null || history.isEmpty()) {
             return "No interaction history yet.";
         }
         return history.stream()
-                .limit(10)
-                .map(h -> String.format("- [%s] %s: %s",
-                        h.getHistoryTime(),
-                        h.getTitle(),
-                        h.getDescription() != null ? h.getDescription() : ""))
+                // 过滤包含 null 的记录
+                .filter(h -> {
+                    String title = h.getTitle() != null ? h.getTitle() : "";
+                    String desc = h.getDescription() != null ? h.getDescription() : "";
+                    return !title.toLowerCase().contains("null") && !desc.toLowerCase().contains("null");
+                })
+                .limit(5)
+                .map(h -> {
+                    String timeStr = h.getHistoryTime() != null
+                            ? HISTORY_TIME_FMT.format(h.getHistoryTime())
+                            : "--";
+                    String title = h.getTitle() != null ? h.getTitle().trim() : "";
+                    String desc = h.getDescription() != null ? h.getDescription().trim() : "";
+
+                    // 去重：title 和 description 相同则只保留一份
+                    if (!desc.isEmpty() && title.equalsIgnoreCase(desc)) {
+                        return String.format("- [%s] %s", timeStr, title);
+                    }
+                    if (!desc.isEmpty()) {
+                        return String.format("- [%s] %s: %s", timeStr, title, desc);
+                    }
+                    return String.format("- [%s] %s", timeStr, title);
+                })
                 .collect(Collectors.joining("\n"));
     }
 }

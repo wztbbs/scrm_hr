@@ -292,11 +292,14 @@ function renderOverview() {
 
   $('ovKeyMemory').value = currentCandidate.keyMemory || '';
 
-  // Reset AI message area
-  $('ovAiGenerateBtn').style.display = 'block';
-  $('ovAiGenerateBtn').disabled = false;
-  $('ovAiLoading').style.display = 'none';
-  $('ovAiResult').style.display = 'none';
+  // Reset AI message area only if NOT currently generating
+  // (prevents re-enabling the button while a request is in flight)
+  if ($('ovAiLoading').style.display !== 'block') {
+    $('ovAiGenerateBtn').style.display = 'block';
+    $('ovAiGenerateBtn').disabled = false;
+    $('ovAiLoading').style.display = 'none';
+    $('ovAiResult').style.display = 'none';
+  }
 
   renderOverviewActiveSequence();
   renderOverviewNextFollowup();
