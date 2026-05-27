@@ -1,0 +1,29 @@
+### Candidate Profile
+- Name: {{ fullName }}
+- Current Role: {{ jobTitle }} at {{ company }}
+{% if location %}- Location: {{ location }}{% endif %}
+{% if headline %}- Headline: {{ headline }}{% endif %}
+{% if temperature %}- Temperature/Intent: {{ temperature }}{% endif %}
+
+### Interaction History
+{{ history }}
+
+### Job Requirement
+- Role: {{ jobTitleReq }}
+- Function: {{ jobFunctionReq }}
+
+### Current Pipeline Stage
+{{ pipelineStage }}
+
+### Instructions
+1. Extract key candidate signals (skills, job-seeking intent, key motivators).
+2. Determine the message goal based on the pipeline stage and history.
+3. Output a JSON object with the following structure:
+{
+  "intent": "string (Brief summary of the strategy)",
+  "goal": "string (MUST be one of: break_ice, advance, re_activate, close)",
+  "reason": "string (Why this goal was chosen)",
+  "keyInsight": "string (Specific detail to hook the candidate in the next step)"
+}
+
+Do NOT include any markdown formatting or explanation outside the JSON.

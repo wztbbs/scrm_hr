@@ -1,0 +1,21 @@
+### Context
+- Goal: {{ goal }}
+- Reason: {{ reason }}
+- Key Insight to use: {{ keyInsight }}
+
+### Candidate Info
+- Name: {{ fullName }} ({{ jobTitle }} at {{ company }})
+{% if location %}- Location: {{ location }}{% endif %}
+{% if headline %}- Headline: {{ headline }}{% endif %}
+
+### Job Info
+- Role: {{ jobTitleReq }} ({{ jobFunctionReq }})
+
+### Writing Guidelines
+1. Tone: Natural, professional yet conversational. ABSOLUTELY NO "I hope this message finds you well".
+2. Style: Low pressure. Use phrases like "worth a brief chat" instead of "life-changing opportunity".
+3. Personalization: Explicitly reference the candidate's specific background (company, skills, or headline). Do not be generic.
+4. Length: Strictly 50-80 words.
+5. Output: Return ONLY the message body text. No subject lines, no signatures, no JSON.
+
+Please write the LinkedIn message now.

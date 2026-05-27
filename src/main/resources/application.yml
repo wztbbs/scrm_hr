@@ -25,11 +25,13 @@ spring:
 
   ai:
     openai:
-      api-key: ${OPENROUTER_API_KEY:dummy}
-      base-url: https://openrouter.ai/api/v1
+      # 阿里云百炼兼容模式（OpenAI API 兼容）
+      # 注意：base-url 不要带 /v1，Spring AI 内部会自动追加 /v1/chat/completions
+      api-key: ${DASHSCOPE_API_KEY:dummy}
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
       chat:
         options:
-          model: google/gemini-1.5-flash
+          model: qwen-plus
           temperature: 0.3
 
 mybatis:
@@ -39,10 +41,8 @@ mybatis:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
-# OpenRouter 额外标识（部分模型要求）
-openrouter:
-  site-url: https://linkedin-scrm.com
-  app-name: LinkedIn SCRM
+# 阿里云百炼不需要 HTTP-Referer / X-Title 等额外 header
+# （原 OpenRouter 配置已移除）
 
 paddle:
   api-key: ${PADDLE_API_KEY:}
@@ -54,6 +54,9 @@ paddle:
 
 feedback:
   to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
+
+support:
+  to-email: ${SUPPORT_TO_EMAIL:richardtao2001@gmail.com}
 
 logging:
   level:

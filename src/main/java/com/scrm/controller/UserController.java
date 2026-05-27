@@ -12,6 +12,7 @@ import com.scrm.entity.Subscription;
 import com.scrm.service.EmailVerificationService;
 import com.scrm.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -30,6 +31,12 @@ public class UserController {
     @Autowired
     private SubSubscriptionMapper subSubscriptionMapper;
 
+    @Value("${feedback.to-email}")
+    private String feedbackToEmail;
+
+    @Value("${support.to-email}")
+    private String supportToEmail;
+
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me() {
         User user = userService.getCurrentUser();
@@ -45,6 +52,20 @@ public class UserController {
         data.put("mergedToUserId", user.getMergedToUserId());
         data.put("isPro", isPro);
         data.put("needBindEmail", needBindEmail);
+        data.put("feedbackEmail", feedbackToEmail);
+        data.put("supportEmail", supportToEmail);
+        return ApiResponse.success(data);
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<Map<String, Object>> updateMe(@RequestBody Map<String, Object> request) {
+        String email = (String) request.get("email");
+        if (email == null || email.trim().isEmpty()) {
+            return ApiResponse.error(400, "Email is required");
+        }
+        userService.updateEmail(email.trim());
+        Map<String, Object> data = new HashMap<>();
+        data.put("success", true);
         return ApiResponse.success(data);
     }
 

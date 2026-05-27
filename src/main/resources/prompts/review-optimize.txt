@@ -1,0 +1,24 @@
+### Draft Message to Review
+{{ draft }}
+
+### History (Check for repetition)
+{{ historySnapshot }}
+
+### Task
+1. Review: Check if the draft sounds robotic, repeats history, or is too pushy.
+2. Rewrite: Create 3 distinct versions based on the draft:
+   - direct: Straight to the point, professional.
+   - gentle: Polite, soft approach, low pressure.
+   - casual: Conversational, uses contractions (e.g., "I'm" instead of "I am"), friendly.
+
+### Output Format
+Output a raw JSON object. Do NOT use markdown code blocks (```json).
+{
+  "passed": boolean,
+  "issues": ["List of specific issues found, or empty array if none"],
+  "versions": {
+    "direct": "string",
+    "gentle": "string",
+    "casual": "string"
+  }
+}

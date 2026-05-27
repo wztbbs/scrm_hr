@@ -1402,20 +1402,27 @@
 <div class="feedback-overlay hidden" id="feedbackOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-header">
-      <span class="feedback-modal-title">Send Feedback</span>
+      <span class="feedback-modal-title">Share Your Feedback</span>
       <button class="feedback-modal-close" id="feedbackCloseBtn">&#10005;</button>
     </div>
     <div class="feedback-modal-body">
-      <div class="feedback-modal-desc">Found a bug or have a suggestion? Let us know.</div>
-      <textarea class="feedback-textarea" id="feedbackContent" placeholder="Describe your issue..."></textarea>
-      <div class="feedback-field">
-        <label class="feedback-label">Email (optional)</label>
-        <input type="text" class="feedback-input" id="feedbackEmail" placeholder="your@email.com">
+      <div class="feedback-modal-desc">
+        Got an idea? Found a bug? Want a new feature?<br><br>
+        Send us an email directly — screenshots and screen recordings are welcome!<br><br>
+        📧 To: <span id="feedbackToEmail">feedback@yourdomain.com</span><br><br>
+        🎁 Reward: If your feedback is adopted, you'll receive 1 week of Pro membership FREE.
+        <hr style="border:0;border-top:1px solid #e5e7eb;margin:12px 0;">
+        Your User ID (please include this in your email):
+        <div class="email-row" style="margin-top:6px;">
+          <input type="text" class="feedback-input" id="feedbackUuidDisplay" readonly style="font-family:monospace;">
+          <button class="send-code-btn" id="feedbackCopyBtn">Copy</button>
+        </div>
       </div>
     </div>
     <div class="feedback-modal-footer">
-      <button class="feedback-btn-secondary" id="feedbackCancelBtn">Cancel</button>
-      <button class="feedback-btn-primary" id="feedbackSendBtn">Send</button>
+      <button class="feedback-btn-secondary" id="feedbackCopyUserIdBtn">Copy User ID</button>
+      <button class="feedback-btn-primary" id="feedbackEmailBtn">Open Email Client</button>
+      <button class="feedback-btn-secondary" id="feedbackCancelBtn">Close</button>
     </div>
   </div>
 </div>
@@ -1424,60 +1431,48 @@
 <div class="feedback-overlay hidden" id="bindEmailOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-header">
-      <span class="feedback-modal-title">Bind Email</span>
+      <span class="feedback-modal-title">Link Your Email</span>
       <button class="feedback-modal-close" id="bindEmailCloseBtn">&#10005;</button>
     </div>
     <div class="feedback-modal-body">
-      <div class="feedback-field">
-        <label class="feedback-label">Email</label>
-        <div class="email-row">
-          <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
-          <button class="send-code-btn" id="sendCodeBtn">Send Code</button>
-        </div>
+      <div class="feedback-modal-desc">
+        Enter your email address below. We'll link it directly to your account — no verification code needed.
       </div>
       <div class="feedback-field">
-        <label class="feedback-label">Verification Code</label>
-        <input type="text" class="feedback-input" id="bindCodeInput" placeholder="Enter 5-digit code">
+        <label class="feedback-label">Email</label>
+        <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
       </div>
     </div>
     <div class="feedback-modal-footer">
       <button class="feedback-btn-secondary" id="bindEmailCancelBtn">Cancel</button>
-      <button class="feedback-btn-primary" id="bindEmailSubmitBtn">Bind</button>
+      <button class="feedback-btn-primary" id="bindEmailSubmitBtn">Save</button>
     </div>
   </div>
 </div>
 
-<!-- Email Display Modal -->
-<div class="feedback-overlay hidden" id="emailDisplayOverlay">
+<!-- Email Conflict Modal -->
+<div class="feedback-overlay hidden" id="emailConflictOverlay">
   <div class="feedback-modal">
     <div class="feedback-modal-header">
-      <span class="feedback-modal-title">Your Email</span>
-      <button class="feedback-modal-close" id="emailDisplayCloseBtn">&#10005;</button>
+      <span class="feedback-modal-title">Email Already in Use</span>
+      <button class="feedback-modal-close" id="emailConflictCloseBtn">&#10005;</button>
     </div>
     <div class="feedback-modal-body">
-      <div class="feedback-modal-desc" id="emailDisplayText"></div>
-    </div>
-    <div class="feedback-modal-footer">
-      <button class="feedback-btn-secondary" id="emailDisplayOkBtn">OK</button>
-    </div>
-  </div>
-</div>
-
-<!-- Account Conflict Modal -->
-<div class="feedback-overlay hidden" id="accountConflictOverlay">
-  <div class="feedback-modal">
-    <div class="feedback-modal-header">
-      <span class="feedback-modal-title">Account Already Exists</span>
-      <button class="feedback-modal-close" id="accountConflictCloseBtn">&#10005;</button>
-    </div>
-    <div class="feedback-modal-body">
-      <div class="feedback-modal-desc" id="accountConflictDesc">
-        This email is already linked to another account. How would you like to proceed?
+      <div class="feedback-modal-desc">
+        This email is already linked to another account.<br><br>
+        To transfer or resolve this, please contact us directly:<br><br>
+        📧 To: <span id="emailConflictSupportEmail">support@yourdomain.com</span><br><br>
+        Required info: Your User ID — <span id="emailConflictUuid"></span>
+        <div class="email-row" style="margin-top:6px;">
+          <input type="text" class="feedback-input" id="emailConflictUuidInput" readonly style="font-family:monospace;">
+          <button class="send-code-btn" id="emailConflictCopyBtn">Copy</button>
+        </div><br>
+        We typically respond within 24 hours.
       </div>
     </div>
-    <div class="feedback-modal-footer" style="flex-direction: column; gap: 8px;">
-      <button class="feedback-btn-primary" id="accountConflictMergeBtn" style="width: 100%;">Merge with existing account</button>
-      <button class="feedback-btn-secondary" id="accountConflictKeepBtn" style="width: 100%;">Keep this device as new</button>
+    <div class="feedback-modal-footer">
+      <button class="feedback-btn-secondary" id="emailConflictCopyUserIdBtn">Copy User ID</button>
+      <button class="feedback-btn-secondary" id="emailConflictCloseBtn2">Close</button>
     </div>
   </div>
 </div>
@@ -1562,9 +1557,19 @@
         <div class="mode-title">Nurture</div>
       </div>
     </div>
-    <div class="ai-placeholder" id="ovAiPlaceholder">
-      🤖 AI assistant will appear here<br>
-      <span style="font-size:12px">(Coming soon)</span>
+    <button class="btn-primary" id="ovAiGenerateBtn" style="width:100%;margin-bottom:10px;padding:10px 0;font-size:14px;font-weight:600;border:none;background:#5b4cdb;color:#fff;border-radius:8px;cursor:pointer;">
+      ✨ Generate AI Message
+    </button>
+
+    <div id="ovAiLoading" style="display:none;text-align:center;padding:16px;color:#6b7280;font-size:13px;">
+      <span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid #e5e7eb;border-top-color:#5b4cdb;border-radius:50%;animation:spin 1s linear infinite;margin-right:6px;vertical-align:middle;"></span>
+      Generating...
+    </div>
+
+    <div id="ovAiResult" style="display:none;">
+      <div class="ai-strategy" id="ovAiStrategy" style="font-size:12px;color:#6b7280;margin-bottom:10px;padding:8px;background:#f9fafb;border-radius:6px;"></div>
+      <div class="ai-versions" id="ovAiVersions"></div>
+      <div class="ai-review" id="ovAiReview" style="font-size:12px;margin-top:10px;padding:8px;background:#fef3c7;border-radius:6px;color:#92400e;"></div>
     </div>
   </div>
 

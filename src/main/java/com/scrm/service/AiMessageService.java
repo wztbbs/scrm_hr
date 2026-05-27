@@ -85,21 +85,21 @@ public class AiMessageService {
         // direct
         AiMessageResponse.MessageVersion direct = new AiMessageResponse.MessageVersion();
         direct.setTone("direct");
-        direct.setContent(optimize.getVersions().getDirect());
+        direct.setContent(cleanMarkdown(optimize.getVersions().getDirect()));
         direct.setRecommended(false);
         versions.add(direct);
 
         // gentle
         AiMessageResponse.MessageVersion gentle = new AiMessageResponse.MessageVersion();
         gentle.setTone("gentle");
-        gentle.setContent(optimize.getVersions().getGentle());
+        gentle.setContent(cleanMarkdown(optimize.getVersions().getGentle()));
         gentle.setRecommended(false);
         versions.add(gentle);
 
         // casual
         AiMessageResponse.MessageVersion casual = new AiMessageResponse.MessageVersion();
         casual.setTone("casual");
-        casual.setContent(optimize.getVersions().getCasual());
+        casual.setContent(cleanMarkdown(optimize.getVersions().getCasual()));
         casual.setRecommended(false);
         versions.add(casual);
 
@@ -114,6 +114,18 @@ public class AiMessageService {
         response.setVersions(versions);
 
         return response;
+    }
+
+    /**
+     * 兜底清理：去掉 LLM 响应中可能出现的 markdown 语法（如 ```json、``` 等）
+     */
+    private String cleanMarkdown(String text) {
+        if (text == null) {
+            return "";
+        }
+        return text.replace("```json", "")
+                   .replace("```", "")
+                   .trim();
     }
 
     private CandidateWithBLOBs resolveCandidate(Long userId, AiMessageRequest request) {

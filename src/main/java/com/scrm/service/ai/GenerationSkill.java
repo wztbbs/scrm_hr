@@ -1,64 +1,61 @@
 package com.scrm.service.ai;
 
+import com.hubspot.jinjava.Jinjava;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.CandidateWithBLOBs;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
 
 @Component
 public class GenerationSkill {
 
     private final ChatClient chatClient;
+    private final Jinjava jinjava;
+    private final String template;
 
     public GenerationSkill(ChatClient chatClient) {
         this.chatClient = chatClient;
+        this.jinjava = new Jinjava();
+        try {
+            this.template = new String(
+                    new ClassPathResource("prompts/generation.txt").getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load generation prompt template", e);
+        }
     }
 
     public String generate(StrategyResult strategy, CandidateWithBLOBs candidate, String jobTitle, String jobFunction) {
         var options = OpenAiChatOptions.builder()
-                .withModel("anthropic/claude-3.5-sonnet")
+                .withModel("qwen3.6-plus")
                 .withTemperature(0.6)
                 .withMaxTokens(800)
                 .build();
 
-        String prompt = String.format("""
-            【消息目标】%s
-            【目标理由】%s
-            【关键洞察】%s
-            
-            【候选人】
-            %s（%s at %s）
-            地点：%s
-            Headline：%s
-            
-            【在招岗位】
-            %s（%s 领域）
-            
-            【写作要求】
-            1. 语气自然，像真人猎头写的，绝对不要 "I hope this message finds you well"
-            2. 不要过度推销，用"worth a brief chat"而不是"life-changing opportunity"
-            3. 引用候选人背景的具体细节（公司、技能），不要泛泛而谈
-            4. 长度控制在 50-80 个英文单词
-            5. 直接输出消息正文，不要加标题、签名、JSON格式
-            
-            请写一条 LinkedIn 消息。
-            """,
-                strategy.getGoal(),
-                strategy.getReason(),
-                strategy.getKeyInsight(),
-                candidate.getFullName(),
-                candidate.getJobTitle(),
-                candidate.getCompany(),
-                candidate.getLocation(),
-                candidate.getHeadline(),
-                jobTitle != null ? jobTitle : "未指定",
-                jobFunction != null ? jobFunction : "未指定"
-        );
+        Map<String, Object> context = new HashMap<>();
+        context.put("goal", strategy.getGoal());
+        context.put("reason", strategy.getReason());
+        context.put("keyInsight", strategy.getKeyInsight());
+        context.put("fullName", candidate.getFullName());
+        context.put("jobTitle", candidate.getJobTitle());
+        context.put("company", candidate.getCompany());
+        context.put("location", candidate.getLocation());
+        context.put("headline", candidate.getHeadline());
+        context.put("jobTitleReq", jobTitle != null ? jobTitle : "Not specified");
+        context.put("jobFunctionReq", jobFunction != null ? jobFunction : "Not specified");
+
+        String prompt = jinjava.render(template, context);
 
         return chatClient.prompt()
                 .options(options)
-                .system("You are an expert recruitment copywriter who writes highly personalized, natural-sounding LinkedIn messages.")
+                .system("You are an expert recruitment copywriter specializing in LinkedIn outreach. You write highly personalized, natural-sounding messages that sound like they were written by a human, not an AI.")
                 .user(prompt)
                 .call()
                 .content();

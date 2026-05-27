@@ -24,6 +24,11 @@ public class UserService {
 
     public void updateEmail(String email) {
         Long userId = RequestContext.getCurrentUserId();
+        User existing = userMapper.selectByEmail(email);
+        if (existing != null && existing.getIsActive() != null && existing.getIsActive()
+                && !existing.getId().equals(userId)) {
+            throw new BusinessException("Email already in use");
+        }
         User user = new User();
         user.setId(userId);
         user.setEmail(email);
