@@ -3023,7 +3023,6 @@ function updateBindEmailButton() {
   conflictCopyBtn.addEventListener('click', copyUuid);
   conflictCopyUserIdBtn.addEventListener('click', copyUuid);
 })();
-})();
 // ========== AI Message Generation ==========
 (function initAiMessage() {
   $('ovAiGenerateBtn').addEventListener('click', async () => {

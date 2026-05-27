@@ -3,7 +3,11 @@ package com.scrm.service.ai;
 import com.hubspot.jinjava.Jinjava;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.CandidateWithBLOBs;
-import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -11,17 +15,18 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
 public class GenerationSkill {
 
-    private final ChatClient chatClient;
+    private final OpenAiChatModel chatModel;
     private final Jinjava jinjava;
     private final String template;
 
-    public GenerationSkill(ChatClient chatClient) {
-        this.chatClient = chatClient;
+    public GenerationSkill(OpenAiChatModel chatModel) {
+        this.chatModel = chatModel;
         this.jinjava = new Jinjava();
         try {
             this.template = new String(
@@ -51,13 +56,17 @@ public class GenerationSkill {
         context.put("jobTitleReq", jobTitle != null ? jobTitle : "Not specified");
         context.put("jobFunctionReq", jobFunction != null ? jobFunction : "Not specified");
 
-        String prompt = jinjava.render(template, context);
+        String renderedPrompt = jinjava.render(template, context);
 
-        return chatClient.prompt()
-                .options(options)
-                .system("You are an expert recruitment copywriter specializing in LinkedIn outreach. You write highly personalized, natural-sounding messages that sound like they were written by a human, not an AI.")
-                .user(prompt)
-                .call()
-                .content();
+        var prompt = new Prompt(
+                List.of(
+                        new SystemMessage("You are an expert recruitment copywriter specializing in LinkedIn outreach. You write highly personalized, natural-sounding messages that sound like they were written by a human, not an AI."),
+                        new UserMessage(renderedPrompt)
+                ),
+                options
+        );
+
+        ChatResponse response = chatModel.call(prompt);
+        return response.getResult().getOutput().getContent();
     }
 }
