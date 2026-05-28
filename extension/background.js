@@ -61,9 +61,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.type === 'CHAT_MESSAGE') {
         const directionLabel = request.payload.isInbound ? '收到' : '发送';
-        const senderName = request.payload.senderName || request.payload.sender;
-        console.log(`[SCRM] ${directionLabel}消息 | ${senderName}: "${request.payload.text}"`);
+        const candidateName = request.payload.otherName;
+        console.log(`[SCRM] ${directionLabel}消息 | ${candidateName || '(未识别)'}: "${request.payload.text}"`);
         console.log('[SCRM] Chat message full data:', request.payload);
+
+        if (!candidateName) {
+            console.log('[SCRM] 未提取到候选人名字，跳过同步');
+            sendResponse({ success: false, error: '候选人名字未识别，跳过同步' });
+            return true;
+        }
+
+        request.payload.candidateName = candidateName;
+
         (async () => {
             try {
                 const userId = await getOrCreateUserId();
@@ -97,7 +106,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 try {
                     const trackBody = {
                         event_name: 'candidate_imported_chat',
-                        event_data: JSON.stringify({ is_inbound: request.payload.isInbound, sender: request.payload.senderName }),
+                        event_data: JSON.stringify({ is_inbound: request.payload.isInbound, sender: candidateName }),
                         session_id: request.payload.sessionId || 'bg_' + Date.now()
                     };
                     fetch(`${base}/api/v1/events`, {
@@ -105,7 +114,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-User-Id': userId },
                         body: JSON.stringify(trackBody)
                     }).catch(() => {});
-                } catch (e) { /* ignore */ }
+                } catch (e) { } // ignore
                 sendResponse({ success: true, data: json.data });
             } catch (err) {
                 console.warn('[SCRM] Failed to save chat message:', err);

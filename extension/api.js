@@ -111,7 +111,9 @@ async function apiRequest(method, path, body = null, query = null) {
     }
     const json = await resp.json();
     if (json.code !== 0) {
-      throw new Error(json.message || 'API error');
+      const err = new Error(json.message || 'API error');
+      err.code = json.code;
+      throw err;
     }
     console.log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);
     return json;

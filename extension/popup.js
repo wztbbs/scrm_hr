@@ -3040,6 +3040,33 @@ function updateBindEmailButton() {
     result.style.display = 'none';
 
     try {
+      if (!currentCandidate.id) {
+        const canSave = await checkCandidateLimit();
+        if (!canSave) {
+          btn.disabled = false;
+          loading.style.display = 'none';
+          return;
+        }
+        try {
+          currentCandidate.source = 'linkedin_profile';
+          const created = await window.API.candidates.create(currentCandidate);
+          if (created && created.id) {
+            currentCandidate.id = created.id;
+          } else {
+            showToast('Failed to save candidate');
+            btn.disabled = false;
+            loading.style.display = 'none';
+            return;
+          }
+        } catch (e) {
+          console.error('[AI_GEN] Auto-save candidate failed:', e);
+          showToast('Failed to save candidate: ' + (e.message || 'Unknown error'));
+          btn.disabled = false;
+          loading.style.display = 'none';
+          return;
+        }
+      }
+
       const request = {
         candidate_id: currentCandidate.id,
         pipeline_stage: currentCandidate.pipelineStage,
@@ -3051,7 +3078,11 @@ function updateBindEmailButton() {
       const data = await window.API.candidates.generateAiMessages(currentCandidate.id, request);
       renderAiResult(data);
     } catch (err) {
-      showToast('Failed to generate: ' + (err.message || 'Unknown error'));
+      if (err.code === 4001) {
+        await showConfirm(err.message || "Please open the candidate's profile page and use this feature.");
+      } else {
+        showToast('Failed to generate: ' + (err.message || 'Unknown error'));
+      }
       console.error('[SCRM_TEMPLATE] AI generation failed:', err);
     } finally {
       btn.disabled = false;

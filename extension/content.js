@@ -564,53 +564,90 @@ class LinkedInMessageScraper {
     }
 
     extractOtherLinkedInId(el) {
+        console.log('[SCRM] --- extractOtherLinkedInId 开始 ---');
         const bubble = this.findBubble(el);
+        console.log(`[SCRM] findBubble 结果: ${bubble ? '找到 bubble' : 'bubble 为 null (可能在 Shadow DOM 内)'}`);
         if (bubble) {
-            // 优先从聊天窗口 header 标题中找
             const headerLink = bubble.querySelector('.msg-overlay-bubble-header__title a[href*="/in/"]');
+            console.log(`[SCRM] header 链接选择器匹配: ${headerLink ? '✓' : '✗'}`);
             if (headerLink) {
                 const href = headerLink.getAttribute('href') || '';
                 const m = href.match(/\/in\/([^\/?#]+)/);
-                if (m) return m[1];
+                if (m) {
+                    console.log(`[SCRM] 从 header 提取 linkedInId: ${m[1]}`);
+                    return m[1];
+                }
             }
-            // 备选：从聊天窗口内的 profile card 找
             const profileLink = bubble.querySelector('.msg-s-profile-card a[href*="/in/"], .msg-s-profile-card a[href*="/in/ACo"]');
+            console.log(`[SCRM] profile card 链接选择器匹配: ${profileLink ? '✓' : '✗'}`);
             if (profileLink) {
                 const href = profileLink.getAttribute('href') || '';
                 const m = href.match(/\/in\/([^\/?#]+)/);
-                if (m) return m[1];
+                if (m) {
+                    console.log(`[SCRM] 从 profile card 提取 linkedInId: ${m[1]}`);
+                    return m[1];
+                }
             }
         }
-        // 兜底：从消息元素内的发送者链接找
+        const deepHeaderLink = deepQuerySelector('.msg-overlay-bubble-header__title a[href*="/in/"]');
+        console.log(`[SCRM] 全局 header 链接选择器匹配: ${deepHeaderLink ? '✓' : '✗'}`);
+        if (deepHeaderLink) {
+            const href = deepHeaderLink.getAttribute('href') || '';
+            const m = href.match(/\/in\/([^\/?#]+)/);
+            if (m) {
+                console.log(`[SCRM] 从全局 header 提取 linkedInId: ${m[1]}`);
+                return m[1];
+            }
+        }
         const senderLink = el.querySelector('a[href*="/in/"]');
+        console.log(`[SCRM] 消息内链接选择器匹配: ${senderLink ? '✓' : '✗'}`);
         if (senderLink) {
             const href = senderLink.getAttribute('href') || '';
             const m = href.match(/\/in\/([^\/?#]+)/);
-            if (m) return m[1];
+            if (m) {
+                console.log(`[SCRM] 从消息元素兜底提取 linkedInId: ${m[1]}`);
+                return m[1];
+            }
         }
+        console.log('[SCRM] linkedInId 提取失败，返回空字符串');
         return '';
     }
 
     extractOtherName(el) {
+        console.log('[SCRM] --- extractOtherName 开始 ---');
         const bubble = this.findBubble(el);
+        console.log(`[SCRM] findBubble 结果: ${bubble ? '找到 bubble' : 'bubble 为 null (可能在 Shadow DOM 内)'}`);
         if (bubble) {
-            // 优先从聊天窗口 header 标题中找
             const titleEl = bubble.querySelector('.msg-overlay-bubble-header__title');
+            console.log(`[SCRM] header 标题选择器匹配: ${titleEl ? '✓' : '✗'}`);
             if (titleEl) {
                 const text = titleEl.innerText?.trim() || '';
+                console.log(`[SCRM] header 标题 innerText: "${text}"`);
                 if (text) return text;
             }
-            // 备选：从 profile card 找
             const nameEl = bubble.querySelector('.msg-s-profile-card .artdeco-entity-lockup__title a span, .msg-s-profile-card a[href*="/in/"] span');
+            console.log(`[SCRM] profile card 名字选择器匹配: ${nameEl ? '✓' : '✗'}`);
             if (nameEl) {
-                return nameEl.innerText?.trim() || '';
+                const text = nameEl.innerText?.trim() || '';
+                console.log(`[SCRM] 从 profile card 提取名字: "${text}"`);
+                if (text) return text;
             }
         }
-        // 兜底：从消息内的发送者名字找
-        const senderEl = el.querySelector('.msg-s-message-group__name');
-        if (senderEl) {
-            return senderEl.innerText?.trim() || '';
+        const deepTitleEl = deepQuerySelector('.msg-overlay-bubble-header__title');
+        console.log(`[SCRM] 全局 header 标题选择器匹配: ${deepTitleEl ? '✓' : '✗'}`);
+        if (deepTitleEl) {
+            const text = deepTitleEl.innerText?.trim() || '';
+            console.log(`[SCRM] 从全局 header 提取名字: "${text}"`);
+            if (text) return text;
         }
+        const senderEl = el.querySelector('.msg-s-message-group__name');
+        console.log(`[SCRM] 消息内名字选择器匹配: ${senderEl ? '✓' : '✗'}`);
+        if (senderEl) {
+            const text = senderEl.innerText?.trim() || '';
+            console.log(`[SCRM] 从消息元素兜底提取名字: "${text}"`);
+            if (text) return text;
+        }
+        console.log('[SCRM] 名字提取失败，返回空字符串');
         return '';
     }
 
@@ -725,7 +762,9 @@ class LinkedInMessageScraper {
         console.log(`[SCRM] 文本提取成功 (选择器: ${matchedSelector}): "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
 
         const isInbound = el.classList.contains('msg-s-event-listitem--other');
-        const sender = el.querySelector('.msg-s-message-group__name')?.innerText?.trim() || (isInbound ? 'Them' : 'Me');
+        const sender = isInbound
+            ? (el.querySelector('.msg-s-message-group__name')?.innerText?.trim() || 'Them')
+            : 'Me';
         const time = this.parseTime(el);
         const otherLinkedInId = this.extractOtherLinkedInId(el);
         const otherName = this.extractOtherName(el);
@@ -740,7 +779,7 @@ class LinkedInMessageScraper {
             timestamp: time,
             linkedInId: otherLinkedInId,
             linkedInUrl,
-            senderName: otherName || sender
+            otherName
         };
 
         // 在 console 中打印出来，方便调试
@@ -904,8 +943,14 @@ let preconnectInterval = null;
 function startPreconnect() {
     if (preconnectInterval) return;
     const doPing = () => {
-        console.log('[SCRM] Preconnect ping → background');
-        chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
+        try {
+            console.log('[SCRM] Preconnect ping → background');
+            chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
+        } catch (e) {
+            // Extension context invalidated (e.g. extension reloaded or updated)
+            console.warn('[SCRM] Preconnect ping failed, extension context invalidated');
+            stopPreconnect();
+        }
     };
     doPing(); // 立即执行一次
     preconnectInterval = setInterval(doPing, 25000);
