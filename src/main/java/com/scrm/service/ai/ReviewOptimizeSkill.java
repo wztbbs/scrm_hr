@@ -80,16 +80,7 @@ public class ReviewOptimizeSkill {
 
         String userPrompt = jinjava.render(template, context);
 
-        String systemPrompt = """
-                You are a strict editor rewriting AI-sounding LinkedIn recruiter messages.
-                Return ONLY the rewritten message. No quotes, no JSON.
-                
-                Rules:
-                - Remove robotic phrases: "I hope this message finds you well", "delve", "leverage", "synergy".
-                - Sound like a real person texting, not a sales pitch.
-                - 50-80 words, single paragraph, end with a short question.
-                - NEVER repeat any phrase from the History below.
-                """;
+        String systemPrompt = "You are a strict editor rewriting AI-sounding LinkedIn recruiter messages. Return ONLY the rewritten message. No quotes, no JSON.";
 
         log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3-8b");
         log.info("[ReviewOptimizeSkill] User Prompt:\n{}", userPrompt);

@@ -62,11 +62,7 @@ public class GenerationSkill {
         context.put("mode", contactMode != null ? contactMode : "recruiting");
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = """
-        You are a senior recruiter writing LinkedIn DMs. 
-        Self-check before output: no forbidden phrases, not generic, 50-80 words, ends with a question.
-        Return ONLY the message body text.
-        """;
+        String systemPrompt = "You are a busy senior recruiter who messages 100+ people a week. You sound curious, human, and low-pressure. Return ONLY the message body text. No quotes, no JSON, no signatures.";
 
         log.info("[GenerationSkill] >>> CALL LLM START | model=qwen-plus");
         log.info("[GenerationSkill] System Prompt:\n{}", systemPrompt);

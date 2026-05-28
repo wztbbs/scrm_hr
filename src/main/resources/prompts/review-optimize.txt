@@ -1,2 +1,10 @@
+Rewrite this AI-sounding LinkedIn recruiter message into a natural, human-sounding version.
+
+Rules:
+- Remove robotic phrases: "I hope this message finds you well", "delve", "leverage", "synergy".
+- Sound like a real person texting, not a sales pitch.
+- 55-70 words, single paragraph, end with a short question.
+- NEVER repeat any phrase from the History below.
+
 Draft: {{ draft }}
 History: {{ historySnapshot }}

@@ -1,42 +1,24 @@
-You are a senior recruiter writing a short LinkedIn DM to a candidate.
+Write a LinkedIn DM to {{ fullName }} ({{ jobTitle }} at {{ company }}).
 
 ### Context
 - Goal: {{ goal }}
 - Reason: {{ reason }}
-- Key Insight to use: {{ keyInsight }}
+- Key Insight: {{ keyInsight }}
+- Mode: {% if mode == 'recruiting' %}Job fit, direct but low-pressure{% else %}Relationship building, casual check-in{% endif %}
 
-### Candidate Info
-- Name: {{ fullName }} ({{ jobTitle }} at {{ company }})
-{% if location %}- Location: {{ location }}{% endif %}
-{% if headline %}- Headline: {{ headline }}{% endif %}
+### Rules
+1. Tone: Peer-to-peer. No sales pitch.
+2. Forbidden (NEVER use): "I hope this message finds you well", "I came across your profile", "delve", "leverage", "synergy", "passionate", "game-changer", "revolutionary", "excited to connect".
+3. Personalization: Reference ONE concrete detail (project, product, team scope, tech, or news) from company, headline, or role. Company name alone is NOT enough.
+4. MUST use the Key Insight explicitly. Do not skip or paraphrase it.
+5. Length: 55-70 words. Hard max 80.
+6. One short paragraph. No bullets, emojis, signatures, "Best regards".
+7. End with ONE short question (CTA).
+8. Do NOT compliment the candidate. Do NOT explain why you are messaging.
 
-### Job Info
-- Role: {{ jobTitleReq }} ({{ jobFunctionReq }})
-
-### Message Mode
-{% if mode == 'recruiting' %}
-Focus: Job fit and opportunity. Direct but low-pressure CTA.
-{% else %}
-Focus: Relationship building. Casual check-in, no job pitch.
-{% endif %}
-
-### Writing Guidelines
-1. Tone: Natural, like a peer reaching out. NOT a sales pitch.
-2. Forbidden phrases (NEVER use): "I hope this message finds you well", "I came across your profile", "delve", "leverage", "synergy", "passionate about", "game-changer", "revolutionary", "excited to connect".
-3. Style: Low pressure. Use soft CTAs like "worth a brief chat?" or "open to a quick call?".
-4. Personalization: MUST reference one specific detail from the candidate's company, headline, or role. Generic messages are rejected.
-5. Length: STRICTLY 50-80 words. Count every word.
-6. Format: Single short paragraph. NO bullet points, NO numbered lists, NO emojis, NO subject lines, NO signatures, NO "Best regards".
-7. Ending: MUST end with one short question (the CTA).
-8. Self-Check (before output): Ensure no forbidden phrases, no generic templates, not too pushy, and length is 50-80 words.
-
-### Examples of GOOD messages
-1. "Hi Minchae — OMOTION's motion-capture work looks sharp. Curious what you're tackling next. Worth a brief chat?"
-2. "Hey Sarah — saw you're scaling the infra team at TechCorp. Quick question: how's the hiring going?"
-
-### Examples of BAD messages (NEVER write like this)
-1. "I hope this message finds you well. I came across your profile and was impressed by your background..."
-2. "I am passionate about leveraging cutting-edge synergy to revolutionize your career..."
+### Examples
+GOOD: "Hi Minchae — OMOTION's motion-capture pipeline looks slick. How's the rollout going? Worth a brief chat?"
+BAD: "I hope this message finds you well. I came across your profile and was impressed by your background..."
 
 ### Output
-Return ONLY the message body text. Do NOT wrap in quotes or JSON.
+Return ONLY the message body text.

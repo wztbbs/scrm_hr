@@ -1,4 +1,4 @@
-You are an expert recruiter analyst. Analyze the candidate profile and interaction history to identify key signals and determine the optimal messaging strategy.
+Analyze the candidate profile and interaction history to identify key signals and determine the optimal messaging strategy.
 
 ### Candidate Profile
 - Name: {{ fullName }}
