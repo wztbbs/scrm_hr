@@ -28,8 +28,7 @@ spring:
       # 阿里云百炼兼容模式（OpenAI API 兼容）
       # 注意：base-url 不要带 /v1，Spring AI 内部会自动追加 /v1/chat/completions
       api-key: ${DASHSCOPE_API_KEY:dummy}
-#      base-url: https://dashscope-us.aliyuncs.com/compatible-mode
-      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      base-url: https://dashscope-us.aliyuncs.com/compatible-mode
       chat:
         options:
           model: qwen-plus

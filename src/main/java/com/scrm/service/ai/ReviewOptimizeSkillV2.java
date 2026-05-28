@@ -34,7 +34,7 @@ public class ReviewOptimizeSkillV2 {
 
     // 手动填写（测试用）
     private static final String API_KEY = "sk-bae038fba269406d850a17bf9481f95c";
-    private static final String BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+    private static final String BASE_URL = "https://dashscope-us.aliyuncs.com/compatible-mode/v1/chat/completions";
 
     private final HttpClient httpClient;
     private final Jinjava jinjava;
