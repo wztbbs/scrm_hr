@@ -13,15 +13,15 @@ public class MessagePipeline {
 
     private final AnalysisStrategySkill analysisStrategySkill;
     private final GenerationSkill generationSkill;
-    private final ReviewOptimizeSkill reviewOptimizeSkill;
+    private final ReviewOptimizeSkillV2 reviewOptimizeSkillV2;
 
     public MessagePipeline(
             AnalysisStrategySkill analysisStrategySkill,
             GenerationSkill generationSkill,
-            ReviewOptimizeSkill reviewOptimizeSkill) {
+            ReviewOptimizeSkillV2 reviewOptimizeSkillV2) {
         this.analysisStrategySkill = analysisStrategySkill;
         this.generationSkill = generationSkill;
-        this.reviewOptimizeSkill = reviewOptimizeSkill;
+        this.reviewOptimizeSkillV2 = reviewOptimizeSkillV2;
     }
 
     /**
@@ -43,7 +43,7 @@ public class MessagePipeline {
         String draft = generationSkill.generate(strategy, candidate, jobTitle, jobFunction);
 
         // Step 3: 审核+优化（Claude Haiku，输出多版本）
-        OptimizeResult result = reviewOptimizeSkill.reviewAndOptimize(draft, history);
+        OptimizeResult result = reviewOptimizeSkillV2.reviewAndOptimize(draft, history);
 
         return new PipelineResult(strategy, draft, result);
     }
