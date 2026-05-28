@@ -1,6 +1,8 @@
 package com.scrm.service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.hubspot.jinjava.Jinjava;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.CandidateHistoryWithBLOBs;
@@ -22,6 +24,7 @@ import java.text.SimpleDateFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Component
@@ -33,6 +36,12 @@ public class AnalysisStrategySkill {
     private final Jinjava jinjava;
     private final String template;
     private final ObjectMapper objectMapper;
+
+    // 本地缓存：候选人画像 30 分钟内不会变
+    private final Cache<Long, StrategyResult> analysisCache = Caffeine.newBuilder()
+            .expireAfterWrite(30, TimeUnit.MINUTES)
+            .maximumSize(1000)
+            .build();
 
     public AnalysisStrategySkill(OpenAiChatModel chatModel) {
         this.chatModel = chatModel;
@@ -53,6 +62,17 @@ public class AnalysisStrategySkill {
             String jobTitle,
             String jobFunction,
             String pipelineStage) {
+
+        Long candidateId = candidate != null ? candidate.getId() : null;
+
+        // 先查本地缓存
+        if (candidateId != null) {
+            StrategyResult cached = analysisCache.getIfPresent(candidateId);
+            if (cached != null) {
+                log.info("[AnalysisStrategySkill] Cache HIT | candidateId={}", candidateId);
+                return cached;
+            }
+        }
 
         var options = OpenAiChatOptions.builder()
                 .withModel("qwen-plus")
@@ -94,7 +114,11 @@ public class AnalysisStrategySkill {
         log.info("[AnalysisStrategySkill] Raw Response:\n{}", rawContent);
 
         try {
-            return objectMapper.readValue(rawContent, StrategyResult.class);
+            StrategyResult result = objectMapper.readValue(rawContent, StrategyResult.class);
+            if (candidateId != null) {
+                analysisCache.put(candidateId, result);
+            }
+            return result;
         } catch (Exception e) {
             log.error("[AnalysisStrategySkill] Failed to parse strategy result. Raw: {}", rawContent, e);
             throw new RuntimeException("Failed to parse strategy result: " + rawContent, e);

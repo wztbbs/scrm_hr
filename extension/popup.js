@@ -3068,44 +3068,23 @@ function updateBindEmailButton() {
       strategyEl.style.display = 'none';
     }
 
-    // Versions
+    // Single optimized message
     const versionsEl = $('ovAiVersions');
-    if (data.versions && data.versions.length > 0) {
-      versionsEl.innerHTML = data.versions.map(v => {
-        const isRecommended = v.recommended;
-        return `
-          <div class="ai-version" style="margin-bottom:10px;padding:10px;border:1px solid ${isRecommended ? '#5b4cdb' : '#e5e7eb'};border-radius:8px;background:${isRecommended ? '#f5f3ff' : '#fff'};">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span style="font-size:12px;font-weight:600;color:#374151;text-transform:capitalize;">${v.tone}</span>
-              ${isRecommended ? '<span style="font-size:11px;color:#5b4cdb;font-weight:600;">★ Recommended</span>' : ''}
-            </div>
-            <div style="font-size:13px;color:#1f2937;line-height:1.5;margin-bottom:8px;white-space:pre-wrap;">${escapeHtml(v.content)}</div>
-            <button class="btn-copy" data-text="${escapeHtml(v.content)}" style="font-size:12px;padding:4px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;cursor:pointer;">Copy</button>
-          </div>
-        `;
-      }).join('');
+    const message = data.message || '';
+    if (message) {
+      versionsEl.innerHTML = `
+        <div class="ai-version" style="margin-bottom:10px;padding:10px;border:1px solid #5b4cdb;border-radius:8px;background:#f5f3ff;">
+          <div style="font-size:13px;color:#1f2937;line-height:1.5;margin-bottom:8px;white-space:pre-wrap;">${escapeHtml(message)}</div>
+          <button class="btn-copy" data-text="${escapeHtml(message)}" style="font-size:12px;padding:4px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;cursor:pointer;">Copy</button>
+        </div>
+      `;
 
-      // Bind copy buttons
-      versionsEl.querySelectorAll('.btn-copy').forEach(btn => {
-        btn.addEventListener('click', () => {
-          copyToClipboard(btn.dataset.text);
-          showToast('Copied!');
-        });
+      versionsEl.querySelector('.btn-copy').addEventListener('click', () => {
+        copyToClipboard(message);
+        showToast('Copied!');
       });
     } else {
-      versionsEl.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:12px;">No versions generated</div>';
-    }
-
-    // Review status
-    const reviewEl = $('ovAiReview');
-    if (data.issues && data.issues.length > 0) {
-      reviewEl.innerHTML = `<strong>Issues found:</strong> ${data.issues.map(i => escapeHtml(i)).join('; ')}`;
-      reviewEl.style.display = 'block';
-    } else if (data.passed) {
-      reviewEl.textContent = '✅ Passed review';
-      reviewEl.style.display = 'block';
-    } else {
-      reviewEl.style.display = 'none';
+      versionsEl.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:12px;">No message generated</div>';
     }
 
     $('ovAiResult').style.display = 'block';

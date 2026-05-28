@@ -5,7 +5,6 @@ import com.scrm.common.RequestContext;
 import com.scrm.dao.*;
 import com.scrm.dto.AiMessageRequest;
 import com.scrm.dto.AiMessageResponse;
-import com.scrm.dto.OptimizeResult;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.*;
 import com.scrm.service.ai.MessagePipeline;
@@ -13,7 +12,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -41,7 +39,6 @@ public class AiMessageService {
 
     public AiMessageResponse generateMessages(AiMessageRequest request) {
         Long userId = RequestContext.getCurrentUserId();
-        // Check AI usage limit before generating
         subscriptionService.checkAndIncrementAiUsage(userId);
 
         CandidateWithBLOBs candidate = resolveCandidate(userId, request);
@@ -50,20 +47,13 @@ public class AiMessageService {
         }
         Long candidateId = candidate.getId();
 
-        // Fetch history
         List<CandidateHistoryWithBLOBs> histories = fetchHistory(userId, candidateId);
-
-        // Fetch pipeline stage
         String pipelineStage = resolvePipelineStage(candidate);
-
-        // Fetch sequence context
         SequenceContext seqCtx = resolveSequenceContext(userId, candidateId, request);
 
-        // Use request job info or fallback to sequence job info
         String jobTitle = request.getJobTitle() != null ? request.getJobTitle() : seqCtx.jobTitle;
         String jobFunction = request.getJobFunction() != null ? request.getJobFunction() : seqCtx.jobFunction;
 
-        // Run 3-step pipeline
         MessagePipeline.PipelineResult pipelineResult = messagePipeline.generate(
                 candidate, histories, jobTitle, jobFunction, pipelineStage
         );
@@ -73,59 +63,12 @@ public class AiMessageService {
 
     private AiMessageResponse buildResponse(MessagePipeline.PipelineResult result) {
         StrategyResult strategy = result.strategy();
-        OptimizeResult optimize = result.optimizeResult();
+        String optimized = result.optimizedMessage();
 
         AiMessageResponse response = new AiMessageResponse();
         response.setStrategy(strategy);
-        response.setPassed(optimize.isPassed());
-        response.setIssues(optimize.getIssues());
-
-        List<AiMessageResponse.MessageVersion> versions = new ArrayList<>();
-
-        // direct
-        AiMessageResponse.MessageVersion direct = new AiMessageResponse.MessageVersion();
-        direct.setTone("direct");
-        direct.setContent(cleanMarkdown(optimize.getVersions().getDirect()));
-        direct.setRecommended(false);
-        versions.add(direct);
-
-        // gentle
-        AiMessageResponse.MessageVersion gentle = new AiMessageResponse.MessageVersion();
-        gentle.setTone("gentle");
-        gentle.setContent(cleanMarkdown(optimize.getVersions().getGentle()));
-        gentle.setRecommended(false);
-        versions.add(gentle);
-
-        // casual
-        AiMessageResponse.MessageVersion casual = new AiMessageResponse.MessageVersion();
-        casual.setTone("casual");
-        casual.setContent(cleanMarkdown(optimize.getVersions().getCasual()));
-        casual.setRecommended(false);
-        versions.add(casual);
-
-        // 推荐逻辑：如果审核通过，推荐 gentle；否则推荐 direct
-        String recommended = optimize.isPassed() ? "gentle" : "direct";
-        for (AiMessageResponse.MessageVersion v : versions) {
-            if (v.getTone().equals(recommended)) {
-                v.setRecommended(true);
-            }
-        }
-        response.setRecommendedTone(recommended);
-        response.setVersions(versions);
-
+        response.setMessage(optimized);
         return response;
-    }
-
-    /**
-     * 兜底清理：去掉 LLM 响应中可能出现的 markdown 语法（如 ```json、``` 等）
-     */
-    private String cleanMarkdown(String text) {
-        if (text == null) {
-            return "";
-        }
-        return text.replace("```json", "")
-                   .replace("```", "")
-                   .trim();
     }
 
     private CandidateWithBLOBs resolveCandidate(Long userId, AiMessageRequest request) {

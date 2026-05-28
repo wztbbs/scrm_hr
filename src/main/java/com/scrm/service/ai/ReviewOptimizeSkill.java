@@ -2,40 +2,52 @@ package com.scrm.service.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hubspot.jinjava.Jinjava;
-import com.scrm.dto.OptimizeResult;
 import com.scrm.entity.CandidateHistoryWithBLOBs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * ReviewOptimizeSkill — 使用原生 HTTP 调用阿里云百炼 OpenAI 兼容 API
+ * 输出单条优化后的消息文本，不再返回多版本 JSON
+ */
 @Component
 public class ReviewOptimizeSkill {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewOptimizeSkill.class);
 
-    private final OpenAiChatModel chatModel;
+    @Value("${spring.ai.openai.api-key}")
+    private String apiKey;
+
+    @Value("${spring.ai.openai.base-url}")
+    private String baseUrl;
+
+    private final HttpClient httpClient;
     private final Jinjava jinjava;
     private final String template;
     private final ObjectMapper objectMapper;
 
-    public ReviewOptimizeSkill(OpenAiChatModel chatModel) {
-        this.chatModel = chatModel;
+    public ReviewOptimizeSkill() {
         this.jinjava = new Jinjava();
         this.objectMapper = new ObjectMapper();
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build();
         try {
             this.template = new String(
                     new ClassPathResource("prompts/review-optimize.txt").getInputStream().readAllBytes(),
@@ -45,13 +57,10 @@ public class ReviewOptimizeSkill {
         }
     }
 
-    public OptimizeResult reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
-        var options = OpenAiChatOptions.builder()
-                .withModel("qwen-plus")
-                .withTemperature(0.3)
-                .withMaxTokens(1024)
-                .build();
-
+    /**
+     * 审核并优化草稿，返回单条优化后的消息文本
+     */
+    public String reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
         String historySnapshot = history.stream()
                 .filter(h -> "chat_message".equals(h.getHistoryType()) || "message_sent".equals(h.getHistoryType()))
                 .limit(5)
@@ -69,41 +78,82 @@ public class ReviewOptimizeSkill {
         context.put("draft", draft);
         context.put("historySnapshot", historySnapshot.isEmpty() ? "None" : historySnapshot);
 
-        String renderedPrompt = jinjava.render(template, context);
+        String userPrompt = jinjava.render(template, context);
+
         String systemPrompt = """
-                You are a strict editor reviewing recruitment LinkedIn DMs.
-                Check: robotic, repetitive, pushy, generic, length 40-100 words.
-                If passed, output 3 versions (50-80 words each):
-                - direct: professional
-                - gentle: soft, "maybe"
-                - casual: contractions, friendly
-                Output JSON schema: {"passed":bool,"issues":[],"versions":{"direct":"","gentle":"","casual":""}}
-                No markdown. No text outside JSON.
+                You are a strict editor rewriting AI-sounding LinkedIn recruiter messages.
+                Return ONLY the rewritten message. No quotes, no JSON.
+                
+                Rules:
+                - Remove robotic phrases: "I hope this message finds you well", "delve", "leverage", "synergy".
+                - Sound like a real person texting, not a sales pitch.
+                - 50-80 words, single paragraph, end with a short question.
+                - NEVER repeat any phrase from the History below.
                 """;
 
-        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen-plus");
-        log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
-        log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
+        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3-8b");
+        log.info("[ReviewOptimizeSkill] User Prompt:\n{}", userPrompt);
 
         long start = System.currentTimeMillis();
 
-        var prompt = new Prompt(
-                List.of(new SystemMessage(systemPrompt), new UserMessage(renderedPrompt)),
-                options
-        );
-
-        ChatResponse response = chatModel.call(prompt);
-        String rawContent = response.getResult().getOutput().getContent();
+        String optimizedMessage = callHttp(systemPrompt, userPrompt);
 
         long duration = System.currentTimeMillis() - start;
         log.info("[ReviewOptimizeSkill] <<< CALL LLM END | duration={}ms", duration);
-        log.info("[ReviewOptimizeSkill] Raw Response:\n{}", rawContent);
+        log.info("[ReviewOptimizeSkill] Optimized Message:\n{}", optimizedMessage);
 
+        return cleanMarkdown(optimizedMessage);
+    }
+
+    private String callHttp(String systemPrompt, String userPrompt) {
         try {
-            return objectMapper.readValue(rawContent, OptimizeResult.class);
-        } catch (Exception e) {
-            log.error("[ReviewOptimizeSkill] Failed to parse optimize result. Raw: {}", rawContent, e);
-            throw new RuntimeException("Failed to parse optimize result: " + rawContent, e);
+            String chatUrl = baseUrl.endsWith("/") ? baseUrl + "v1/chat/completions" : baseUrl + "/v1/chat/completions";
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", "qwen3-8b");
+            requestBody.put("temperature", 0.3);
+            requestBody.put("max_tokens", 512);
+            requestBody.put("enable_thinking", false);
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            messages.add(Map.of("role", "system", "content", systemPrompt));
+            messages.add(Map.of("role", "user", "content", userPrompt));
+            requestBody.put("messages", messages);
+
+            String jsonBody = objectMapper.writeValueAsString(requestBody);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(chatUrl))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody, StandardCharsets.UTF_8))
+                    .timeout(Duration.ofSeconds(60))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("HTTP " + response.statusCode() + ": " + response.body());
+            }
+
+            Map<String, Object> responseMap = objectMapper.readValue(response.body(), Map.class);
+            List<Map<String, Object>> choices = (List<Map<String, Object>>) responseMap.get("choices");
+            if (choices == null || choices.isEmpty()) {
+                throw new RuntimeException("No choices in response: " + response.body());
+            }
+            Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+            return (String) message.get("content");
+
+        } catch (IOException | InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("HTTP call failed", e);
         }
+    }
+
+    private String cleanMarkdown(String text) {
+        if (text == null) return "";
+        return text.replace("\"", "")
+                   .replace("```", "")
+                   .trim();
     }
 }

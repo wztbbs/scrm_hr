@@ -110,6 +110,12 @@
             <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
         </dependency>
 
+        <!-- Caffeine local cache -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <!-- Jinjava (Jinja2 template engine for Java) -->
         <dependency>
             <groupId>com.hubspot.jinjava</groupId>

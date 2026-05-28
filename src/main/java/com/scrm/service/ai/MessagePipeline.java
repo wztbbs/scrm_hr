@@ -1,6 +1,5 @@
 package com.scrm.service.ai;
 
-import com.scrm.dto.OptimizeResult;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.CandidateHistoryWithBLOBs;
 import com.scrm.entity.CandidateWithBLOBs;
@@ -13,15 +12,15 @@ public class MessagePipeline {
 
     private final AnalysisStrategySkill analysisStrategySkill;
     private final GenerationSkill generationSkill;
-    private final ReviewOptimizeSkillV2 reviewOptimizeSkillV2;
+    private final ReviewOptimizeSkill reviewOptimizeSkill;
 
     public MessagePipeline(
             AnalysisStrategySkill analysisStrategySkill,
             GenerationSkill generationSkill,
-            ReviewOptimizeSkillV2 reviewOptimizeSkillV2) {
+            ReviewOptimizeSkill reviewOptimizeSkill) {
         this.analysisStrategySkill = analysisStrategySkill;
         this.generationSkill = generationSkill;
-        this.reviewOptimizeSkillV2 = reviewOptimizeSkillV2;
+        this.reviewOptimizeSkill = reviewOptimizeSkill;
     }
 
     /**
@@ -34,23 +33,23 @@ public class MessagePipeline {
             String jobFunction,
             String pipelineStage) {
 
-        // Step 1: 分析+策略（Gemini Flash，快）
+        // Step 1: 分析+策略
         StrategyResult strategy = analysisStrategySkill.analyzeAndDecide(
                 candidate, history, jobTitle, jobFunction, pipelineStage
         );
 
-        // Step 2: 生成（Claude Sonnet，质量核心）
+        // Step 2: 生成草稿
         String draft = generationSkill.generate(strategy, candidate, jobTitle, jobFunction);
 
-        // Step 3: 审核+优化（Claude Haiku，输出多版本）
-        OptimizeResult result = reviewOptimizeSkillV2.reviewAndOptimize(draft, history);
+        // Step 3: 审核+优化（返回单条优化后的消息）
+        String optimized = reviewOptimizeSkill.reviewAndOptimize(draft, history);
 
-        return new PipelineResult(strategy, draft, result);
+        return new PipelineResult(strategy, draft, optimized);
     }
 
     public record PipelineResult(
             StrategyResult strategy,
             String draft,
-            OptimizeResult optimizeResult
+            String optimizedMessage
     ) {}
 }

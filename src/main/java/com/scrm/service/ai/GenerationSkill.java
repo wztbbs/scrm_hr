@@ -61,7 +61,11 @@ public class GenerationSkill {
         context.put("jobFunctionReq", jobFunction != null ? jobFunction : "Not specified");
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = "You are a senior recruiter writing LinkedIn DMs. Return ONLY the message body text.";
+        String systemPrompt = """
+        You are a senior recruiter writing LinkedIn DMs. 
+        Self-check before output: no forbidden phrases, not generic, 50-80 words, ends with a question.
+        Return ONLY the message body text.
+        """;
 
         log.info("[GenerationSkill] >>> CALL LLM START | model=qwen-plus");
         log.info("[GenerationSkill] System Prompt:\n{}", systemPrompt);
