@@ -3,12 +3,16 @@ package com.scrm.service.ai;
 import com.scrm.dto.StrategyResult;
 import com.scrm.entity.CandidateHistoryWithBLOBs;
 import com.scrm.entity.CandidateWithBLOBs;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
 public class MessagePipeline {
+
+    private static final Logger log = LoggerFactory.getLogger(MessagePipeline.class);
 
     private final AnalysisStrategySkill analysisStrategySkill;
     private final GenerationSkill generationSkill;
@@ -24,7 +28,8 @@ public class MessagePipeline {
     }
 
     /**
-     * 主入口：生成消息（3步Pipeline）
+     * 主入口：生成消息
+     * 流程：Analysis → Generation → AI Tone Detector（本地规则）→ 可选 Review
      */
     public PipelineResult generate(
             CandidateWithBLOBs candidate,
@@ -34,7 +39,7 @@ public class MessagePipeline {
             String pipelineStage,
             String contactMode) {
 
-        // Step 1: 分析+策略
+        // Step 1: 分析+策略（带本地缓存）
         StrategyResult strategy = analysisStrategySkill.analyzeAndDecide(
                 candidate, history, jobTitle, jobFunction, pipelineStage
         );
@@ -42,15 +47,27 @@ public class MessagePipeline {
         // Step 2: 生成草稿
         String draft = generationSkill.generate(strategy, candidate, jobTitle, jobFunction, contactMode);
 
-        // Step 3: 审核+优化（返回单条优化后的消息）
-        String optimized = reviewOptimizeSkill.reviewAndOptimize(draft, history);
+        // Step 3: 本地 AI 腔检测（<1ms）
+        String finalMessage;
+        boolean reviewed;
 
-        return new PipelineResult(strategy, draft, optimized);
+        if (AiToneDetector.needsReview(draft)) {
+            log.info("[MessagePipeline] AI tone detected, triggering review. Draft: {}", draft);
+            finalMessage = reviewOptimizeSkill.reviewAndOptimize(draft, history);
+            reviewed = true;
+        } else {
+            log.info("[MessagePipeline] Draft passed tone detector, skipping review.");
+            finalMessage = draft;
+            reviewed = false;
+        }
+
+        return new PipelineResult(strategy, draft, finalMessage, reviewed);
     }
 
     public record PipelineResult(
             StrategyResult strategy,
             String draft,
-            String optimizedMessage
+            String optimizedMessage,
+            boolean reviewed
     ) {}
 }
