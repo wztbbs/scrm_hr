@@ -47,25 +47,41 @@ public class ReviewOptimizeSkill {
 
     public OptimizeResult reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen-plus")
-                .withTemperature(0.7)
-                .withMaxTokens(512)
+                .withModel("qwen3-8b")
+                .withTemperature(0.3)
+                .withMaxTokens(1024)
                 .build();
 
         String historySnapshot = history.stream()
                 .filter(h -> "chat_message".equals(h.getHistoryType()) || "message_sent".equals(h.getHistoryType()))
                 .limit(5)
-                .map(h -> h.getContentSnapshot() != null ? h.getContentSnapshot() : h.getTitle())
+                .map(h -> {
+                    String content = h.getContentSnapshot() != null ? h.getContentSnapshot() : h.getTitle();
+                    return content.length() > 100 ? content.substring(0, 100) + "..." : content;
+                })
                 .collect(Collectors.joining(" | "));
+
+        if (historySnapshot.length() > 600) {
+            historySnapshot = historySnapshot.substring(0, 600) + "...";
+        }
 
         Map<String, Object> context = new HashMap<>();
         context.put("draft", draft);
-        context.put("historySnapshot", historySnapshot.isEmpty() ? "No history messages" : historySnapshot);
+        context.put("historySnapshot", historySnapshot.isEmpty() ? "None" : historySnapshot);
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = "You are a strict editor reviewing recruitment messages. Output must be valid JSON only.";
+        String systemPrompt = """
+                You are a strict editor reviewing recruitment LinkedIn DMs.
+                Check: robotic, repetitive, pushy, generic, length 40-100 words.
+                If passed, output 3 versions (50-80 words each):
+                - direct: professional
+                - gentle: soft, "maybe"
+                - casual: contractions, friendly
+                Output JSON schema: {"passed":bool,"issues":[],"versions":{"direct":"","gentle":"","casual":""}}
+                No markdown. No text outside JSON.
+                """;
 
-        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen-plus");
+        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3-8b");
         log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
         log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
 
