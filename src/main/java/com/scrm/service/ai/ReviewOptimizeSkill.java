@@ -47,8 +47,9 @@ public class ReviewOptimizeSkill {
 
     public OptimizeResult reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen3.6-plus")
+                .withModel("qwen-turbo")
                 .withTemperature(0.7)
+                .withMaxTokens(512)
                 .build();
 
         String historySnapshot = history.stream()
@@ -62,9 +63,9 @@ public class ReviewOptimizeSkill {
         context.put("historySnapshot", historySnapshot.isEmpty() ? "No history messages" : historySnapshot);
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = "You are a sharp editor reviewing recruitment messages. Your job is to detect AI-generated patterns, repetition, and pushy sales language. You must output valid JSON only.";
+        String systemPrompt = "You are a strict editor reviewing recruitment messages. Output must be valid JSON only.";
 
-        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3.6-plus");
+        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen-turbo");
         log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
         log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
 

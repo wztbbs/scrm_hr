@@ -55,8 +55,9 @@ public class AnalysisStrategySkill {
             String pipelineStage) {
 
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen3.7-max")
+                .withModel("qwen-plus")
                 .withTemperature(0.1)
+                .withMaxTokens(512)
                 .build();
 
         Map<String, Object> context = new HashMap<>();
@@ -72,9 +73,9 @@ public class AnalysisStrategySkill {
         context.put("pipelineStage", pipelineStage);
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = "You are an expert recruiter analyst. Analyze candidate profiles and interaction history to identify key signals and determine the optimal messaging strategy. Output must be valid JSON only.";
+        String systemPrompt = "You are an expert recruiter analyst. Output must be valid JSON only.";
 
-        log.info("[AnalysisStrategySkill] >>> CALL LLM START | model=qwen3.7-max");
+        log.info("[AnalysisStrategySkill] >>> CALL LLM START | model=qwen-plus");
         log.info("[AnalysisStrategySkill] System Prompt:\n{}", systemPrompt);
         log.info("[AnalysisStrategySkill] User Prompt:\n{}", renderedPrompt);
 

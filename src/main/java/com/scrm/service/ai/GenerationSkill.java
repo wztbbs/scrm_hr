@@ -43,9 +43,9 @@ public class GenerationSkill {
 
     public String generate(StrategyResult strategy, CandidateWithBLOBs candidate, String jobTitle, String jobFunction) {
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen3.6-plus")
-                .withTemperature(0.6)
-                .withMaxTokens(800)
+                .withModel("qwen-plus")
+                .withTemperature(0.7)
+                .withMaxTokens(512)
                 .build();
 
         Map<String, Object> context = new HashMap<>();
@@ -61,9 +61,9 @@ public class GenerationSkill {
         context.put("jobFunctionReq", jobFunction != null ? jobFunction : "Not specified");
 
         String renderedPrompt = jinjava.render(template, context);
-        String systemPrompt = "You are an expert recruitment copywriter specializing in LinkedIn outreach. You write highly personalized, natural-sounding messages that sound like they were written by a human, not an AI.";
+        String systemPrompt = "You are a senior recruiter writing LinkedIn DMs. Return ONLY the message body text.";
 
-        log.info("[GenerationSkill] >>> CALL LLM START | model=qwen3.6-plus");
+        log.info("[GenerationSkill] >>> CALL LLM START | model=qwen-plus");
         log.info("[GenerationSkill] System Prompt:\n{}", systemPrompt);
         log.info("[GenerationSkill] User Prompt:\n{}", renderedPrompt);
 

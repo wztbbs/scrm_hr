@@ -1,3 +1,5 @@
+You are an expert recruiter analyst. Analyze the candidate profile and interaction history to identify key signals and determine the optimal messaging strategy.
+
 ### Candidate Profile
 - Name: {{ fullName }}
 - Current Role: {{ jobTitle }} at {{ company }}
@@ -18,12 +20,17 @@
 ### Instructions
 1. Extract key candidate signals (skills, job-seeking intent, key motivators).
 2. Determine the message goal based on the pipeline stage and history.
-3. Output a JSON object with the following structure:
+3. Output a JSON object with the following structure. Each field has a STRICT length limit:
+
 {
-  "intent": "string (Brief summary of the strategy)",
-  "goal": "string (MUST be one of: break_ice, advance, re_activate, close)",
-  "reason": "string (Why this goal was chosen)",
-  "keyInsight": "string (Specific detail to hook the candidate in the next step)"
+  "intent": "string, max 20 words. Brief summary of the strategy.",
+  "goal": "string, MUST be exactly one of: break_ice, advance, re_activate, close",
+  "reason": "string, max 25 words. Why this goal was chosen.",
+  "keyInsight": "string, max 20 words. One specific hook for the next message."
 }
 
-Do NOT include any markdown formatting or explanation outside the JSON.
+### Rules
+- Output valid JSON ONLY. No markdown code blocks, no ```json wrapper.
+- Do NOT include any explanation, thinking process, or notes outside the JSON.
+- Do NOT use bullet points inside JSON values.
+- If history is empty or shows no human reply, assume this is the first contact and set goal to "break_ice".
