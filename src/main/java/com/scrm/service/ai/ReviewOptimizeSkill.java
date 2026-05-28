@@ -47,7 +47,7 @@ public class ReviewOptimizeSkill {
 
     public OptimizeResult reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen-turbo")
+                .withModel("qwen3.6-plus")
                 .withTemperature(0.7)
                 .withMaxTokens(512)
                 .build();
@@ -65,7 +65,7 @@ public class ReviewOptimizeSkill {
         String renderedPrompt = jinjava.render(template, context);
         String systemPrompt = "You are a strict editor reviewing recruitment messages. Output must be valid JSON only.";
 
-        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen-turbo");
+        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3.6-plus");
         log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
         log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
 
