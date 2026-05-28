@@ -3060,28 +3060,19 @@ function updateBindEmailButton() {
   });
 
   function renderAiResult(data) {
-    // Strategy info
-    const strategyEl = $('ovAiStrategy');
-    if (data.strategy) {
-      strategyEl.textContent = `Goal: ${data.strategy.goal || '-'} | ${data.strategy.reason || ''}`;
-      strategyEl.style.display = 'block';
-    } else {
-      strategyEl.style.display = 'none';
-    }
-
-    // Single optimized message
     const versionsEl = $('ovAiVersions');
     const message = data.message || '';
     if (message) {
       versionsEl.innerHTML = `
         <div class="ai-version" style="margin-bottom:10px;padding:10px;border:1px solid #5b4cdb;border-radius:8px;background:#f5f3ff;">
-          <div style="font-size:13px;color:#1f2937;line-height:1.5;margin-bottom:8px;white-space:pre-wrap;">${escapeHtml(message)}</div>
-          <button class="btn-copy" data-text="${escapeHtml(message)}" style="font-size:12px;padding:4px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;cursor:pointer;">Copy</button>
+          <textarea id="aiMessageEditor" style="width:100%;min-height:80px;font-size:13px;color:#1f2937;line-height:1.5;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;background:#fff;box-sizing:border-box;">${escapeHtml(message)}</textarea>
+          <button class="btn-copy" style="margin-top:8px;font-size:12px;padding:4px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;cursor:pointer;">Copy</button>
         </div>
       `;
 
       versionsEl.querySelector('.btn-copy').addEventListener('click', () => {
-        copyToClipboard(message);
+        const editedText = $('aiMessageEditor').value;
+        copyToClipboard(editedText);
         showToast('Copied!');
       });
     } else {

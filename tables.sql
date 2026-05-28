@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `connection_degree` enum('1st','2nd','3rd','out_of_network') DEFAULT NULL COMMENT '连接度数（1度/2度/3度）',
   `temperature` enum('hot','warm','cold','dead') NOT NULL DEFAULT 'cold' COMMENT '候选人温度/意向度',
   `is_ai_suggested_temp` tinyint(1) NOT NULL DEFAULT 0 COMMENT '温度是否为AI建议',
-  `source` enum('linkedin_profile','manual_entry','import') NOT NULL DEFAULT 'linkedin_profile' COMMENT '来源',
+  `source` enum('linkedin_profile','manual_entry','import','linkedin_chat') NOT NULL DEFAULT 'linkedin_profile' COMMENT '来源',
   `tags` json DEFAULT NULL COMMENT '标签数组JSON',
   `raw_profile_data` json DEFAULT NULL COMMENT 'LinkedIn原始抓取数据JSON（建议限制64KB）',
   `last_activity_at` datetime DEFAULT NULL COMMENT '最后活动时间',
