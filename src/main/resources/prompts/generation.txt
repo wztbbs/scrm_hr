@@ -13,6 +13,13 @@ You are a senior recruiter writing a short LinkedIn DM to a candidate.
 ### Job Info
 - Role: {{ jobTitleReq }} ({{ jobFunctionReq }})
 
+### Message Mode
+{% if mode == 'recruiting' %}
+Focus: Job fit and opportunity. Direct but low-pressure CTA.
+{% else %}
+Focus: Relationship building. Casual check-in, no job pitch.
+{% endif %}
+
 ### Writing Guidelines
 1. Tone: Natural, like a peer reaching out. NOT a sales pitch.
 2. Forbidden phrases (NEVER use): "I hope this message finds you well", "I came across your profile", "delve", "leverage", "synergy", "passionate about", "game-changer", "revolutionary", "excited to connect".

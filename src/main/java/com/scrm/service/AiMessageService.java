@@ -53,9 +53,10 @@ public class AiMessageService {
 
         String jobTitle = request.getJobTitle() != null ? request.getJobTitle() : seqCtx.jobTitle;
         String jobFunction = request.getJobFunction() != null ? request.getJobFunction() : seqCtx.jobFunction;
+        String contactMode = request.getContactMode() != null ? request.getContactMode() : "recruiting";
 
         MessagePipeline.PipelineResult pipelineResult = messagePipeline.generate(
-                candidate, histories, jobTitle, jobFunction, pipelineStage
+                candidate, histories, jobTitle, jobFunction, pipelineStage, contactMode
         );
 
         return buildResponse(pipelineResult);

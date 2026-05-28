@@ -12,4 +12,5 @@ public class AiMessageRequest {
     private Boolean candidateReplied;
     private String jobTitle;
     private String jobFunction;
+    private String contactMode;
 }

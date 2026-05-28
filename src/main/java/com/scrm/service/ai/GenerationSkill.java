@@ -41,7 +41,7 @@ public class GenerationSkill {
         }
     }
 
-    public String generate(StrategyResult strategy, CandidateWithBLOBs candidate, String jobTitle, String jobFunction) {
+    public String generate(StrategyResult strategy, CandidateWithBLOBs candidate, String jobTitle, String jobFunction, String contactMode) {
         var options = OpenAiChatOptions.builder()
                 .withModel("qwen-plus")
                 .withTemperature(0.7)
@@ -59,6 +59,7 @@ public class GenerationSkill {
         context.put("headline", candidate.getHeadline());
         context.put("jobTitleReq", jobTitle != null ? jobTitle : "Not specified");
         context.put("jobFunctionReq", jobFunction != null ? jobFunction : "Not specified");
+        context.put("mode", contactMode != null ? contactMode : "recruiting");
 
         String renderedPrompt = jinjava.render(template, context);
         String systemPrompt = """

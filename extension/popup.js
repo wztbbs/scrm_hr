@@ -3044,7 +3044,8 @@ function updateBindEmailButton() {
         candidate_id: currentCandidate.id,
         pipeline_stage: currentCandidate.pipelineStage,
         job_title: currentCandidate.jobTitle,
-        job_function: currentCandidate.jobFunction
+        job_function: currentCandidate.jobFunction,
+        contact_mode: currentCandidate.contactMode || 'recruiting'
       };
 
       const data = await window.API.candidates.generateAiMessages(currentCandidate.id, request);

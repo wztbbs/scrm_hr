@@ -31,7 +31,8 @@ public class MessagePipeline {
             List<CandidateHistoryWithBLOBs> history,
             String jobTitle,
             String jobFunction,
-            String pipelineStage) {
+            String pipelineStage,
+            String contactMode) {
 
         // Step 1: 分析+策略
         StrategyResult strategy = analysisStrategySkill.analyzeAndDecide(
@@ -39,7 +40,7 @@ public class MessagePipeline {
         );
 
         // Step 2: 生成草稿
-        String draft = generationSkill.generate(strategy, candidate, jobTitle, jobFunction);
+        String draft = generationSkill.generate(strategy, candidate, jobTitle, jobFunction, contactMode);
 
         // Step 3: 审核+优化（返回单条优化后的消息）
         String optimized = reviewOptimizeSkill.reviewAndOptimize(draft, history);
