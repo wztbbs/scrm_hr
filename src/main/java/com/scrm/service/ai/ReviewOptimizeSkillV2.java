@@ -33,7 +33,7 @@ public class ReviewOptimizeSkillV2 {
     private static final Logger log = LoggerFactory.getLogger(ReviewOptimizeSkillV2.class);
 
     // 手动填写（测试用）
-    private static final String API_KEY = "sk-bae038fba269406d850a17bf9481f95c";
+    private static final String API_KEY = "sk-127f56563dc94575a2e4619d48e001e7";
     private static final String BASE_URL = "https://dashscope-us.aliyuncs.com/compatible-mode/v1/chat/completions";
 
     private final HttpClient httpClient;
