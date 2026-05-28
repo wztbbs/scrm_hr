@@ -47,7 +47,7 @@ public class ReviewOptimizeSkill {
 
     public OptimizeResult reviewAndOptimize(String draft, List<CandidateHistoryWithBLOBs> history) {
         var options = OpenAiChatOptions.builder()
-                .withModel("qwen3-8b")
+                .withModel("qwen-plus")
                 .withTemperature(0.3)
                 .withMaxTokens(1024)
                 .build();
@@ -81,7 +81,7 @@ public class ReviewOptimizeSkill {
                 No markdown. No text outside JSON.
                 """;
 
-        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen3-8b");
+        log.info("[ReviewOptimizeSkill] >>> CALL LLM START | model=qwen-plus");
         log.info("[ReviewOptimizeSkill] System Prompt:\n{}", systemPrompt);
         log.info("[ReviewOptimizeSkill] User Prompt:\n{}", renderedPrompt);
 
