@@ -76,15 +76,12 @@ public class ReviewOptimizeSkillV2 {
 
         String renderedPrompt = jinjava.render(template, context);
         String systemPrompt = """
-                You are a strict editor reviewing recruitment LinkedIn DMs.
-                Check: robotic, repetitive, pushy, generic, length 40-100 words.
-                If passed, output 3 versions (50-80 words each):
-                - direct: professional
-                - gentle: soft, "maybe"
-                - casual: contractions, friendly
-                Output JSON schema: {"passed":bool,"issues":[],"versions":{"direct":"","gentle":"","casual":""}}
-                No markdown. No text outside JSON.
-                """;
+            You are a strict editor reviewing a LinkedIn recruiter message.
+            Check: robotic, repetitive, pushy, generic, length 40-100 words.
+            If passed, rewrite into ONE natural, low-pressure version (50-80 words, single paragraph, ends with short question).
+            Output JSON: {"passed":boolean,"issues":[],"content":"string"}
+            No markdown. No text outside JSON.
+            """;
 
         log.info("[ReviewOptimizeSkillV2] >>> CALL LLM START | model=qwen3-8b");
         log.info("[ReviewOptimizeSkillV2] System Prompt:\n{}", systemPrompt);
