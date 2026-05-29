@@ -2794,7 +2794,7 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
   const closeBtn = $('feedbackCloseBtn');
   const cancelBtn = $('feedbackCancelBtn');
   const copyBtn = $('feedbackCopyBtn');
-  const copyUserIdBtn = $('feedbackCopyUserIdBtn');
+  const copyEmailContentBtn = $('feedbackCopyEmailContentBtn');
   const emailBtn = $('feedbackEmailBtn');
   const uuidDisplay = $('feedbackUuidDisplay');
   const toEmailSpan = $('feedbackToEmail');
@@ -2842,13 +2842,36 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
   }
 
   copyBtn.addEventListener('click', copyUuid);
-  copyUserIdBtn.addEventListener('click', copyUuid);
+
+  async function copyEmailContent() {
+    if (!currentUserUuid || !currentUserFeedbackEmail) return;
+    const text = `To: ${currentUserFeedbackEmail}\nSubject: [Feedback] User: ${currentUserUuid}\n\nHi team,\n\nMy feedback:\n[Please describe your idea or attach screenshots here]\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Email content copied! Paste into your email client.');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('Email content copied! Paste into your email client.');
+      } catch (e) {
+        showToast('Copy failed. Please copy manually.');
+      }
+      document.body.removeChild(ta);
+    }
+  }
+
+  copyEmailContentBtn.addEventListener('click', copyEmailContent);
 
   emailBtn.addEventListener('click', () => {
     if (!currentUserUuid || !currentUserFeedbackEmail) return;
     const subject = encodeURIComponent(`[Feedback] User: ${currentUserUuid}`);
     const body = encodeURIComponent(`Hi team,\n\nMy User ID: ${currentUserUuid}\n\nMy feedback:\n\n[Please describe your idea or attach screenshots here]\n\n`);
-    window.open(`mailto:${currentUserFeedbackEmail}?subject=${subject}&body=${body}`, '_blank');
+    const mailtoUrl = `mailto:${currentUserFeedbackEmail}?subject=${subject}&body=${body}`;
+    chrome.tabs.create({ url: mailtoUrl });
   });
 })();
 
@@ -2871,8 +2894,8 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       currentUserEmail = user.email || null;
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
-      currentUserFeedbackEmail = user.feedbackEmail || null;
-      currentUserSupportEmail = user.supportEmail || null;
+      currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
+      currentUserSupportEmail = user.supportEmail || 'richardtao2001@gmail.com';
       updateBindEmailButton();
       renderEmailAlertCard();
     }
