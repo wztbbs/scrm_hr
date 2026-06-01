@@ -3,9 +3,70 @@
 const CACHE_TTL = 30 * 60 * 1000; // 30分钟缓存
 
 const extractLinkedInId = () => {
+    // ==================== 第一梯队：从 DOM 提取真实 URN ID ====================
+
+    // 优先级 1：Messaging Compose 链接的 recipient 参数（最干净，无需 decode）
+    const msgLinks = document.querySelectorAll('a[href*="/messaging/compose/"]');
+    for (const link of msgLinks) {
+        const href = link.getAttribute('href') || '';
+        const recipientMatch = href.match(/recipient=([A-Za-z0-9_-]+)/);
+        if (recipientMatch) {
+            const id = recipientMatch[1];
+            if (id.startsWith('ACo')) {
+                console.log('[SCRM] extractLinkedInId: URN from messaging recipient:', id);
+                return id;
+            }
+        }
+        // 方式 B：从 profileUrn 提取（需要 decodeURIComponent）
+        const urnMatch = href.match(/profileUrn=urn%3Ali%3Afsd_profile%3A([^&]+)/);
+        if (urnMatch) {
+            const id = decodeURIComponent(urnMatch[1]);
+            if (id.startsWith('ACo')) {
+                console.log('[SCRM] extractLinkedInId: URN from messaging profileUrn:', id);
+                return id;
+            }
+        }
+    }
+
+    // 优先级 2：Connection Of 搜索链接
+    const connLinks = document.querySelectorAll('a[href*="connectionOf="]');
+    for (const link of connLinks) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/connectionOf=%5B%22([A-Za-z0-9_-]+)%22%5D/);
+        if (match) {
+            const id = match[1];
+            if (id.startsWith('ACo')) {
+                console.log('[SCRM] extractLinkedInId: URN from connectionOf:', id);
+                return id;
+            }
+        }
+    }
+
+    // 优先级 3：Component Key（React/Vue 组件 key）
+    const compEls = document.querySelectorAll('[componentkey*="refACo"]');
+    for (const el of compEls) {
+        const key = el.getAttribute('componentkey') || '';
+        const match = key.match(/ref([A-Za-z0-9_-]+)(?:Topcard|Activity|About|Skills|Experience)/);
+        if (match) {
+            const id = match[1];
+            if (id.startsWith('ACo')) {
+                console.log('[SCRM] extractLinkedInId: URN from componentkey:', id);
+                return id;
+            }
+        }
+    }
+
+    // ==================== 第二梯队：URL Slug 兜底 ====================
     const url = window.location.href;
     const match = url.match(/linkedin\.com\/in\/([^\/\?#]+)/);
-    return match ? match[1] : '';
+    if (match) {
+        const slug = decodeURIComponent(match[1]);
+        console.warn('[SCRM] extractLinkedInId: fallback to URL slug:', slug);
+        return slug;
+    }
+
+    console.error('[SCRM] extractLinkedInId: failed to extract any LinkedIn ID');
+    return '';
 };
 
 // ========== 工具函数 ==========

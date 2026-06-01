@@ -81,14 +81,6 @@ public class CandidateService {
 
     @Transactional
     public CandidateWithBLOBs createCandidate(CandidateWithBLOBs candidate) {
-        // 打印调用堆栈，用于排查异常候选人来源
-        StringBuilder stack = new StringBuilder();
-        for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
-            stack.append("  at ").append(e.getClassName()).append(".").append(e.getMethodName()).append("(").append(e.getFileName()).append(":").append(e.getLineNumber()).append(")\n");
-        }
-        log.info("[CANDIDATE_CREATE] fullName={}, linkedinId={}, source={}\nCall stack:\n{}",
-                candidate.getFullName(), candidate.getLinkedinId(), candidate.getSource(), stack);
-
         Long userId = RequestContext.getCurrentUserId();
 
         // Deduplication by linkedin_id + user_id
@@ -109,8 +101,11 @@ public class CandidateService {
             if (existingStage == null) existingStage = PipelineStageEnum.NEW.getValue();
 
             // If existing stage is delete or unclaimed, re-calculate to 'new' for manual save
-            if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existingStage)
-                    || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(existingStage)) {
+            // Skip for linkedin_chat source: keep unclaimed as-is
+            boolean isChatSource = "linkedin_chat".equalsIgnoreCase(candidate.getSource())
+                    || "linkedin_chat".equalsIgnoreCase(existing.getSource());
+            if (!isChatSource && (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existingStage)
+                    || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(existingStage))) {
                 candidate.setPipelineStage(PipelineStageEnum.NEW.getValue());
                 candidate.setPipelineEnteredAt(new Date());
             }

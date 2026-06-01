@@ -131,7 +131,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const userId = await getOrCreateUserId();
                 const base = await getApiBase();
                 const url = `${base}/api/v1/candidates`;
-                console.log(`[SCRM][BG] 准备请求 POST ${url}, payload=`, request.payload);
+                const payload = {
+                    ...request.payload,
+                    pipelineStage: 'unclaimed'
+                };
+                console.log(`[SCRM][BG] 准备请求 POST ${url}, payload=`, payload);
                 const resp = await fetch(url, {
                     method: 'POST',
                     headers: {
@@ -139,7 +143,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         'Accept': 'application/json',
                         'X-User-Id': userId
                     },
-                    body: JSON.stringify(request.payload)
+                    body: JSON.stringify(payload)
                 });
                 console.log(`[SCRM] Save candidate API status: ${resp.status}`);
                 if (!resp.ok) {

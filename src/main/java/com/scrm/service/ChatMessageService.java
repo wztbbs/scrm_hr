@@ -78,16 +78,37 @@ public class ChatMessageService {
         update.setUpdatedAt(new Date());
         candidateMapper.updateByPrimaryKeySelective(update);
 
+        // 3. 根据消息方向推进 pipeline stage（只进不退，delete 恢复除外）
         String currentStage = candidate.getPipelineStage();
-        if (currentStage == null) currentStage = "new";
+        boolean isInbound = request.getIsInbound() != null && request.getIsInbound();
+
+        String newStage = null;
+        if (currentStage == null) {
+            // 未设置阶段：Inbound → talking（对方主动），Outbound → messaged（我主动）
+            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
+        } else if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)) {
+            // delete 恢复：Inbound → talking，Outbound → messaged
+            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
+        } else if (PipelineStageEnum.DONE.getValue().equalsIgnoreCase(currentStage)
+                || PipelineStageEnum.TALKING.getValue().equalsIgnoreCase(currentStage)) {
+            // 终态 或 已在对话中：不前进
+            newStage = null;
+        } else if (PipelineStageEnum.MESSAGED.getValue().equalsIgnoreCase(currentStage)) {
+            // 已联系：只有对方回复(Inbound)才前进到 talking，我继续发消息保持 messaged
+            if (isInbound) {
+                newStage = PipelineStageEnum.TALKING.getValue();
+            }
+        } else if (PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)
+                || PipelineStageEnum.NEW.getValue().equalsIgnoreCase(currentStage)) {
+            // 未认领 / new：Inbound → talking，Outbound → messaged
+            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
+        }
 
         String action = "existing";
-        if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)
-                || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)) {
-            // Re-calculate stage based on chat interaction: upgrade to 'messaged'
+        if (newStage != null && !newStage.equalsIgnoreCase(currentStage)) {
             CandidateWithBLOBs stageUpdate = new CandidateWithBLOBs();
             stageUpdate.setId(candidate.getId());
-            stageUpdate.setPipelineStage(PipelineStageEnum.MESSAGED.getValue());
+            stageUpdate.setPipelineStage(newStage);
             stageUpdate.setPipelineEnteredAt(new Date());
             candidateMapper.updateByPrimaryKeySelective(stageUpdate);
             action = "upgraded";
