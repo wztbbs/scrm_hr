@@ -504,6 +504,7 @@ class LinkedInMessageScraper {
         this.container = null;
         this.onMessage = null;
         this._stopped = false;
+        this.candidateId = null;
     }
 
     extractOtherName() {
@@ -511,6 +512,21 @@ class LinkedInMessageScraper {
         const titleEl = this.container.querySelector('.msg-overlay-bubble-header__title');
         if (titleEl) return titleEl.innerText?.trim() || '';
         return '';
+    }
+
+    extractLinkedInInfo() {
+        if (!this.container) return { linkedinId: '', linkedinUrl: '' };
+        const titleEl = this.container.querySelector('.msg-overlay-bubble-header__title');
+        if (!titleEl) return { linkedinId: '', linkedinUrl: '' };
+        const link = titleEl.querySelector('a');
+        if (!link) return { linkedinId: '', linkedinUrl: '' };
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/in\/([^/]+)\/?/);
+        if (match && match[1]) {
+            const linkedinId = match[1];
+            return { linkedinId, linkedinUrl: `https://www.linkedin.com/in/${linkedinId}` };
+        }
+        return { linkedinId: '', linkedinUrl: '' };
     }
 
     start(container, callback) {
@@ -586,8 +602,20 @@ class LinkedInMessageScraper {
             ? (el.querySelector('.msg-s-message-group__name')?.innerText?.trim() || 'Them')
             : 'Me';
         const otherName = this.extractOtherName();
+        const { linkedinId, linkedinUrl } = this.extractLinkedInInfo();
 
-        const msg = { id, text, isInbound, sender, otherName };
+        const msg = {
+            messageId: id,
+            text,
+            isInbound,
+            senderName: sender,
+            otherName,
+            candidateId: this.candidateId,
+            linkedinId,
+            linkedinUrl,
+            timestamp: new Date().toISOString(),
+            conversationId: ''
+        };
 
         const directionLabel = isInbound ? '收到' : '发送';
         const targetName = otherName || sender;
@@ -601,7 +629,36 @@ class LinkedInMessageScraper {
 }
 
 // ===== 多窗口 Scraper 管理 =====
-const scrapers = new Map(); // containerElement -> scraperInstance
+// 用 linkedinId 做 key，避免 DOM 引用因重渲染而失效导致重复识别
+const scrapers = new Map(); // linkedinId -> { scraper, container }
+const pendingIds = new Set(); // 正在保存候选人的 linkedinId
+
+function extractChatCandidateInfo(container) {
+    if (!container) return null;
+    const titleEl = container.querySelector('.msg-overlay-bubble-header__title');
+    if (!titleEl) return null;
+    const fullName = titleEl.innerText?.trim() || '';
+    const link = titleEl.querySelector('a');
+    if (!link) return null;
+    const href = link.getAttribute('href') || '';
+    const match = href.match(/\/in\/([^/]+)\/?/);
+    if (!match || !match[1]) return null;
+    const linkedinId = match[1];
+
+    // 防御：排除无意义名字（如给自己发消息时标题可能是 "Me"）
+    const INVALID_NAMES = ['me', 'you', '', 'null', 'undefined'];
+    if (INVALID_NAMES.includes(fullName.toLowerCase())) {
+        console.warn('[SCRM] 聊天窗口标题提取到无效名字，跳过保存:', fullName);
+        return null;
+    }
+
+    return {
+        linkedinId,
+        linkedinUrl: `https://www.linkedin.com/in/${linkedinId}`,
+        fullName,
+        source: 'linkedin_chat'
+    };
+}
 
 function isLinkedInPage() {
     const url = window.location.href;
@@ -645,28 +702,65 @@ function syncScrapers() {
     const containers = findAllChatContainers();
     console.log(`[SCRM] syncScrapers: 发现 ${containers.length} 个聊天窗口`);
 
+    // 收集当前所有窗口的 linkedinId
+    const activeIds = new Set();
+
     containers.forEach(container => {
-        if (!scrapers.has(container)) {
-            console.log('[SCRM] 为新窗口启动 scraper');
-            const scraper = new LinkedInMessageScraper();
-            scraper.start(container, msg => {
-                chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
-            });
-            scrapers.set(container, scraper);
+        const info = extractChatCandidateInfo(container);
+        if (!info || !info.linkedinId) {
+            console.log('[SCRM] 该窗口无法提取候选人标识，跳过');
+            return;
         }
+        activeIds.add(info.linkedinId);
+
+        if (scrapers.has(info.linkedinId) || pendingIds.has(info.linkedinId)) {
+            console.log(`[SCRM] linkedinId=${info.linkedinId} 已在监听或保存中，跳过`);
+            return;
+        }
+
+        pendingIds.add(info.linkedinId);
+        console.log('[SCRM] 识别到新聊天窗口，准备保存候选人:', info);
+        console.log('[SCRM] pendingIds 当前状态:', [...pendingIds]);
+
+        chrome.runtime.sendMessage(
+            { type: 'SAVE_CHAT_CANDIDATE', payload: info },
+            (response) => {
+                pendingIds.delete(info.linkedinId);
+                console.log('[SCRM] SAVE_CHAT_CANDIDATE 回调执行, linkedinId=' + info.linkedinId);
+                if (chrome.runtime.lastError) {
+                    console.error('[SCRM] 保存候选人出错:', chrome.runtime.lastError);
+                    return;
+                }
+                if (!response || !response.success) {
+                    console.error('[SCRM] 保存候选人失败:', response?.error);
+                    return;
+                }
+                const candidateId = response.data?.id;
+                console.log('[SCRM] 候选人已保存/确认，candidateId=' + candidateId);
+
+                const scraper = new LinkedInMessageScraper();
+                scraper.candidateId = candidateId ? String(candidateId) : null;
+                scraper.start(container, msg => {
+                    chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
+                });
+                scrapers.set(info.linkedinId, { scraper, container });
+                console.log('[SCRM] scraper 已启动并注册, linkedinId=' + info.linkedinId + ', scrapers.size=' + scrapers.size);
+            }
+        );
     });
 
-    scrapers.forEach((scraper, container) => {
-        if (!containers.includes(container)) {
-            console.log('[SCRM] 窗口已关闭，停止 scraper');
-            scraper.stop();
-            scrapers.delete(container);
+    // 清理已关闭窗口的 scraper
+    scrapers.forEach((entry, linkedinId) => {
+        if (!activeIds.has(linkedinId)) {
+            console.log('[SCRM] 窗口已关闭，停止 scraper, linkedinId=' + linkedinId);
+            entry.scraper.stop();
+            scrapers.delete(linkedinId);
         }
     });
 }
 
 function stopAllScrapers() {
-    scrapers.forEach(scraper => scraper.stop());
+    scrapers.forEach(entry => entry.scraper.stop());
     scrapers.clear();
 }
 

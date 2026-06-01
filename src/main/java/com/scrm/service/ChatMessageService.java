@@ -21,7 +21,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class ChatMessageService {
@@ -40,39 +39,61 @@ public class ChatMessageService {
     public Map<String, Object> processChatMessage(ChatMessageRequest request) {
         Long userId = RequestContext.getCurrentUserId();
 
-        CandidateWithBLOBs candidate = findCandidateByLinkedInId(userId, request.getLinkedInId());
-        String action;
-
-        if (candidate == null) {
-            candidate = createCandidateFromChat(userId, request);
-            action = "created";
-        } else {
-            String currentStage = candidate.getPipelineStage();
-            if (currentStage == null) currentStage = "new";
-
-            if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)
-                    || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)) {
-                // Re-calculate stage based on chat interaction: upgrade to 'messaged'
-                CandidateWithBLOBs update = new CandidateWithBLOBs();
-                update.setId(candidate.getId());
-                update.setPipelineStage(PipelineStageEnum.MESSAGED.getValue());
-                update.setPipelineEnteredAt(new Date());
-                update.setLastActivityAt(new Date());
-                update.setUpdatedAt(new Date());
-                candidateMapper.updateByPrimaryKeySelective(update);
-                candidate.setPipelineStage(PipelineStageEnum.MESSAGED.getValue());
-                action = "upgraded";
-            } else {
-                // Just update last activity
-                CandidateWithBLOBs update = new CandidateWithBLOBs();
-                update.setId(candidate.getId());
-                update.setLastActivityAt(new Date());
-                update.setUpdatedAt(new Date());
-                candidateMapper.updateByPrimaryKeySelective(update);
-                action = "existing";
+        // 1. 查找候选人：优先用 candidateId，其次用 linkedinId
+        CandidateWithBLOBs candidate = null;
+        if (request.getCandidateId() != null && !request.getCandidateId().isEmpty()) {
+            try {
+                Long cid = Long.parseLong(request.getCandidateId());
+                candidate = candidateMapper.selectByPrimaryKey(cid);
+                if (candidate != null && !candidate.getUserId().equals(userId)) {
+                    candidate = null;
+                }
+            } catch (NumberFormatException e) {
+                log.warn("Invalid candidateId format: {}", request.getCandidateId());
             }
         }
 
+        if (candidate == null && request.getLinkedinId() != null && !request.getLinkedinId().isEmpty()) {
+            CandidateExample example = new CandidateExample();
+            example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(request.getLinkedinId());
+            List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
+            if (!list.isEmpty()) {
+                candidate = list.get(0);
+            }
+        }
+
+        if (candidate == null) {
+            log.warn("[ChatMessage] 未找到对应候选人，跳过保存消息。candidateId={}, linkedinId={}",
+                    request.getCandidateId(), request.getLinkedinId());
+            Map<String, Object> result = new HashMap<>();
+            result.put("skipped", true);
+            result.put("reason", "candidate_not_found");
+            return result;
+        }
+
+        // 2. 更新候选人最后活动时间
+        CandidateWithBLOBs update = new CandidateWithBLOBs();
+        update.setId(candidate.getId());
+        update.setLastActivityAt(new Date());
+        update.setUpdatedAt(new Date());
+        candidateMapper.updateByPrimaryKeySelective(update);
+
+        String currentStage = candidate.getPipelineStage();
+        if (currentStage == null) currentStage = "new";
+
+        String action = "existing";
+        if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)
+                || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)) {
+            // Re-calculate stage based on chat interaction: upgrade to 'messaged'
+            CandidateWithBLOBs stageUpdate = new CandidateWithBLOBs();
+            stageUpdate.setId(candidate.getId());
+            stageUpdate.setPipelineStage(PipelineStageEnum.MESSAGED.getValue());
+            stageUpdate.setPipelineEnteredAt(new Date());
+            candidateMapper.updateByPrimaryKeySelective(stageUpdate);
+            action = "upgraded";
+        }
+
+        // 3. 保存聊天记录
         CandidateHistoryWithBLOBs history = createHistoryFromChat(userId, candidate, request);
 
         Map<String, Object> result = new HashMap<>();
@@ -80,35 +101,6 @@ public class ChatMessageService {
         result.put("historyId", history.getId());
         result.put("action", action);
         return result;
-    }
-
-    private CandidateWithBLOBs findCandidateByLinkedInId(Long userId, String linkedInId) {
-        if (linkedInId == null || linkedInId.isEmpty()) {
-            return null;
-        }
-        CandidateExample example = new CandidateExample();
-        example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(linkedInId);
-        List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-        return list.isEmpty() ? null : list.get(0);
-    }
-
-    private CandidateWithBLOBs createCandidateFromChat(Long userId, ChatMessageRequest request) {
-        CandidateWithBLOBs candidate = new CandidateWithBLOBs();
-        candidate.setUserId(userId);
-        candidate.setFullName(request.getSenderName() != null ? request.getSenderName() : "Unknown");
-        candidate.setLinkedinId(request.getLinkedInId());
-        candidate.setLinkedinUrl(request.getLinkedInUrl() != null ? request.getLinkedInUrl() : "");
-
-        candidate.setTemperature("cold");
-        candidate.setSource("linkedin_chat");
-        candidate.setPipelineStage(PipelineStageEnum.UNCLAIMED.getValue());
-        candidate.setPipelinePosition(0);
-        candidate.setPipelineEnteredAt(new Date());
-        candidate.setLastActivityAt(new Date());
-        candidate.setCreatedAt(new Date());
-        candidate.setUpdatedAt(new Date());
-        candidateMapper.insertSelective(candidate);
-        return candidate;
     }
 
     private CandidateHistoryWithBLOBs createHistoryFromChat(Long userId, CandidateWithBLOBs candidate, ChatMessageRequest request) {

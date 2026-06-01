@@ -124,6 +124,46 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
+    if (request.type === 'SAVE_CHAT_CANDIDATE') {
+        console.log('[SCRM][BG] 收到 SAVE_CHAT_CANDIDATE, payload=', request.payload);
+        (async () => {
+            try {
+                const userId = await getOrCreateUserId();
+                const base = await getApiBase();
+                const url = `${base}/api/v1/candidates`;
+                console.log(`[SCRM][BG] 准备请求 POST ${url}, payload=`, request.payload);
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-User-Id': userId
+                    },
+                    body: JSON.stringify(request.payload)
+                });
+                console.log(`[SCRM] Save candidate API status: ${resp.status}`);
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    console.warn('[SCRM] Save candidate API failed:', resp.status, text);
+                    sendResponse({ success: false, error: `HTTP ${resp.status}: ${text}` });
+                    return;
+                }
+                const json = await resp.json();
+                if (json.code !== 0) {
+                    console.warn('[SCRM] Save candidate API error:', json.message);
+                    sendResponse({ success: false, error: json.message });
+                    return;
+                }
+                console.log('[SCRM] Candidate saved:', json.data);
+                sendResponse({ success: true, data: json.data });
+            } catch (err) {
+                console.warn('[SCRM] Failed to save candidate:', err);
+                sendResponse({ success: false, error: err.message });
+            }
+        })();
+        return true;
+    }
+
     if (request.type === 'PRECONNECT') {
         (async () => {
             try {

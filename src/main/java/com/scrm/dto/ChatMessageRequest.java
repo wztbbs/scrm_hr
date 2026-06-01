@@ -4,8 +4,9 @@ import lombok.Data;
 
 @Data
 public class ChatMessageRequest {
-    private String linkedInId;
-    private String linkedInUrl;
+    private String candidateId;
+    private String linkedinId;
+    private String linkedinUrl;
     private String senderName;
     private String text;
     private Boolean isInbound;
