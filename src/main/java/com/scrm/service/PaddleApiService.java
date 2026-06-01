@@ -24,19 +24,19 @@ public class PaddleApiService {
     public Map<String, Object> createCheckout(String priceId, String email,
                                                String successUrl, String cancelUrl,
                                                Map<String, Object> customData) {
-        String url = paddleProperties.getBaseUrl() + "/checkouts";
+        String url = paddleProperties.getBaseUrl() + "/transactions";
 
         Map<String, Object> body = new HashMap<>();
-        body.put("items", List.of(Map.of("priceId", priceId, "quantity", 1)));
+        body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
         body.put("customer", Map.of("email", email));
         if (successUrl != null) {
-            body.put("successUrl", successUrl);
+            body.put("success_url", successUrl);
         }
         if (cancelUrl != null) {
-            body.put("cancelUrl", cancelUrl);
+            body.put("cancel_url", cancelUrl);
         }
         if (customData != null) {
-            body.put("customData", customData);
+            body.put("custom_data", customData);
         }
 
         HttpHeaders headers = new HttpHeaders();

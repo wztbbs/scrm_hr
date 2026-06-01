@@ -113,6 +113,7 @@ async function apiRequest(method, path, body = null, query = null) {
     if (json.code !== 0) {
       const err = new Error(json.message || 'API error');
       err.code = json.code;
+      err.data = json.data || null;
       throw err;
     }
     console.log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);

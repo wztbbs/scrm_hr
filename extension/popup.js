@@ -3101,7 +3101,12 @@ function updateBindEmailButton() {
       const data = await window.API.candidates.generateAiMessages(currentCandidate.id, request);
       renderAiResult(data);
     } catch (err) {
-      if (err.code === 4001) {
+      console.error('[AI_GEN] catch err:', err);
+      const quotaHandled = await handleQuotaError(err);
+      console.error('[AI_GEN] quotaHandled:', quotaHandled);
+      if (quotaHandled) {
+        // 额度超限，已弹出升级框
+      } else if (err.code === 4001) {
         await showConfirm(err.message || "Please open the candidate's profile page and use this feature.");
       } else {
         showToast('Failed to generate: ' + (err.message || 'Unknown error'));
