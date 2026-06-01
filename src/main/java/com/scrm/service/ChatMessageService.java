@@ -79,29 +79,42 @@ public class ChatMessageService {
         candidateMapper.updateByPrimaryKeySelective(update);
 
         // 3. 根据消息方向推进 pipeline stage（只进不退，delete 恢复除外）
+        // 规则：消息时间必须晚于当前 pipeline_entered_at，否则不更新 stage
         String currentStage = candidate.getPipelineStage();
         boolean isInbound = request.getIsInbound() != null && request.getIsInbound();
+        Date messageTime = parseTimestamp(request.getTimestamp());
+        Date pipelineEnteredAt = candidate.getPipelineEnteredAt();
+
+        boolean shouldUpdateStage = true;
+        if (messageTime != null && pipelineEnteredAt != null && !messageTime.after(pipelineEnteredAt)) {
+            // 消息时间 <= 当前 stage 的进入时间，说明是历史消息，不更新 stage
+            shouldUpdateStage = false;
+            log.info("[ChatMessage] 消息时间 {} 不晚于 pipelineEnteredAt {}，跳过 stage 更新。candidateId={}",
+                    messageTime, pipelineEnteredAt, candidate.getId());
+        }
 
         String newStage = null;
-        if (currentStage == null) {
-            // 未设置阶段：Inbound → talking（对方主动），Outbound → messaged（我主动）
-            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
-        } else if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)) {
-            // delete 恢复：Inbound → talking，Outbound → messaged
-            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
-        } else if (PipelineStageEnum.DONE.getValue().equalsIgnoreCase(currentStage)
-                || PipelineStageEnum.TALKING.getValue().equalsIgnoreCase(currentStage)) {
-            // 终态 或 已在对话中：不前进
-            newStage = null;
-        } else if (PipelineStageEnum.MESSAGED.getValue().equalsIgnoreCase(currentStage)) {
-            // 已联系：只有对方回复(Inbound)才前进到 talking，我继续发消息保持 messaged
-            if (isInbound) {
-                newStage = PipelineStageEnum.TALKING.getValue();
+        if (shouldUpdateStage) {
+            if (currentStage == null) {
+                // 未设置阶段：Inbound → talking（对方主动），Outbound → messaged（我主动）
+                newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
+            } else if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(currentStage)) {
+                // delete 恢复：Inbound → talking，Outbound → messaged
+                newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
+            } else if (PipelineStageEnum.DONE.getValue().equalsIgnoreCase(currentStage)
+                    || PipelineStageEnum.TALKING.getValue().equalsIgnoreCase(currentStage)) {
+                // 终态 或 已在对话中：不前进
+                newStage = null;
+            } else if (PipelineStageEnum.MESSAGED.getValue().equalsIgnoreCase(currentStage)) {
+                // 已联系：只有对方回复(Inbound)才前进到 talking，我继续发消息保持 messaged
+                if (isInbound) {
+                    newStage = PipelineStageEnum.TALKING.getValue();
+                }
+            } else if (PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)
+                    || PipelineStageEnum.NEW.getValue().equalsIgnoreCase(currentStage)) {
+                // 未认领 / new：Inbound → talking，Outbound → messaged
+                newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
             }
-        } else if (PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)
-                || PipelineStageEnum.NEW.getValue().equalsIgnoreCase(currentStage)) {
-            // 未认领 / new：Inbound → talking，Outbound → messaged
-            newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
         }
 
         String action = "existing";
@@ -109,7 +122,7 @@ public class ChatMessageService {
             CandidateWithBLOBs stageUpdate = new CandidateWithBLOBs();
             stageUpdate.setId(candidate.getId());
             stageUpdate.setPipelineStage(newStage);
-            stageUpdate.setPipelineEnteredAt(new Date());
+            stageUpdate.setPipelineEnteredAt(messageTime != null ? messageTime : new Date());
             candidateMapper.updateByPrimaryKeySelective(stageUpdate);
             action = "upgraded";
         }
