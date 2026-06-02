@@ -22,15 +22,15 @@ public class PaddleApiService {
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> createCheckout(String priceId, String email,
-                                               String successUrl, String cancelUrl,
+                                               String returnUrl, String cancelUrl,
                                                Map<String, Object> customData) {
         String url = paddleProperties.getBaseUrl() + "/transactions";
 
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
         body.put("customer", Map.of("email", email));
-        if (successUrl != null) {
-            body.put("success_url", successUrl);
+        if (returnUrl != null) {
+            body.put("return_url", returnUrl);
         }
         if (cancelUrl != null) {
             body.put("cancel_url", cancelUrl);
