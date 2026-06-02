@@ -1341,51 +1341,18 @@ async function showUpgradeModal(config) {
       trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
       $('modalUpgrade').classList.remove('active');
       try {
-        // 1. Create pending order on backend, get Paddle params
-        const resp = await window.API.subscription.checkout(planCode, '', '', '');
-        const checkoutData = resp.data || {};
-        const { order_id, price_id, client_token, environment } = checkoutData;
-
-        if (!price_id || !client_token) {
-          showToast('Checkout configuration missing. Please try again.');
-          return;
-        }
-
-        // 2. Initialize Paddle.js
-        if (typeof Paddle === 'undefined') {
-          showToast('Payment SDK not loaded. Please refresh and try again.');
-          return;
-        }
-
-        Paddle.Environment.set(environment === 'live' ? 'production' : 'sandbox');
-        Paddle.Initialize({
-          token: client_token,
-          eventCallback: (event) => {
-            if (event.name === 'checkout.completed') {
-              console.log('[PADDLE] Checkout completed:', event);
-              showToast('Payment successful! Activating your subscription...');
-            } else if (event.name === 'checkout.closed') {
-              console.log('[PADDLE] Checkout closed');
-            }
+        // Standard Checkout Link: backend generates checkout URL, frontend opens in new tab
+        try {
+          const resp = await window.API.subscription.checkout(planCode, '', '', '');
+          if (resp.data && resp.data.checkout_url) {
+            chrome.tabs.create({ url: resp.data.checkout_url });
+            showToast('Checkout opened in new tab. Complete payment there.');
+          } else {
+            showToast('Checkout URL not received. Please try again.');
           }
-        });
-
-        // 3. Open Overlay Checkout
-        const userId = await getSetting('userId', '');
-        Paddle.Checkout.open({
-          items: [{ priceId: price_id, quantity: 1 }],
-          settings: {
-            successUrl: null,
-            theme: 'light'
-          },
-          customData: {
-            order_id: order_id,
-            user_id: userId,
-            source: 'chrome_extension'
-          }
-        });
-
-        showToast('Checkout opened. Please complete payment in the dialog.');
+        } catch (e) {
+          showToast('Checkout failed: ' + e.message);
+        }
       } catch (e) {
         showToast('Checkout failed: ' + e.message);
       }
