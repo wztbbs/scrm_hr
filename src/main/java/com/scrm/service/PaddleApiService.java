@@ -39,13 +39,31 @@ public class PaddleApiService {
             body.put("custom_data", customData);
         }
 
+        // Debug: log request params
+        String apiKey = paddleProperties.getApiKey();
+        System.out.println("[PADDLE_DEBUG] environment=" + paddleProperties.getEnvironment());
+        System.out.println("[PADDLE_DEBUG] baseUrl=" + paddleProperties.getBaseUrl());
+        System.out.println("[PADDLE_DEBUG] url=" + url);
+        System.out.println("[PADDLE_DEBUG] apiKeyPrefix=" + (apiKey != null && apiKey.length() > 10 ? apiKey.substring(0, 10) + "..." : "null/empty"));
+        System.out.println("[PADDLE_DEBUG] apiKeyLength=" + (apiKey != null ? apiKey.length() : 0));
+        System.out.println("[PADDLE_DEBUG] priceId=" + priceId);
+        System.out.println("[PADDLE_DEBUG] email=" + email);
+        System.out.println("[PADDLE_DEBUG] returnUrl=" + returnUrl);
+        System.out.println("[PADDLE_DEBUG] cancelUrl=" + cancelUrl);
+        try {
+            System.out.println("[PADDLE_DEBUG] body=" + objectMapper.writeValueAsString(body));
+        } catch (Exception e) {
+            System.out.println("[PADDLE_DEBUG] body serialize failed: " + e.getMessage());
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(paddleProperties.getApiKey());
+        headers.setBearerAuth(apiKey);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
+        System.out.println("[PADDLE_DEBUG] responseStatus=" + response.getStatusCode());
         if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
             return (Map<String, Object>) response.getBody().get("data");
         }
