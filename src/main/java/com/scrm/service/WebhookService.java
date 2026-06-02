@@ -108,8 +108,23 @@ public class WebhookService {
 
         Order order = orderId != null ? orderMapper.selectByPrimaryKey(orderId) : null;
 
+        // Fallback: if order not found, try user_id from customData
+        Long userId = order != null ? order.getUserId() : null;
+        if (userId == null && customData != null) {
+            Object userIdObj = customData.get("user_id");
+            if (userIdObj instanceof Number) {
+                userId = ((Number) userIdObj).longValue();
+            } else if (userIdObj instanceof String) {
+                try {
+                    userId = Long.parseLong((String) userIdObj);
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid user_id in customData: {}", userIdObj);
+                }
+            }
+        }
+
         Subscription sub = new Subscription();
-        sub.setUserId(order != null ? order.getUserId() : null);
+        sub.setUserId(userId);
         sub.setPlanId(order != null ? order.getPlanId() : null);
         sub.setPaddleSubscriptionId(paddleSubId);
         sub.setPaddleCustomerId((String) data.get("customerId"));

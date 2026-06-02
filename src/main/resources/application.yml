@@ -47,6 +47,7 @@ mybatis:
 paddle:
   api-key: ${PADDLE_API_KEY:}
   webhook-secret: ${PADDLE_WEBHOOK_SECRET:}
+  client-token: ${PADDLE_CLIENT_TOKEN:}
   environment: ${PADDLE_ENVIRONMENT:sandbox}
   price-ids:
     pro_monthly: ${PADDLE_PRICE_PRO_MONTHLY:}

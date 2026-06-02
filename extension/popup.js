@@ -315,10 +315,10 @@ async function renderOverviewActiveSequence() {
 
   const sequences = await getAllSequences();
   const boundSeqId = currentCandidate.sequenceId;
-  const selectHtml = '<option value="">None (manual follow-up only)</option>' +
+  const selectHtml = '<option value="0">None (manual follow-up only)</option>' +
     sequences.map(s => `<option value="${s.id}" ${s.id == boundSeqId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 
-  if (!boundSeqId) {
+  if (!boundSeqId || boundSeqId == 0) {
     // Not bound
     $('ovActiveSequence').innerHTML = `
       <div id="ovSeqUnbound">
@@ -371,10 +371,31 @@ async function renderOverviewActiveSequence() {
   if (select) {
     select.addEventListener('change', async () => {
       const seqId = select.value;
-      await bindCandidateToSequence(currentCandidate.id, seqId);
-      showToast(seqId ? 'Sequence bound!' : 'Sequence unbound');
+      currentCandidate.sequenceId = seqId || null;
+      currentCandidate.updateFollowupFromSequence = false;
+      currentCandidate.sequenceFollowupAt = null;
+
       renderOverviewActiveSequence();
       renderOverviewNextFollowup();
+
+      if (seqId) {
+        const seq = await getSequenceById(seqId);
+        if (seq && seq.steps && seq.steps.length >= 2) {
+          const nextStep = seq.steps[1];
+          const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
+          const suggestedDate = new Date(suggestedTime);
+          const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
+
+          const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
+          if (choice && choice.accepted) {
+            currentCandidate.updateFollowupFromSequence = true;
+            currentCandidate.sequenceFollowupAt = choice.time ? choice.time.getTime() : suggestedTime;
+          }
+        }
+      }
+      saveDraft(currentCandidate);
+      showToast(seqId ? 'Sequence selected' : 'Sequence unselected');
     });
   }
 }
@@ -417,7 +438,7 @@ async function renderOverviewNextFollowup() {
 
   // If no primary follow-up, calculate sequence suggestion from bound sequence steps
   let sequenceSuggestTime = null;
-  if (currentCandidate.sequenceId && !followupTime) {
+  if (currentCandidate.sequenceId && currentCandidate.sequenceId != 0 && !followupTime) {
     const seq = await getSequenceById(currentCandidate.sequenceId);
     if (seq && seq.steps && seq.steps.length >= 2) {
       const nextStep = seq.steps[1]; // step 2
@@ -663,17 +684,6 @@ $('ovSaveBtn').addEventListener('click', async () => {
       console.log(`${perfLabel} CREATE_API_END duration=${(performance.now() - createStart).toFixed(1)}ms`);
       if (saved) {
         currentCandidate.id = saved.id;
-      }
-    }
-    // Sync sequence binding if needed (backend auto-records history)
-    if (currentCandidate.sequenceId && currentCandidate.id) {
-      try {
-        console.log(`${perfLabel} BIND_SEQ_START seqId=${currentCandidate.sequenceId}`);
-        const bindStart = performance.now();
-        await bindCandidateToSequence(currentCandidate.id, currentCandidate.sequenceId);
-        console.log(`${perfLabel} BIND_SEQ_END duration=${(performance.now() - bindStart).toFixed(1)}ms`);
-      } catch (e) {
-        console.warn('[Save] Sequence binding failed:', e.message);
       }
     }
     clearDraft(currentCandidate);
@@ -1331,12 +1341,51 @@ async function showUpgradeModal(config) {
       trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
       $('modalUpgrade').classList.remove('active');
       try {
-        const successUrl = chrome.runtime.getURL('popup.html') + '?checkout=success';
-        const cancelUrl = chrome.runtime.getURL('popup.html') + '?checkout=cancel';
-        const resp = await window.API.subscription.checkout(planCode, successUrl, cancelUrl, '');
-        if (resp.data && resp.data.checkout_url) {
-          chrome.tabs.create({ url: resp.data.checkout_url });
+        // 1. Create pending order on backend, get Paddle params
+        const resp = await window.API.subscription.checkout(planCode, '', '', '');
+        const checkoutData = resp.data || {};
+        const { order_id, price_id, client_token, environment } = checkoutData;
+
+        if (!price_id || !client_token) {
+          showToast('Checkout configuration missing. Please try again.');
+          return;
         }
+
+        // 2. Initialize Paddle.js
+        if (typeof Paddle === 'undefined') {
+          showToast('Payment SDK not loaded. Please refresh and try again.');
+          return;
+        }
+
+        Paddle.Environment.set(environment === 'live' ? 'production' : 'sandbox');
+        Paddle.Initialize({
+          token: client_token,
+          eventCallback: (event) => {
+            if (event.name === 'checkout.completed') {
+              console.log('[PADDLE] Checkout completed:', event);
+              showToast('Payment successful! Activating your subscription...');
+            } else if (event.name === 'checkout.closed') {
+              console.log('[PADDLE] Checkout closed');
+            }
+          }
+        });
+
+        // 3. Open Overlay Checkout
+        const userId = await getSetting('userId', '');
+        Paddle.Checkout.open({
+          items: [{ priceId: price_id, quantity: 1 }],
+          settings: {
+            successUrl: null,
+            theme: 'light'
+          },
+          customData: {
+            order_id: order_id,
+            user_id: userId,
+            source: 'chrome_extension'
+          }
+        });
+
+        showToast('Checkout opened. Please complete payment in the dialog.');
       } catch (e) {
         showToast('Checkout failed: ' + e.message);
       }
@@ -1479,142 +1528,17 @@ $('modalAddCandidate').addEventListener('click', (e) => {
 
 async function loadSequenceOptions(selectEl, selectedId = '') {
   const sequences = await getAllSequences();
-  selectEl.innerHTML = '<option value="">None (manual follow-up only)</option>' +
+  selectEl.innerHTML = '<option value="0">None (manual follow-up only)</option>' +
     sequences.map(s => `<option value="${s.id}" ${s.id == selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 }
 
 async function getSequenceById(id) {
-  if (!id) return null;
+  if (!id || id == 0) return null;
   try {
     return await window.API.sequences.get(id);
   } catch (e) {
     return null;
   }
-}
-
-async function bindCandidateToSequence(candidateId, sequenceId) {
-  console.log('[BIND_SEQ] START candidateId=', candidateId, 'sequenceId=', sequenceId);
-  console.log('[BIND_SEQ] currentCandidate.sequenceId before=', currentCandidate ? currentCandidate.sequenceId : 'N/A');
-
-  // Ensure candidate is saved to backend first
-  if (!candidateId && currentCandidate) {
-    console.log('[BIND_SEQ] candidateId empty, creating candidate on backend...');
-    const canSave = await checkCandidateLimit();
-    if (!canSave) return;
-    try {
-      currentCandidate.source = 'linkedin_profile';
-      const created = await window.API.candidates.create(currentCandidate);
-      if (created && created.id) {
-        candidateId = created.id;
-        currentCandidate.id = candidateId;
-      }
-      console.log('[BIND_SEQ] created candidateId=', candidateId);
-    } catch (e) {
-      console.error('[BIND_SEQ] create candidate failed:', e);
-      return;
-    }
-  }
-
-  let candidate = null;
-  if (candidateId) {
-    try {
-      candidate = await window.API.candidates.get(candidateId);
-    } catch (e) {
-      console.warn('[BIND_SEQ] get candidate from API failed:', e);
-    }
-  }
-  console.log('[BIND_SEQ] candidate=', candidate ? { id: candidate.id, name: candidate.name } : null);
-
-  if (!sequenceId) {
-    console.log('[BIND_SEQ] sequenceId empty, unbinding');
-    if (candidate && candidate.id) {
-      try {
-        const resp = await window.API.sequences.listCandidateSequences({ candidate_id: candidate.id });
-        if (resp.data && resp.data.items) {
-          for (const cs of resp.data.items) {
-            if (cs.id) {
-              await window.API.sequences.deleteCandidateSequence(cs.id);
-            }
-          }
-        }
-        if (currentCandidate) currentCandidate.sequenceId = null;
-      } catch (e) {
-        console.warn('[BIND_SEQ] unbind sequence failed:', e);
-      }
-    }
-    return;
-  }
-
-  const seq = await getSequenceById(sequenceId);
-  console.log('[BIND_SEQ] seq=', seq ? { id: seq.id, name: seq.name, stepsLength: seq.steps ? seq.steps.length : 'NO_STEPS' } : null);
-  if (!seq || !seq.steps || seq.steps.length === 0) {
-    console.warn('[BIND_SEQ] ABORT: seq missing or no steps');
-    return;
-  }
-
-  // Sync candidate-sequence binding to backend
-  if (typeof window !== 'undefined' && window.API) {
-    try {
-      console.log('[BIND_SEQ] syncing to backend...');
-
-      const candidateIdForSeq = candidate ? candidate.id : null;
-      const sequenceIdForSeq = seq.id;
-      console.log('[BIND_SEQ] candidateIdForSeq=', candidateIdForSeq, 'sequenceIdForSeq=', sequenceIdForSeq);
-      if (candidateIdForSeq && sequenceIdForSeq) {
-        console.log('[BIND_SEQ] calling createCandidateSequence...');
-        const csResult = await window.API.sequences.createCandidateSequence(
-          candidateIdForSeq,
-          sequenceIdForSeq,
-          { stepIndex: 0, totalSteps: seq.steps.length, status: 'active' }
-        );
-        console.log('[BIND_SEQ] createCandidateSequence success, rebound=', csResult ? csResult.rebound : 'N/A');
-        trackEvent('sequence_bound', { category: 'engagement', label: 'sequence_' + sequenceId });
-
-        // Prompt user to confirm the suggested follow-up time only on first bind or rebound
-        if (csResult && csResult.rebound !== false && seq.steps.length >= 2 && candidate) {
-          const nextStep = seq.steps[1]; // step 2
-          const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
-          const suggestedDate = new Date(suggestedTime);
-          const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
-
-          // Hide loading overlay so the modal is clickable
-          hideLoading();
-          const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
-          if (choice && choice.accepted) {
-            showLoading();
-            const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
-            const source = choice.edited ? 'manual' : 'sequence';
-            if (candidate.id) {
-              try {
-                await window.API.candidates.updateFollowup(
-                  candidate.id,
-                  new Date(followupTime),
-                  source,
-                  source === 'sequence' ? nextStep.stepNumber : null
-                );
-                renderOverviewNextFollowup();
-              } catch (e) {
-                console.warn('[BIND_SEQ] update followup failed:', e);
-              } finally {
-                hideLoading();
-              }
-            } else {
-              hideLoading();
-            }
-          }
-        }
-      } else {
-        console.warn('[BIND_SEQ] SKIP backend sync: missing id', { candidateIdForSeq, sequenceIdForSeq });
-      }
-    } catch (e) {
-      console.warn('[BIND_SEQ] Sync candidate-sequence to backend failed:', e);
-    }
-  } else {
-    console.warn('[BIND_SEQ] window.API not available');
-  }
-
-  console.log('[BIND_SEQ] END');
 }
 
 // Manual Entry Modal
@@ -1649,6 +1573,8 @@ function openManualEntryModal(candidateId = null) {
       });
       // Load current bound sequence
       await loadSequenceOptions($('meSequence'), candidate.sequenceId || '');
+      $('meSequence').dataset.updateFollowup = 'false';
+      delete $('meSequence').dataset.followupAt;
       $('modalManualEntry').classList.add('active');
     }).catch(e => {
       console.warn('[MANUAL_ENTRY] load candidate failed:', e);
@@ -1668,6 +1594,8 @@ function openManualEntryModal(candidateId = null) {
       btn.classList.toggle('active', btn.dataset.temp === 'Warm');
     });
     loadSequenceOptions($('meSequence'), '');
+    $('meSequence').dataset.updateFollowup = 'false';
+    delete $('meSequence').dataset.followupAt;
     $('modalManualEntry').classList.add('active');
   }
 }
@@ -1676,6 +1604,30 @@ function closeManualEntryModal() {
   $('modalManualEntry').classList.remove('active');
   manualEntryCandidateId = null;
 }
+
+$('meSequence').addEventListener('change', async () => {
+  const seqId = $('meSequence').value;
+  $('meSequence').dataset.updateFollowup = 'false';
+  delete $('meSequence').dataset.followupAt;
+
+  if (seqId && seqId != 0) {
+    const seq = await getSequenceById(seqId);
+    if (seq && seq.steps && seq.steps.length >= 2) {
+      const nextStep = seq.steps[1];
+      const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
+      const suggestedDate = new Date(suggestedTime);
+      const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
+
+      const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
+      if (choice && choice.accepted) {
+        $('meSequence').dataset.updateFollowup = 'true';
+        const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
+        $('meSequence').dataset.followupAt = String(followupTime);
+      }
+    }
+  }
+});
 
 document.querySelectorAll('.temp-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1735,6 +1687,9 @@ $('meSaveBtn').addEventListener('click', async () => {
     const nextFollowupVal = $('meNextFollowup').value;
     candidate.nextFollowup = nextFollowupVal ? new Date(nextFollowupVal).getTime() : '';
     candidate.keyMemory = $('meNotes').value.trim();
+    candidate.sequenceId = $('meSequence').value || null;
+    candidate.updateFollowupFromSequence = $('meSequence').dataset.updateFollowup === 'true';
+    candidate.sequenceFollowupAt = $('meSequence').dataset.followupAt ? Number($('meSequence').dataset.followupAt) : null;
 
     const canSave = await checkCandidateLimit();
     if (!canSave) { hideLoading(); return; }
@@ -1756,12 +1711,6 @@ $('meSaveBtn').addEventListener('click', async () => {
       const handled = await handleQuotaError(e);
       if (!handled) showToast('Save failed: ' + e.message);
       return;
-    }
-
-    // Handle sequence binding
-    const sequenceId = $('meSequence').value;
-    if (sequenceId) {
-      await bindCandidateToSequence(savedId, sequenceId);
     }
 
     showToast(manualEntryCandidateId ? 'Candidate updated!' : 'Candidate added!');
@@ -2998,7 +2947,8 @@ function updateBindEmailButton() {
   const conflictCloseBtn = $('emailConflictCloseBtn');
   const conflictCloseBtn2 = $('emailConflictCloseBtn2');
   const conflictCopyBtn = $('emailConflictCopyBtn');
-  const conflictCopyUserIdBtn = $('emailConflictCopyUserIdBtn');
+  const conflictCopyEmailContentBtn = $('emailConflictCopyEmailContentBtn');
+  const conflictEmailBtn = $('emailConflictEmailBtn');
   const conflictUuidInput = $('emailConflictUuidInput');
   const conflictUuidSpan = $('emailConflictUuid');
   const conflictSupportEmail = $('emailConflictSupportEmail');
@@ -3047,12 +2997,44 @@ function updateBindEmailButton() {
   }
 
   conflictCopyBtn.addEventListener('click', copyUuid);
-  conflictCopyUserIdBtn.addEventListener('click', copyUuid);
+
+  async function copyEmailContent() {
+    if (!currentUserUuid || !currentUserSupportEmail) return;
+    const text = `To: ${currentUserSupportEmail}\nSubject: [Email Conflict] User: ${currentUserUuid}\n\nHi team,\n\nI tried to bind my email but it says "Email already in use". Please help resolve this conflict.\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Email content copied! Paste into your email client.');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('Email content copied! Paste into your email client.');
+      } catch (e) {
+        showToast('Copy failed. Please copy manually.');
+      }
+      document.body.removeChild(ta);
+    }
+  }
+
+  conflictCopyEmailContentBtn.addEventListener('click', copyEmailContent);
+
+  conflictEmailBtn.addEventListener('click', () => {
+    if (!currentUserUuid || !currentUserSupportEmail) return;
+    const subject = encodeURIComponent(`[Email Conflict] User: ${currentUserUuid}`);
+    const body = encodeURIComponent(`Hi team,\n\nI tried to bind my email but it says "Email already in use". Please help resolve this conflict.\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`);
+    const mailtoUrl = `mailto:${currentUserSupportEmail}?subject=${subject}&body=${body}`;
+    chrome.tabs.create({ url: mailtoUrl });
+  });
 })();
 // ========== AI Message Generation ==========
 (function initAiMessage() {
   $('ovAiGenerateBtn').addEventListener('click', async () => {
-    if (!currentCandidate) return;
+    if (!currentCandidate) {
+      return;
+    }
 
     const btn = $('ovAiGenerateBtn');
     const loading = $('ovAiLoading');
@@ -3120,7 +3102,7 @@ function updateBindEmailButton() {
 
   function renderAiResult(data) {
     const versionsEl = $('ovAiVersions');
-    const message = data.message || '';
+    const message = data && data.message || '';
     if (message) {
       versionsEl.innerHTML = `
         <div class="ai-version" style="margin-bottom:10px;padding:10px;border:1px solid #5b4cdb;border-radius:8px;background:#f5f3ff;">

@@ -120,8 +120,8 @@ async function apiRequest(method, path, body = null, query = null) {
     return json;
   } catch (err) {
     console.warn(`${perfLabel} FAILED total=${(performance.now() - start).toFixed(1)}ms fetch=${(performance.now()-t4).toFixed(1)}ms`, err.message);
-    // 抛给上层/用户的必须是干净错误，但保留内部属性供业务判断（如 handleQuotaError）
-    const cleanErr = new Error('Something went wrong. Please try again.');
+    // 保留原始业务错误消息（如 "Email already in use"），网络错误兜底用通用提示
+    const cleanErr = new Error(err.message || 'Something went wrong. Please try again.');
     cleanErr.status = err.status;
     cleanErr.code = err.code;
     cleanErr.data = err.data;
@@ -161,7 +161,10 @@ function candidateToBackend(frontendCandidate) {
     tags: frontendCandidate.tags || '[]',
     nextFollowupAt: frontendCandidate.nextFollowup ? new Date(frontendCandidate.nextFollowup).toISOString() : null,
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
-    nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null
+    nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null,
+    sequenceId: frontendCandidate.sequenceId != null ? Number(frontendCandidate.sequenceId) : null,
+    updateFollowupFromSequence: frontendCandidate.updateFollowupFromSequence || false,
+    sequenceFollowupAt: frontendCandidate.sequenceFollowupAt ? new Date(frontendCandidate.sequenceFollowupAt).toISOString() : null
   };
   console.log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
   console.log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
@@ -205,7 +208,9 @@ function candidateFromBackend(backend) {
     nextFollowup: backend.nextFollowupAt ? toTimestamp(backend.nextFollowupAt) : null,
     nextFollowupSource: backend.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: backend.nextFollowupSequenceStepId || null,
-    sequenceId: backend.sequenceId || null,
+    sequenceId: backend.sequenceId != null ? backend.sequenceId : null,
+    updateFollowupFromSequence: backend.updateFollowupFromSequence || false,
+    sequenceFollowupAt: backend.sequenceFollowupAt ? toTimestamp(backend.sequenceFollowupAt) : null,
     taskStatus: backend.taskStatus || null,
     createdAt: toTimestamp(backend.createdAt) || Date.now(),
     updatedAt: toTimestamp(backend.updatedAt) || Date.now()
@@ -497,30 +502,6 @@ function sequenceFromBackend(backend) {
   return fs;
 }
 
-function candidateSequenceToBackend(frontendTask, candidateId, sequenceId) {
-  return {
-    candidateId: candidateId,
-    sequenceId: sequenceId,
-    status: frontendTask.status || 'active',
-    currentStepNumber: (frontendTask.stepIndex || 0) + 1,
-    totalSteps: frontendTask.totalSteps || 1
-  };
-}
-
-function candidateSequenceFromBackend(backend) {
-  return {
-    id: backend.id || '',
-    candidateId: backend.candidateId,
-    sequenceId: backend.sequenceId,
-    status: backend.status || 'active',
-    currentStepNumber: backend.currentStepNumber || 1,
-    totalSteps: backend.totalSteps || 1,
-    startedAt: toTimestamp(backend.startedAt),
-    completedAt: toTimestamp(backend.completedAt),
-    rebound: backend.rebound !== false
-  };
-}
-
 const SequencesAPI = {
   async list(params = {}) {
     const resp = await apiRequest('GET', '/api/v1/sequences', null, params);
@@ -549,29 +530,6 @@ const SequencesAPI = {
 
   async delete(id) {
     const resp = await apiRequest('DELETE', `/api/v1/sequences/${id}`);
-    return resp.data;
-  },
-
-  // Candidate Sequences
-  async listCandidateSequences(params = {}) {
-    const resp = await apiRequest('GET', '/api/v1/candidate-sequences', null, params);
-    if (resp.data && resp.data.items) {
-      resp.data.items = resp.data.items.map(candidateSequenceFromBackend);
-    }
-    return resp;
-  },
-
-  async createCandidateSequence(candidateLocalId, sequenceLocalId, task = {}) {
-    console.log('[API] createCandidateSequence called:', { candidateLocalId, sequenceLocalId, task });
-    const body = candidateSequenceToBackend(task, candidateLocalId, sequenceLocalId);
-    console.log('[API] createCandidateSequence body=', body);
-    const resp = await apiRequest('POST', '/api/v1/candidate-sequences', body);
-    console.log('[API] createCandidateSequence response=', resp);
-    return candidateSequenceFromBackend(resp.data);
-  },
-
-  async deleteCandidateSequence(id) {
-    const resp = await apiRequest('DELETE', `/api/v1/candidate-sequences/${id}`);
     return resp.data;
   }
 };

@@ -11,6 +11,7 @@ import java.util.Map;
 public class PaddleProperties {
     private String apiKey;
     private String webhookSecret;
+    private String clientToken;
     private String environment = "sandbox";
     private Map<String, String> priceIds = new HashMap<>();
 
@@ -28,6 +29,14 @@ public class PaddleProperties {
 
     public void setWebhookSecret(String webhookSecret) {
         this.webhookSecret = webhookSecret;
+    }
+
+    public String getClientToken() {
+        return clientToken;
+    }
+
+    public void setClientToken(String clientToken) {
+        this.clientToken = clientToken;
     }
 
     public String getEnvironment() {

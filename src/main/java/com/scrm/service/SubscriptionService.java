@@ -121,8 +121,8 @@ public class SubscriptionService {
     public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
-        if (user == null || user.getEmail() == null) {
-            throw new BusinessException("User email not found");
+        if (user == null) {
+            throw new BusinessException("User not found");
         }
 
         SubscriptionPlanExample example = new SubscriptionPlanExample();
@@ -151,28 +151,13 @@ public class SubscriptionService {
         order.setUpdatedAt(new Date());
         orderMapper.insertSelective(order);
 
-        // 2. Call Paddle API
-        Map<String, Object> customData = new HashMap<>();
-        customData.put("order_id", order.getId());
-
-        Map<String, Object> paddleData = paddleApiService.createCheckout(
-                priceId, user.getEmail(), successUrl, cancelUrl, customData);
-
-        String checkoutId = (String) paddleData.get("id");
-        String checkoutUrl = (String) paddleData.get("url");
-
-        // 3. Update order with paddle checkout id
-        Order updateOrder = new Order();
-        updateOrder.setId(order.getId());
-        updateOrder.setPaddleCheckoutId(checkoutId);
-        updateOrder.setUpdatedAt(new Date());
-        orderMapper.updateByPrimaryKeySelective(updateOrder);
-
+        // 2. Return params for Paddle.js Overlay Checkout (frontend drives checkout directly)
         Map<String, Object> result = new HashMap<>();
-        result.put("checkout_url", checkoutUrl);
-        result.put("checkout_id", checkoutId);
+        result.put("order_id", order.getId());
         result.put("order_no", order.getOrderNo());
-        result.put("client_token", paddleProperties.isSandbox() ? "test_5da3dc2731cc4791072992f74f6" : null);
+        result.put("price_id", priceId);
+        result.put("client_token", paddleProperties.getClientToken());
+        result.put("environment", paddleProperties.getEnvironment());
         return result;
     }
 

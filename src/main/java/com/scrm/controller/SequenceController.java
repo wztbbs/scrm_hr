@@ -2,7 +2,6 @@ package com.scrm.controller;
 
 import com.scrm.common.ApiResponse;
 import com.scrm.dto.SequenceRequest;
-import com.scrm.entity.CandidateSequence;
 import com.scrm.entity.Sequence;
 import com.scrm.entity.SequenceStep;
 import com.scrm.dao.SequenceStepMapper;
@@ -109,29 +108,6 @@ public class SequenceController {
     @DeleteMapping("/sequences/{id}")
     public ApiResponse<Map<String, Object>> delete(@PathVariable String id) {
         sequenceService.deleteSequence(id);
-        Map<String, Object> result = new HashMap<>();
-        result.put("success", true);
-        return ApiResponse.success(result);
-    }
-
-    @GetMapping("/candidate-sequences")
-    public ApiResponse<Map<String, Object>> listCandidateSequences(
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String candidate_id) {
-        List<CandidateSequence> items = sequenceService.listCandidateSequences(status, candidate_id);
-        Map<String, Object> data = new HashMap<>();
-        data.put("items", items);
-        return ApiResponse.success(data);
-    }
-
-    @PostMapping("/candidate-sequences")
-    public ApiResponse<CandidateSequence> createCandidateSequence(@RequestBody CandidateSequence cs) {
-        return ApiResponse.success(sequenceService.createCandidateSequence(cs));
-    }
-
-    @DeleteMapping("/candidate-sequences/{id}")
-    public ApiResponse<Map<String, Object>> deleteCandidateSequence(@PathVariable String id) {
-        sequenceService.deleteCandidateSequence(id);
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
         return ApiResponse.success(result);

@@ -249,6 +249,20 @@ public class SequenceService {
         candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
     }
 
+    @Transactional
+    public void unbindCandidate(Long candidateId) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateSequenceExample example = new CandidateSequenceExample();
+        example.createCriteria()
+                .andUserIdEqualTo(userId)
+                .andCandidateIdEqualTo(candidateId)
+                .andStatusEqualTo("active");
+        List<CandidateSequence> list = candidateSequenceMapper.selectByExample(example);
+        for (CandidateSequence cs : list) {
+            candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
+        }
+    }
+
     /**
      * Advance candidate sequence to next step and update follow-up.
      * Returns the suggested next follow-up info (null if no more steps).

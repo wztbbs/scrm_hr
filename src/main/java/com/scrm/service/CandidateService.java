@@ -13,6 +13,7 @@ import com.scrm.entity.CandidateExample;
 import com.scrm.entity.CandidateSequence;
 import com.scrm.entity.CandidateSequenceExample;
 import com.scrm.entity.CandidateWithBLOBs;
+import com.scrm.entity.SequenceStep;
 import com.scrm.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -116,6 +117,7 @@ public class CandidateService {
             candidate.setCreatedAt(existing.getCreatedAt());
             candidate.setUpdatedAt(new Date());
             candidateMapper.updateByPrimaryKeySelective(candidate);
+            handleSequenceBinding(candidate);
             return candidate;
         }
 
@@ -145,6 +147,7 @@ public class CandidateService {
         historyService.recordHistory(candidate.getId(), "candidate_created",
                 "Candidate created: " + candidate.getFullName(), "user");
 
+        handleSequenceBinding(candidate);
         return candidate;
     }
 
@@ -175,6 +178,7 @@ public class CandidateService {
         candidate.setCreatedAt(null);
         candidate.setUpdatedAt(new Date());
         candidateMapper.updateByPrimaryKeySelective(candidate);
+        handleSequenceBinding(candidate);
         return candidateMapper.selectByPrimaryKey(existing.getId());
     }
 
@@ -290,5 +294,60 @@ public class CandidateService {
         return result;
     }
 
+    private void handleSequenceBinding(CandidateWithBLOBs candidate) {
+        Long candidateId = candidate.getId();
+        Long sequenceId = candidate.getSequenceId();
 
+        if (sequenceId != null && sequenceId > 0) {
+            CandidateSequence cs = new CandidateSequence();
+            cs.setCandidateId(candidateId);
+            cs.setSequenceId(sequenceId);
+            sequenceService.createCandidateSequence(cs);
+
+            if (Boolean.TRUE.equals(candidate.getUpdateFollowupFromSequence())) {
+                List<SequenceStep> steps = sequenceService.getSequenceSteps(sequenceId);
+                if (steps != null && steps.size() >= 2) {
+                    Date followupAt = candidate.getSequenceFollowupAt();
+                    Long sequenceStepId = null;
+                    if (followupAt == null) {
+                        SequenceStep nextStep = steps.get(1);
+                        followupAt = calculateFollowupTime(new Date(), nextStep.getDelayType(), nextStep.getDelayValue());
+                        sequenceStepId = nextStep.getId();
+                    }
+                    subCandidateMapper.updateNextFollowup(candidateId, followupAt, "sequence", sequenceStepId);
+                    historyService.recordHistory(candidateId, "follow_up_scheduled",
+                            "Follow-up scheduled for " + followupAt, "user");
+                }
+            }
+        } else if (sequenceId != null && sequenceId == 0) {
+            sequenceService.unbindCandidate(candidateId);
+        }
+        // sequenceId == null: do nothing (partial field update)
+    }
+
+    private Date calculateFollowupTime(Date base, String delayType, Integer delayValue) {
+        if (base == null) base = new Date();
+        if (delayValue == null || delayValue <= 0) return base;
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(base);
+        switch (delayType != null ? delayType.toLowerCase() : "days") {
+            case "immediately":
+                break;
+            case "minutes":
+                cal.add(Calendar.MINUTE, delayValue);
+                break;
+            case "hours":
+                cal.add(Calendar.HOUR, delayValue);
+                break;
+            case "days":
+                cal.add(Calendar.DAY_OF_YEAR, delayValue);
+                break;
+            case "weeks":
+                cal.add(Calendar.WEEK_OF_YEAR, delayValue);
+                break;
+            default:
+                cal.add(Calendar.DAY_OF_YEAR, delayValue);
+        }
+        return cal.getTime();
+    }
 }
