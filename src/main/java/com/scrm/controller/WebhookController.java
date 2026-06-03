@@ -51,6 +51,9 @@ public class WebhookController {
             }
 
             Map<String, Object> event = objectMapper.readValue(payload, new TypeReference<>() {});
+            String eventType = (String) event.get("event_type");
+            log.info("[PADDLE_WEBHOOK] Received event_type={}, payloadPreview={}", eventType,
+                    payload.length() > 500 ? payload.substring(0, 500) + "..." : payload);
             webhookService.handlePaddleWebhook(event);
             return ResponseEntity.ok("OK");
         } catch (Exception e) {

@@ -580,8 +580,8 @@ const SubscriptionAPI = {
     const resp = await apiRequest('GET', '/api/v1/subscription/current');
     return resp;
   },
-  async checkout(planCode, successUrl, cancelUrl, couponCode) {
-    const resp = await apiRequest('POST', '/api/v1/subscription/checkout', { plan_code: planCode, success_url: successUrl, cancel_url: cancelUrl, coupon_code: couponCode });
+  async checkout(planCode, successUrl, cancelUrl, couponCode, email) {
+    const resp = await apiRequest('POST', '/api/v1/subscription/checkout', { plan_code: planCode, success_url: successUrl, cancel_url: cancelUrl, coupon_code: couponCode, email: email });
     return resp;
   },
   async cancel(atPeriodEnd = true) {

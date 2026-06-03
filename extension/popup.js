@@ -1340,10 +1340,23 @@ async function showUpgradeModal(config) {
       const planCode = btn.dataset.planCode;
       trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
       $('modalUpgrade').classList.remove('active');
+
+      // 检查邮箱，为空则弹框让用户输入（仅用于本次支付，不落库）
+      let email = currentUserEmail;
+      if (!email) {
+        email = prompt('Please enter your email to complete the subscription:');
+        if (!email || !email.trim()) {
+          showToast('Email is required to continue subscription');
+          if (upgradeResolve) { upgradeResolve(false); upgradeResolve = null; }
+          return;
+        }
+        email = email.trim();
+      }
+
       try {
         // Standard Checkout Link: backend generates checkout URL, frontend opens in new tab
         try {
-          const resp = await window.API.subscription.checkout(planCode, '', '', '');
+          const resp = await window.API.subscription.checkout(planCode, '', '', '', email);
           if (resp.data && resp.data.checkout_url) {
             chrome.tabs.create({ url: resp.data.checkout_url });
             showToast('Checkout opened in new tab. Complete payment there.');

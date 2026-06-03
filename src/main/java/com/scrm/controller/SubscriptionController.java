@@ -36,7 +36,8 @@ public class SubscriptionController {
         String successUrl = (String) body.get("success_url");
         String cancelUrl = (String) body.get("cancel_url");
         String couponCode = (String) body.get("coupon_code");
-        return ApiResponse.success(subscriptionService.checkout(planCode, successUrl, cancelUrl, couponCode));
+        String email = (String) body.get("email");
+        return ApiResponse.success(subscriptionService.checkout(planCode, successUrl, cancelUrl, couponCode, email));
     }
 
     @PostMapping("/cancel")

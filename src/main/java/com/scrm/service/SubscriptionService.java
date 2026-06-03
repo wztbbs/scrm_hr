@@ -119,7 +119,7 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
+    public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode, String email) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
         if (user == null) {
@@ -161,8 +161,11 @@ public class SubscriptionService {
         customData.put("order_id", order.getId());
         customData.put("user_id", userId);
 
+        // 优先使用前端传入的 email（支付时临时输入的），否则 fallback 到数据库
+        String emailForPaddle = StringUtils.hasText(email) ? email : user.getEmail();
+
         Map<String, Object> paddleData = paddleApiService.createCheckout(
-                priceId, user.getEmail(), returnUrl, cancelUrlResolved, customData);
+                priceId, emailForPaddle, returnUrl, cancelUrlResolved, customData);
 
         String checkoutId = (String) paddleData.get("id");
         @SuppressWarnings("unchecked")
