@@ -5,6 +5,7 @@ import com.scrm.config.PaddleProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -24,11 +25,13 @@ public class PaddleApiService {
     public Map<String, Object> createCheckout(String priceId, String email,
                                                String returnUrl, String cancelUrl,
                                                Map<String, Object> customData) {
-        String url = paddleProperties.getBaseUrl() + "/checkouts";
+        String url = paddleProperties.getBaseUrl() + "/transactions";
 
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
-        body.put("customer", Map.of("email", email));
+        if (StringUtils.hasText(email)) {
+            body.put("customer", Map.of("email", email));
+        }
         if (returnUrl != null) {
             body.put("return_url", returnUrl);
         }

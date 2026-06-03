@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -121,7 +122,7 @@ public class SubscriptionService {
     public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
-        if (user == null || user.getEmail() == null) {
+        if (user == null || !StringUtils.hasText(user.getEmail())) {
             throw new BusinessException("User email not found");
         }
 
@@ -164,7 +165,9 @@ public class SubscriptionService {
                 priceId, user.getEmail(), returnUrl, cancelUrlResolved, customData);
 
         String checkoutId = (String) paddleData.get("id");
-        String checkoutUrl = (String) paddleData.get("url");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> checkout = (Map<String, Object>) paddleData.get("checkout");
+        String checkoutUrl = checkout != null ? (String) checkout.get("url") : null;
 
         // 3. Update order with paddle checkout id
         Order updateOrder = new Order();
