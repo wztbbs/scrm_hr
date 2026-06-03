@@ -29,6 +29,7 @@ public class PaddleApiService {
 
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
+        body.put("collection_mode", "manual");
         if (StringUtils.hasText(email)) {
             body.put("customer", Map.of("email", email));
         }
