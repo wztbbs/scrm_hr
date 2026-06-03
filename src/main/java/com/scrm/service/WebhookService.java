@@ -69,6 +69,9 @@ public class WebhookService {
         }
 
         Map<String, Object> customData = (Map<String, Object>) data.get("customData");
+        if (customData == null) {
+            customData = (Map<String, Object>) data.get("custom_data");
+        }
         Number orderIdNum = customData != null ? (Number) customData.get("order_id") : null;
         Long orderId = orderIdNum != null ? orderIdNum.longValue() : null;
 
@@ -103,6 +106,9 @@ public class WebhookService {
         }
 
         Map<String, Object> customData = (Map<String, Object>) data.get("customData");
+        if (customData == null) {
+            customData = (Map<String, Object>) data.get("custom_data");
+        }
         Number orderIdNum = customData != null ? (Number) customData.get("order_id") : null;
         Long orderId = orderIdNum != null ? orderIdNum.longValue() : null;
 
