@@ -25,13 +25,54 @@ public class PaddleApiService {
     public Map<String, Object> createCheckout(String priceId, String email,
                                                String returnUrl, String cancelUrl,
                                                Map<String, Object> customData) {
-        String url = paddleProperties.getBaseUrl() + "/transactions";
+        String baseUrl = paddleProperties.getBaseUrl();
+        String apiKey = paddleProperties.getApiKey();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+
+        // 1. Create or find customer first
+        String customerId = null;
+        if (StringUtils.hasText(email)) {
+            String customerUrl = baseUrl + "/customers";
+            Map<String, Object> customerReq = new HashMap<>();
+            customerReq.put("email", email);
+
+            System.out.println("[PADDLE_DEBUG] customerUrl=" + customerUrl);
+            System.out.println("[PADDLE_DEBUG] customerReqEmail=" + email);
+            try {
+                System.out.println("[PADDLE_DEBUG] customerBody=" + objectMapper.writeValueAsString(customerReq));
+            } catch (Exception e) {
+                System.out.println("[PADDLE_DEBUG] customerBody serialize failed: " + e.getMessage());
+            }
+
+            HttpEntity<Map<String, Object>> customerEntity = new HttpEntity<>(customerReq, headers);
+            ResponseEntity<Map> customerResp = restTemplate.exchange(customerUrl, HttpMethod.POST, customerEntity, Map.class);
+            System.out.println("[PADDLE_DEBUG] customerResponseStatus=" + customerResp.getStatusCode());
+            if (customerResp.getBody() != null) {
+                try {
+                    System.out.println("[PADDLE_DEBUG] customerResponseBody=" + objectMapper.writeValueAsString(customerResp.getBody()));
+                } catch (Exception e) {
+                    System.out.println("[PADDLE_DEBUG] customerResponseBody serialize failed: " + e.getMessage());
+                }
+            }
+            if (customerResp.getStatusCode().is2xxSuccessful() && customerResp.getBody() != null) {
+                Map<String, Object> custData = (Map<String, Object>) customerResp.getBody().get("data");
+                if (custData != null) {
+                    customerId = (String) custData.get("id");
+                }
+            }
+            System.out.println("[PADDLE_DEBUG] customerId=" + customerId);
+        }
+
+        // 2. Create transaction with customer_id
+        String url = baseUrl + "/transactions";
 
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
-        body.put("collection_mode", "manual");
-        if (StringUtils.hasText(email)) {
-            body.put("customer", Map.of("email", email));
+        if (StringUtils.hasText(customerId)) {
+            body.put("customer_id", customerId);
         }
         if (returnUrl != null) {
             body.put("return_url", returnUrl);
@@ -44,14 +85,14 @@ public class PaddleApiService {
         }
 
         // Debug: log request params
-        String apiKey = paddleProperties.getApiKey();
         System.out.println("[PADDLE_DEBUG] environment=" + paddleProperties.getEnvironment());
-        System.out.println("[PADDLE_DEBUG] baseUrl=" + paddleProperties.getBaseUrl());
+        System.out.println("[PADDLE_DEBUG] baseUrl=" + baseUrl);
         System.out.println("[PADDLE_DEBUG] url=" + url);
         System.out.println("[PADDLE_DEBUG] apiKeyPrefix=" + (apiKey != null && apiKey.length() > 10 ? apiKey.substring(0, 10) + "..." : "null/empty"));
         System.out.println("[PADDLE_DEBUG] apiKeyLength=" + (apiKey != null ? apiKey.length() : 0));
         System.out.println("[PADDLE_DEBUG] priceId=" + priceId);
         System.out.println("[PADDLE_DEBUG] email=" + email);
+        System.out.println("[PADDLE_DEBUG] customerId=" + customerId);
         System.out.println("[PADDLE_DEBUG] returnUrl=" + returnUrl);
         System.out.println("[PADDLE_DEBUG] cancelUrl=" + cancelUrl);
         try {
@@ -59,10 +100,6 @@ public class PaddleApiService {
         } catch (Exception e) {
             System.out.println("[PADDLE_DEBUG] body serialize failed: " + e.getMessage());
         }
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
