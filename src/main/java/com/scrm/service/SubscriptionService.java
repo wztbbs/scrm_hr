@@ -122,8 +122,8 @@ public class SubscriptionService {
     public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
-        if (user == null || !StringUtils.hasText(user.getEmail())) {
-            throw new BusinessException("User email not found");
+        if (user == null) {
+            throw new BusinessException("User not found");
         }
 
         SubscriptionPlanExample example = new SubscriptionPlanExample();
