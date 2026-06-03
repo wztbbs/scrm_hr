@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.security.MessageDigest;
 
 @Component
 public class PaddleWebhookVerifier {
@@ -15,11 +15,11 @@ public class PaddleWebhookVerifier {
     private static final Logger log = LoggerFactory.getLogger(PaddleWebhookVerifier.class);
 
     public boolean verify(String payload, String signatureHeader, String secret) {
-        if (signatureHeader == null || secret == null) {
+        if (signatureHeader == null || secret == null || secret.isEmpty()) {
             return false;
         }
 
-        // Format: ts=1234567890;h1=base64signature
+        // Format: ts=1234567890;h1=hexsignature
         String ts = null;
         String h1 = null;
         for (String part : signatureHeader.split(";")) {
@@ -41,11 +41,27 @@ public class PaddleWebhookVerifier {
             SecretKeySpec secretKeySpec = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
             mac.init(secretKeySpec);
             byte[] hash = mac.doFinal(signedPayload.getBytes(StandardCharsets.UTF_8));
-            String expected = Base64.getEncoder().encodeToString(hash);
-            return expected.equals(h1);
+            String expected = bytesToHex(hash);
+
+            // Constant-time comparison to prevent timing attacks
+            return MessageDigest.isEqual(
+                    expected.getBytes(StandardCharsets.UTF_8),
+                    h1.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.error("Paddle webhook signature verification failed", e);
             return false;
         }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : bytes) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
+            hexString.append(hex);
+        }
+        return hexString.toString();
     }
 }
