@@ -1362,6 +1362,7 @@ async function showUpgradeModal(config) {
             customer_id: d.customer_id,
             order_id: d.order_id,
             user_id: currentUserId || '',
+            plan_code: d.plan_code || '',
             token: d.client_token,
             env: d.environment
           });

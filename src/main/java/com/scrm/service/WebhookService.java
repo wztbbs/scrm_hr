@@ -152,14 +152,27 @@ public class WebhookService {
         sub.setUserId(userId);
         sub.setPlanId(planId);
         sub.setPaddleSubscriptionId(paddleSubId);
-        sub.setPaddleCustomerId((String) data.get("customerId"));
+        String customerId = (String) data.get("customerId");
+        if (customerId == null) {
+            customerId = (String) data.get("customer_id");
+        }
+        sub.setPaddleCustomerId(customerId);
         sub.setStatus("active");
         sub.setPaymentProvider("paddle");
 
         Map<String, Object> currentBillingPeriod = (Map<String, Object>) data.get("currentBillingPeriod");
+        if (currentBillingPeriod == null) {
+            currentBillingPeriod = (Map<String, Object>) data.get("current_billing_period");
+        }
         if (currentBillingPeriod != null) {
             String startsAt = (String) currentBillingPeriod.get("startsAt");
+            if (startsAt == null) {
+                startsAt = (String) currentBillingPeriod.get("starts_at");
+            }
             String endsAt = (String) currentBillingPeriod.get("endsAt");
+            if (endsAt == null) {
+                endsAt = (String) currentBillingPeriod.get("ends_at");
+            }
             sub.setCurrentPeriodStart(parseIsoDate(startsAt));
             sub.setCurrentPeriodEnd(parseIsoDate(endsAt));
         }
@@ -198,9 +211,18 @@ public class WebhookService {
         update.setStatus(mapPaddleStatus((String) data.get("status")));
 
         Map<String, Object> currentBillingPeriod = (Map<String, Object>) data.get("currentBillingPeriod");
+        if (currentBillingPeriod == null) {
+            currentBillingPeriod = (Map<String, Object>) data.get("current_billing_period");
+        }
         if (currentBillingPeriod != null) {
             String startsAt = (String) currentBillingPeriod.get("startsAt");
+            if (startsAt == null) {
+                startsAt = (String) currentBillingPeriod.get("starts_at");
+            }
             String endsAt = (String) currentBillingPeriod.get("endsAt");
+            if (endsAt == null) {
+                endsAt = (String) currentBillingPeriod.get("ends_at");
+            }
             update.setCurrentPeriodStart(parseIsoDate(startsAt));
             update.setCurrentPeriodEnd(parseIsoDate(endsAt));
         }
@@ -210,6 +232,9 @@ public class WebhookService {
 
         // If renewal, create a new paid order record
         Map<String, Object> billingCycle = (Map<String, Object>) data.get("billingCycle");
+        if (billingCycle == null) {
+            billingCycle = (Map<String, Object>) data.get("billing_cycle");
+        }
         if (billingCycle != null && sub.getPlanId() != null && sub.getUserId() != null) {
             Order renewalOrder = new Order();
             renewalOrder.setOrderNo(generateOrderNo());
