@@ -153,8 +153,8 @@ public class SubscriptionService {
 
         // 2. Call Paddle API to generate checkout URL (Standard Checkout Link)
         String frontendBase = paddleProperties.getFrontendUrl();
-        String returnUrl = frontendBase + "/payment/success";
-        String cancelUrlResolved = frontendBase + "/payment/cancel";
+        String returnUrl = frontendBase + "/payment/success.html";
+        String cancelUrlResolved = frontendBase + "/payment/cancel.html";
 
         Map<String, Object> customData = new HashMap<>();
         customData.put("order_id", order.getId());

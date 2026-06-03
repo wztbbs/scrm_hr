@@ -13,7 +13,7 @@ public class PaddleProperties {
     private String webhookSecret;
     private String clientToken;
     private String environment = "sandbox";
-    private String frontendUrl = "https://hrscrm.net";
+    private String frontendUrl = "https://www.hrscrm.net";
     private Map<String, String> priceIds = new HashMap<>();
 
     public String getApiKey() {

@@ -24,7 +24,7 @@ public class PaddleApiService {
     public Map<String, Object> createCheckout(String priceId, String email,
                                                String returnUrl, String cancelUrl,
                                                Map<String, Object> customData) {
-        String url = paddleProperties.getBaseUrl() + "/transactions";
+        String url = paddleProperties.getBaseUrl() + "/checkouts";
 
         Map<String, Object> body = new HashMap<>();
         body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
@@ -64,6 +64,13 @@ public class PaddleApiService {
 
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
         System.out.println("[PADDLE_DEBUG] responseStatus=" + response.getStatusCode());
+        if (response.getBody() != null) {
+            try {
+                System.out.println("[PADDLE_DEBUG] responseBody=" + objectMapper.writeValueAsString(response.getBody()));
+            } catch (Exception e) {
+                System.out.println("[PADDLE_DEBUG] responseBody serialize failed: " + e.getMessage());
+            }
+        }
         if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
             return (Map<String, Object>) response.getBody().get("data");
         }

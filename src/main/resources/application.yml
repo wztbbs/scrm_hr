@@ -49,7 +49,7 @@ paddle:
   webhook-secret: ${PADDLE_WEBHOOK_SECRET:}
   client-token: ${PADDLE_CLIENT_TOKEN:}
   environment: ${PADDLE_ENVIRONMENT:sandbox}
-  frontend-url: ${PADDLE_FRONTEND_URL:https://hrscrm.net}
+  frontend-url: ${PADDLE_FRONTEND_URL:https://www.hrscrm.net}
   price-ids:
     pro_monthly: ${PADDLE_PRICE_PRO_MONTHLY:}
     pro_yearly: ${PADDLE_PRICE_PRO_YEARLY:}
