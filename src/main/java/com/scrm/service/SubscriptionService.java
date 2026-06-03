@@ -161,12 +161,7 @@ public class SubscriptionService {
         Map<String, Object> customerData = paddleApiService.createCustomer(emailForPaddle);
         String customerId = (String) customerData.get("id");
 
-        // 3. Update order with paddle customer id (for reference)
-        Order updateOrder = new Order();
-        updateOrder.setId(order.getId());
-        updateOrder.setPaddleCheckoutId(customerId);
-        updateOrder.setUpdatedAt(new Date());
-        orderMapper.updateByPrimaryKeySelective(updateOrder);
+        // 3. Order created with paddle fields left empty, will be updated by webhook
 
         Map<String, Object> result = new HashMap<>();
         result.put("customer_id", customerId);

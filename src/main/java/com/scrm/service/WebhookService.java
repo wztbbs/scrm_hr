@@ -3,10 +3,13 @@ package com.scrm.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scrm.dao.OrderMapper;
 import com.scrm.dao.SubscriptionMapper;
+import com.scrm.dao.SubscriptionPlanMapper;
 import com.scrm.dao.sub.SubOrderMapper;
 import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.entity.Order;
 import com.scrm.entity.Subscription;
+import com.scrm.entity.SubscriptionPlan;
+import com.scrm.entity.SubscriptionPlanExample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,6 +34,8 @@ public class WebhookService {
     private SubSubscriptionMapper subSubscriptionMapper;
     @Autowired
     private SubscriptionMapper subscriptionMapper;
+    @Autowired
+    private SubscriptionPlanMapper planMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -129,9 +134,23 @@ public class WebhookService {
             }
         }
 
+        // Fallback: get plan from customData.plan_code if order not found
+        Long planId = order != null ? order.getPlanId() : null;
+        if (planId == null && customData != null) {
+            String planCode = (String) customData.get("plan_code");
+            if (planCode != null) {
+                SubscriptionPlanExample example = new SubscriptionPlanExample();
+                example.createCriteria().andPlanCodeEqualTo(planCode);
+                List<SubscriptionPlan> plans = planMapper.selectByExample(example);
+                if (!plans.isEmpty()) {
+                    planId = plans.get(0).getId();
+                }
+            }
+        }
+
         Subscription sub = new Subscription();
         sub.setUserId(userId);
-        sub.setPlanId(order != null ? order.getPlanId() : null);
+        sub.setPlanId(planId);
         sub.setPaddleSubscriptionId(paddleSubId);
         sub.setPaddleCustomerId((String) data.get("customerId"));
         sub.setStatus("active");

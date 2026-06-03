@@ -54,6 +54,7 @@
       const customerId = params.get('customer_id');
       const orderId = params.get('order_id');
       const userId = params.get('user_id');
+      const planCode = params.get('plan_code');
       const token = params.get('token');
       const env = params.get('env') || 'sandbox';
 
@@ -76,7 +77,8 @@
           customer: { id: customerId },
           customData: {
             order_id: orderId ? parseInt(orderId) : null,
-            user_id: userId ? parseInt(userId) : null
+            user_id: userId ? parseInt(userId) : null,
+            plan_code: planCode || null
           },
           settings: {
             theme: 'light',
