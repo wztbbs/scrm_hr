@@ -44,7 +44,7 @@ public class WebhookController {
             }
             String payload = sb.toString();
             String signature = request.getHeader("paddle-signature");
-
+            log.info("paddle-signature:  " + signature);
             if (!paddleWebhookVerifier.verify(payload, signature, paddleProperties.getWebhookSecret())) {
                 log.warn("Paddle webhook signature verification failed");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
