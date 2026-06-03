@@ -5,11 +5,9 @@ import com.scrm.config.PaddleProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -21,26 +19,16 @@ public class PaddleApiService {
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * Create or find a Paddle customer by email.
+     * If the customer already exists, Paddle may return the existing one.
+     */
     @SuppressWarnings("unchecked")
-    public Map<String, Object> createCheckout(String priceId, String email,
-                                               String returnUrl, String cancelUrl,
-                                               Map<String, Object> customData) {
-        String url = paddleProperties.getBaseUrl() + "/transactions";
+    public Map<String, Object> createCustomer(String email) {
+        String url = paddleProperties.getBaseUrl() + "/customers";
 
         Map<String, Object> body = new HashMap<>();
-        body.put("items", List.of(Map.of("price_id", priceId, "quantity", 1)));
-        if (StringUtils.hasText(email)) {
-            body.put("customer", Map.of("email", email));
-        }
-        if (returnUrl != null) {
-            body.put("return_url", returnUrl);
-        }
-        if (cancelUrl != null) {
-            body.put("cancel_url", cancelUrl);
-        }
-        if (customData != null) {
-            body.put("custom_data", customData);
-        }
+        body.put("email", email);
 
         // Debug: log request params
         String apiKey = paddleProperties.getApiKey();
@@ -49,10 +37,7 @@ public class PaddleApiService {
         System.out.println("[PADDLE_DEBUG] url=" + url);
         System.out.println("[PADDLE_DEBUG] apiKeyPrefix=" + (apiKey != null && apiKey.length() > 10 ? apiKey.substring(0, 10) + "..." : "null/empty"));
         System.out.println("[PADDLE_DEBUG] apiKeyLength=" + (apiKey != null ? apiKey.length() : 0));
-        System.out.println("[PADDLE_DEBUG] priceId=" + priceId);
         System.out.println("[PADDLE_DEBUG] email=" + email);
-        System.out.println("[PADDLE_DEBUG] returnUrl=" + returnUrl);
-        System.out.println("[PADDLE_DEBUG] cancelUrl=" + cancelUrl);
         try {
             System.out.println("[PADDLE_DEBUG] body=" + objectMapper.writeValueAsString(body));
         } catch (Exception e) {
@@ -77,7 +62,7 @@ public class PaddleApiService {
         if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
             return (Map<String, Object>) response.getBody().get("data");
         }
-        throw new RuntimeException("Paddle checkout failed: " + response.getStatusCode());
+        throw new RuntimeException("Paddle create customer failed: " + response.getStatusCode());
     }
 
     public void cancelSubscription(String paddleSubscriptionId, String effectiveFrom) {

@@ -33,11 +33,8 @@ public class SubscriptionController {
     @PostMapping("/checkout")
     public ApiResponse<Map<String, Object>> checkout(@RequestBody Map<String, Object> body) {
         String planCode = (String) body.get("plan_code");
-        String successUrl = (String) body.get("success_url");
-        String cancelUrl = (String) body.get("cancel_url");
-        String couponCode = (String) body.get("coupon_code");
         String email = (String) body.get("email");
-        return ApiResponse.success(subscriptionService.checkout(planCode, successUrl, cancelUrl, couponCode, email));
+        return ApiResponse.success(subscriptionService.checkout(planCode, email));
     }
 
     @PostMapping("/cancel")

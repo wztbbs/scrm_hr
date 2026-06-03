@@ -119,7 +119,7 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode, String email) {
+    public Map<String, Object> checkout(String planCode, String email) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
         if (user == null) {
@@ -139,7 +139,7 @@ public class SubscriptionService {
             throw new BusinessException("Paddle price ID not configured for plan: " + planCode);
         }
 
-        // 1. Create local order
+        // 1. Create local pending order
         Order order = new Order();
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
@@ -152,38 +152,29 @@ public class SubscriptionService {
         order.setUpdatedAt(new Date());
         orderMapper.insertSelective(order);
 
-        // 2. Call Paddle API to generate checkout URL (Standard Checkout Link)
-        String frontendBase = paddleProperties.getFrontendUrl();
-        String returnUrl = frontendBase + "/payment/success.html";
-        String cancelUrlResolved = frontendBase + "/payment/cancel.html";
-
-        Map<String, Object> customData = new HashMap<>();
-        customData.put("order_id", order.getId());
-        customData.put("user_id", userId);
-
-        // 优先使用前端传入的 email（支付时临时输入的），否则 fallback 到数据库
+        // 2. Create or find Paddle customer
         String emailForPaddle = StringUtils.hasText(email) ? email : user.getEmail();
+        if (!StringUtils.hasText(emailForPaddle)) {
+            throw new BusinessException("Email is required for checkout");
+        }
 
-        Map<String, Object> paddleData = paddleApiService.createCheckout(
-                priceId, emailForPaddle, returnUrl, cancelUrlResolved, customData);
+        Map<String, Object> customerData = paddleApiService.createCustomer(emailForPaddle);
+        String customerId = (String) customerData.get("id");
 
-        String checkoutId = (String) paddleData.get("id");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> checkout = (Map<String, Object>) paddleData.get("checkout");
-        String checkoutUrl = checkout != null ? (String) checkout.get("url") : null;
-
-        // 3. Update order with paddle checkout id
+        // 3. Update order with paddle customer id (for reference)
         Order updateOrder = new Order();
         updateOrder.setId(order.getId());
-        updateOrder.setPaddleCheckoutId(checkoutId);
+        updateOrder.setPaddleCheckoutId(customerId);
         updateOrder.setUpdatedAt(new Date());
         orderMapper.updateByPrimaryKeySelective(updateOrder);
 
         Map<String, Object> result = new HashMap<>();
-        result.put("checkout_url", checkoutUrl);
-        result.put("checkout_id", checkoutId);
-        result.put("order_no", order.getOrderNo());
-        result.put("is_sandbox", paddleProperties.isSandbox());
+        result.put("customer_id", customerId);
+        result.put("price_id", priceId);
+        result.put("order_id", order.getId());
+        result.put("plan_code", planCode);
+        result.put("client_token", paddleProperties.getClientToken());
+        result.put("environment", paddleProperties.getEnvironment());
         return result;
     }
 

@@ -50,30 +50,38 @@
   <script>
     (function() {
       const params = new URLSearchParams(window.location.search);
-      const txnId = params.get('txn');
+      const priceId = params.get('price_id');
+      const customerId = params.get('customer_id');
+      const orderId = params.get('order_id');
+      const userId = params.get('user_id');
+      const token = params.get('token');
       const env = params.get('env') || 'sandbox';
 
       const msgEl = document.getElementById('msg');
       const spinnerEl = document.getElementById('spinner');
 
-      if (!txnId) {
+      if (!priceId || !customerId || !token) {
         spinnerEl.style.display = 'none';
         msgEl.className = 'error';
-        msgEl.textContent = 'Invalid transaction ID. Please try again.';
+        msgEl.textContent = 'Missing checkout parameters. Please try again.';
         return;
       }
 
-      // Paddle Client Token (public, safe to expose in frontend)
-      // TODO: Replace with your production client token for live environment
-      const CLIENT_TOKEN = 'test_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
-
       try {
-        Paddle.Environment.set(env);
-        Paddle.Initialize({ token: CLIENT_TOKEN });
+        Paddle.Environment.set(env === 'live' ? 'production' : 'sandbox');
+        Paddle.Initialize({ token: token });
+
         Paddle.Checkout.open({
-          transactionId: txnId
-          // success/cancel callbacks are handled by Paddle redirecting to return_url/cancel_url
-          // configured when the transaction was created on the backend
+          items: [{ priceId: priceId, quantity: 1 }],
+          customer: { id: customerId },
+          customData: {
+            order_id: orderId ? parseInt(orderId) : null,
+            user_id: userId ? parseInt(userId) : null
+          },
+          settings: {
+            theme: 'light',
+            displayMode: 'overlay'
+          }
         });
       } catch (e) {
         spinnerEl.style.display = 'none';

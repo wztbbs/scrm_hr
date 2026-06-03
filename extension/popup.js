@@ -1354,19 +1354,22 @@ async function showUpgradeModal(config) {
       }
 
       try {
-        // Standard Checkout Link: backend generates checkout URL, frontend opens in new tab
-        try {
-          const resp = await window.API.subscription.checkout(planCode, '', '', '', email);
-          if (resp.data && resp.data.checkout_id) {
-            const checkoutId = resp.data.checkout_id;
-            const checkoutUrl = `https://www.hrscrm.net/checkout.html?txn=${checkoutId}`;
-            chrome.tabs.create({ url: checkoutUrl });
-            showToast('Checkout opened in new tab. Complete payment there.');
-          } else {
-            showToast('Checkout URL not received. Please try again.');
-          }
-        } catch (e) {
-          showToast('Checkout failed: ' + e.message);
+        const resp = await window.API.subscription.checkout(planCode, email);
+        if (resp.data && resp.data.customer_id) {
+          const d = resp.data;
+          const params = new URLSearchParams({
+            price_id: d.price_id,
+            customer_id: d.customer_id,
+            order_id: d.order_id,
+            user_id: currentUserId || '',
+            token: d.client_token,
+            env: d.environment
+          });
+          const checkoutUrl = `https://www.hrscrm.net/checkout.html?${params.toString()}`;
+          chrome.tabs.create({ url: checkoutUrl });
+          showToast('Checkout opened in new tab. Complete payment there.');
+        } else {
+          showToast('Checkout data not received. Please try again.');
         }
       } catch (e) {
         showToast('Checkout failed: ' + e.message);
@@ -2807,6 +2810,7 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
 })();
 
 // ========== Bind Email Modal ==========
+let currentUserId = null;
 let currentUserEmail = null;
 let currentUserNeedBindEmail = false;
 let currentUserUuid = null;
@@ -2822,6 +2826,7 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       user = await window.API.user.me();
     }
     if (user) {
+      currentUserId = user.id || null;
       currentUserEmail = user.email || null;
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
