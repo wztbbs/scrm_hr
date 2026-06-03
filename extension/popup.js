@@ -1357,8 +1357,10 @@ async function showUpgradeModal(config) {
         // Standard Checkout Link: backend generates checkout URL, frontend opens in new tab
         try {
           const resp = await window.API.subscription.checkout(planCode, '', '', '', email);
-          if (resp.data && resp.data.checkout_url) {
-            chrome.tabs.create({ url: resp.data.checkout_url });
+          if (resp.data && resp.data.checkout_id) {
+            const checkoutId = resp.data.checkout_id;
+            const checkoutUrl = `https://www.hrscrm.net/checkout.html?txn=${checkoutId}`;
+            chrome.tabs.create({ url: checkoutUrl });
             showToast('Checkout opened in new tab. Complete payment there.');
           } else {
             showToast('Checkout URL not received. Please try again.');

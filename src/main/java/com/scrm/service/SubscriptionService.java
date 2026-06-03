@@ -183,6 +183,7 @@ public class SubscriptionService {
         result.put("checkout_url", checkoutUrl);
         result.put("checkout_id", checkoutId);
         result.put("order_no", order.getOrderNo());
+        result.put("is_sandbox", paddleProperties.isSandbox());
         return result;
     }
 
