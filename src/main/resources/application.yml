@@ -14,9 +14,6 @@ spring:
     password: ${MYSQL_PASSWORD:w123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
-resend:
-  api-key: ${RESEND_API_KEY:}
-
   ai:
     openai:
       # 阿里云百炼兼容模式（OpenAI API 兼容）
@@ -27,6 +24,9 @@ resend:
         options:
           model: qwen-plus
           temperature: 0.3
+
+resend:
+  api-key: ${RESEND_API_KEY:}
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml,classpath:mapper/sub/*.xml
