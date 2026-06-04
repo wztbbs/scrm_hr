@@ -10,6 +10,8 @@ import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.entity.Subscription;
 import com.scrm.service.EmailVerificationService;
 import com.scrm.service.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/user")
 public class UserController {
+
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private UserService userService;
@@ -84,6 +88,7 @@ public class UserController {
         if (existingUser != null && existingUser.getIsActive() != null && existingUser.getIsActive()
                 && !existingUser.getId().equals(currentUserId)) {
             // Conflict: merge current user into existing user and migrate data
+            log.info("Email conflict detected: currentUserId={} will be merged into existingUserId={}", currentUserId, existingUser.getId());
             userService.mergeUser(currentUserId, existingUser.getId());
             userService.migrateUserData(currentUserId, existingUser.getId());
             emailVerificationService.markCodeAsUsed(record);
