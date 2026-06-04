@@ -2857,6 +2857,7 @@ let currentUserId = null;
 let currentUserEmail = null;
 let currentUserNeedBindEmail = false;
 let currentUserUuid = null;
+let currentUserIsPro = false;
 let currentUserFeedbackEmail = null;
 
 async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
@@ -2872,8 +2873,10 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       currentUserEmail = user.email || null;
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
+      currentUserIsPro = user.isPro || false;
       currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
       updateBindEmailButton();
+      updateProBadge();
       renderEmailAlertCard();
     }
   } catch (e) {
@@ -2896,11 +2899,24 @@ function renderEmailAlertCard() {
 function updateBindEmailButton() {
   const btn = $('bindEmailOpenBtn');
   if (currentUserEmail) {
-    btn.textContent = '📧';
-    btn.title = 'Email: ' + currentUserEmail;
+    btn.textContent = '✉️';
+    btn.title = '';
+    btn.classList.add('has-email');
+    btn.setAttribute('data-email', currentUserEmail);
   } else {
     btn.textContent = '📧 Bind Email';
     btn.title = 'Bind Email';
+    btn.classList.remove('has-email');
+    btn.removeAttribute('data-email');
+  }
+}
+
+function updateProBadge() {
+  const badge = $('proBadge');
+  if (currentUserIsPro) {
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
   }
 }
 
@@ -3002,11 +3018,18 @@ function updateBindEmailButton() {
     bindSubmitBtn.disabled = true;
     bindSubmitBtn.textContent = 'Saving...';
     try {
-      await window.API.user.bindEmail(email, code);
-      showToast('Email linked successfully!');
-      currentUserEmail = email;
-      updateBindEmailButton();
-      closeBindModal();
+      const resp = await window.API.user.bindEmail(email, code);
+      if (resp && resp.merged) {
+        currentUserUuid = resp.targetUuid || currentUserUuid;
+        const modal = $('mergeModal');
+        modal.classList.remove('hidden');
+        closeBindModal();
+      } else {
+        showToast('Email linked successfully!');
+        currentUserEmail = email;
+        updateBindEmailButton();
+        closeBindModal();
+      }
     } catch (e) {
       console.error('[BindEmail] Failed to bind:', e);
       showToast(e.message || 'Failed to bind email. Please try again.');
@@ -3134,5 +3157,32 @@ function updateBindEmailButton() {
       }
       document.body.removeChild(ta);
     }
+  }
+})();
+
+// ========== Merge Success Modal ==========
+(function initMergeModal() {
+  const modal = $('mergeModal');
+  const refreshBtn = $('mergeRefreshBtn');
+  const laterBtn = $('mergeLaterBtn');
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      location.reload();
+    });
+  }
+
+  if (laterBtn) {
+    laterBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+      }
+    });
   }
 })();
