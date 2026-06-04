@@ -14,14 +14,8 @@ spring:
     password: ${MYSQL_PASSWORD:w123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${FEEDBACK_FROM_EMAIL:270938043@qq.com}
-    password: ${FEEDBACK_APP_PASSWORD:}
-    properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
+resend:
+  api-key: ${RESEND_API_KEY:}
 
   ai:
     openai:

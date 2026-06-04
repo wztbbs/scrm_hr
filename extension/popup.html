@@ -1436,11 +1436,18 @@
     </div>
     <div class="feedback-modal-body">
       <div class="feedback-modal-desc">
-        Enter your email address below. We'll link it directly to your account — no verification code needed.
+        Enter your email address and the verification code sent to your inbox.
       </div>
       <div class="feedback-field">
         <label class="feedback-label">Email</label>
-        <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
+        <div class="email-row">
+          <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
+          <button class="send-code-btn" id="bindEmailSendCodeBtn">Send Code</button>
+        </div>
+      </div>
+      <div class="feedback-field">
+        <label class="feedback-label">Verification Code</label>
+        <input type="text" class="feedback-input" id="bindEmailCodeInput" placeholder="Enter code" maxlength="10">
       </div>
     </div>
     <div class="feedback-modal-footer">
@@ -1887,6 +1894,23 @@
       <div id="modalUpgradePlans" style="display:flex;gap:12px;justify-content:center;margin:16px 0;">
         <!-- Plans rendered dynamically -->
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Email Input Modal -->
+<div class="modal-overlay" id="modalEmailInput">
+  <div class="modal" style="max-width:360px;text-align:center;">
+    <div class="modal-title">Enter your email</div>
+    <div style="margin:16px 0;">
+      <input type="email" class="form-input" id="modalEmailInputField" placeholder="your@email.com" style="text-align:center;">
+    </div>
+    <div class="modal-footer" style="justify-content:center;gap:12px;">
+      <button class="btn-outline" id="modalEmailCancel" style="flex:1;">Cancel</button>
+      <button class="btn-sm" id="modalEmailConfirm" style="flex:1;background:#6366f1;">Confirm Subscription</button>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:12px;">
+      You can update your email anytime in Settings after subscribing.
     </div>
   </div>
 </div>

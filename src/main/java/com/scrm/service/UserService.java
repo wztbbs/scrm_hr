@@ -1,7 +1,13 @@
 package com.scrm.service;
 
 import com.scrm.common.RequestContext;
+import com.scrm.dao.OrderMapper;
+import com.scrm.dao.SubscriptionMapper;
 import com.scrm.dao.sub.SubUserMapper;
+import com.scrm.entity.Order;
+import com.scrm.entity.OrderExample;
+import com.scrm.entity.Subscription;
+import com.scrm.entity.SubscriptionExample;
 import com.scrm.entity.User;
 import com.scrm.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +18,12 @@ public class UserService {
 
     @Autowired
     private SubUserMapper userMapper;
+
+    @Autowired
+    private SubscriptionMapper subscriptionMapper;
+
+    @Autowired
+    private OrderMapper orderMapper;
 
     public User getCurrentUser() {
         Long userId = RequestContext.getCurrentUserId();
@@ -43,11 +55,23 @@ public class UserService {
         return userMapper.selectByUuid(uuid);
     }
 
-    public void deactivateUser(Long userId) {
-        userMapper.deactivateById(userId);
-    }
-
     public void mergeUser(Long fromUserId, Long targetUserId) {
         userMapper.mergeToUser(fromUserId, targetUserId);
+    }
+
+    public void migrateUserData(Long fromUserId, Long targetUserId) {
+        // Migrate subscriptions
+        Subscription subscription = new Subscription();
+        subscription.setUserId(targetUserId);
+        SubscriptionExample subExample = new SubscriptionExample();
+        subExample.createCriteria().andUserIdEqualTo(fromUserId);
+        subscriptionMapper.updateByExampleSelective(subscription, subExample);
+
+        // Migrate orders
+        Order order = new Order();
+        order.setUserId(targetUserId);
+        OrderExample orderExample = new OrderExample();
+        orderExample.createCriteria().andUserIdEqualTo(fromUserId);
+        orderMapper.updateByExampleSelective(order, orderExample);
     }
 }

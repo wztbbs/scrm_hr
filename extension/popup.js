@@ -1341,16 +1341,58 @@ async function showUpgradeModal(config) {
       trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
       $('modalUpgrade').classList.remove('active');
 
-      // 检查邮箱，为空则弹框让用户输入（仅用于本次支付，不落库）
+      // 检查邮箱，为空则弹出自定义 modal 让用户输入（仅用于本次支付，不落库）
       let email = currentUserEmail;
       if (!email) {
-        email = prompt('Please enter your email to complete the subscription:');
-        if (!email || !email.trim()) {
-          showToast('Email is required to continue subscription');
+        $('modalEmailInput').classList.add('active');
+        $('modalEmailInputField').value = '';
+        $('modalEmailInputField').focus();
+
+        email = await new Promise((resolve) => {
+          const confirmBtn = $('modalEmailConfirm');
+          const cancelBtn = $('modalEmailCancel');
+          const input = $('modalEmailInputField');
+
+          const onConfirm = () => {
+            const val = input.value.trim();
+            if (!val) {
+              showToast('Email is required to continue subscription');
+              return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+              showToast('Please enter a valid email address');
+              return;
+            }
+            cleanup();
+            resolve(val);
+          };
+
+          const onCancel = () => {
+            cleanup();
+            resolve(null);
+          };
+
+          const onKeydown = (e) => {
+            if (e.key === 'Enter') onConfirm();
+            if (e.key === 'Escape') onCancel();
+          };
+
+          const cleanup = () => {
+            $('modalEmailInput').classList.remove('active');
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            input.removeEventListener('keydown', onKeydown);
+          };
+
+          confirmBtn.addEventListener('click', onConfirm);
+          cancelBtn.addEventListener('click', onCancel);
+          input.addEventListener('keydown', onKeydown);
+        });
+
+        if (!email) {
           if (upgradeResolve) { upgradeResolve(false); upgradeResolve = null; }
           return;
         }
-        email = email.trim();
       }
 
       try {
@@ -2871,15 +2913,44 @@ function updateBindEmailButton() {
   const bindCancelBtn = $('bindEmailCancelBtn');
   const bindSubmitBtn = $('bindEmailSubmitBtn');
   const bindEmailInput = $('bindEmailInput');
+  const bindSendCodeBtn = $('bindEmailSendCodeBtn');
+  const bindCodeInput = $('bindEmailCodeInput');
+
+  let sendCodeTimer = null;
 
   function openBindModal() {
     bindOverlay.classList.remove('hidden');
     bindEmailInput.value = currentUserEmail || '';
+    bindCodeInput.value = '';
     bindEmailInput.focus();
   }
 
   function closeBindModal() {
     bindOverlay.classList.add('hidden');
+    resetSendCodeTimer();
+  }
+
+  function startSendCodeCountdown() {
+    let seconds = 60;
+    bindSendCodeBtn.disabled = true;
+    bindSendCodeBtn.textContent = `${seconds}s`;
+    sendCodeTimer = setInterval(() => {
+      seconds--;
+      if (seconds <= 0) {
+        resetSendCodeTimer();
+        return;
+      }
+      bindSendCodeBtn.textContent = `${seconds}s`;
+    }, 1000);
+  }
+
+  function resetSendCodeTimer() {
+    if (sendCodeTimer) {
+      clearInterval(sendCodeTimer);
+      sendCodeTimer = null;
+    }
+    bindSendCodeBtn.disabled = false;
+    bindSendCodeBtn.textContent = 'Send Code';
   }
 
   bindOpenBtn.addEventListener('click', () => {
@@ -2898,29 +2969,54 @@ function updateBindEmailButton() {
     if (e.target === bindOverlay) closeBindModal();
   });
 
-  bindSubmitBtn.addEventListener('click', async () => {
+  bindSendCodeBtn.addEventListener('click', async () => {
     const email = bindEmailInput.value.trim();
     if (!email) {
       showToast('Please enter your email');
       bindEmailInput.focus();
       return;
     }
+    bindSendCodeBtn.disabled = true;
+    try {
+      await window.API.user.sendVerificationCode(email);
+      showToast('Verification code sent!');
+      startSendCodeCountdown();
+    } catch (e) {
+      console.error('[BindEmail] Failed to send code:', e);
+      showToast(e.message || 'Failed to send verification code. Please try again.');
+      bindSendCodeBtn.disabled = false;
+    }
+  });
+
+  bindSubmitBtn.addEventListener('click', async () => {
+    const email = bindEmailInput.value.trim();
+    const code = bindCodeInput.value.trim();
+    if (!email) {
+      showToast('Please enter your email');
+      bindEmailInput.focus();
+      return;
+    }
+    if (!code) {
+      showToast('Please enter the verification code');
+      bindCodeInput.focus();
+      return;
+    }
     bindSubmitBtn.disabled = true;
     bindSubmitBtn.textContent = 'Saving...';
     try {
-      await window.API.user.updateMe({ email });
+      await window.API.user.bindEmail(email, code);
       showToast('Email linked successfully!');
       currentUserEmail = email;
       updateBindEmailButton();
       closeBindModal();
     } catch (e) {
-      console.error('[BindEmail] Failed to save:', e);
+      console.error('[BindEmail] Failed to bind:', e);
       const msg = e.message || '';
       if (msg.toLowerCase().includes('already in use') || msg.includes('Email already in use')) {
         closeBindModal();
         openEmailConflictModal();
       } else {
-        showToast(msg || 'Failed to save email. Please try again.');
+        showToast(msg || 'Failed to bind email. Please try again.');
       }
     } finally {
       bindSubmitBtn.disabled = false;

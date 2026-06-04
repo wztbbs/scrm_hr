@@ -80,15 +80,7 @@ public class WebhookService {
         Number orderIdNum = customData != null ? (Number) customData.get("order_id") : null;
         Long orderId = orderIdNum != null ? orderIdNum.longValue() : null;
 
-        String paddleSubscriptionId = null;
-        List<Map<String, Object>> items = (List<Map<String, Object>>) data.get("items");
-        if (items != null && !items.isEmpty()) {
-            Map<String, Object> item = items.get(0);
-            Map<String, Object> subscription = (Map<String, Object>) item.get("subscription");
-            if (subscription != null) {
-                paddleSubscriptionId = (String) subscription.get("id");
-            }
-        }
+        String paddleSubscriptionId = (String) data.get("subscription_id");
 
         if (orderId != null) {
             subOrderMapper.updateStatusPaidById(orderId, "paid", paddleTransactionId, paddleSubscriptionId, new Date());

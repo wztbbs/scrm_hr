@@ -553,21 +553,18 @@ const UserAPI = {
   async updateMe(data) {
     const resp = await apiRequest('PUT', '/api/v1/user/me', data);
     return resp.data;
+  },
+
+  async sendVerificationCode(email) {
+    const resp = await apiRequest('POST', '/api/v1/user/send-verification-code', { email });
+    return resp.data;
+  },
+
+  async bindEmail(email, code) {
+    const resp = await apiRequest('POST', '/api/v1/user/bind-email', { email, code });
+    return resp.data;
   }
-
-  // Deprecated: verification flow removed
-  // async sendVerificationCode(email) { ... }
-  // async bindEmail(email, code) { ... }
-  // async mergeAccount(...) { ... }
-  // async keepDeviceNew(...) { ... }
 };
-
-const FeedbackAPI = {
-  // Deprecated: feedback now uses mailto
-  // async submit(content, email = '') { ... }
-};
-
-
 
 // ==================== Subscription ====================
 
@@ -602,7 +599,7 @@ if (typeof window !== 'undefined') {
     pipeline: PipelineAPI,
     sequences: SequencesAPI,
     user: UserAPI,
-    feedback: FeedbackAPI,
+
     events: {
       async track(eventName, eventData, sessionId) {
         const body = {

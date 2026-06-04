@@ -3,7 +3,6 @@ package com.scrm.controller;
 import com.scrm.common.ApiResponse;
 import com.scrm.common.RequestContext;
 import com.scrm.dto.BindEmailRequest;
-import com.scrm.dto.MergeAccountRequest;
 import com.scrm.dto.SendVerificationCodeRequest;
 import com.scrm.entity.EmailVerification;
 import com.scrm.entity.User;
@@ -80,7 +79,7 @@ public class UserController {
     @PostMapping("/bind-email")
     public ApiResponse<Map<String, Object>> bindEmail(@RequestBody BindEmailRequest request) {
         // 1. Verify code
-        emailVerificationService.verifyCode(request.getEmail(), request.getCode());
+        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
 
         // 2. Check if email already exists in users table
         User existingUser = userService.findByEmail(request.getEmail());
@@ -88,67 +87,21 @@ public class UserController {
 
         if (existingUser != null && existingUser.getIsActive() != null && existingUser.getIsActive()
                 && !existingUser.getId().equals(currentUserId)) {
-            // Conflict: existing active user with this email
+            // Conflict: merge current user into existing user and migrate data
+            userService.mergeUser(currentUserId, existingUser.getId());
+            userService.migrateUserData(currentUserId, existingUser.getId());
+            emailVerificationService.markCodeAsUsed(record);
+
             Map<String, Object> data = new HashMap<>();
-            data.put("conflict", true);
-            Map<String, Object> existingUserInfo = new HashMap<>();
-            existingUserInfo.put("id", existingUser.getId());
-            existingUserInfo.put("uuid", existingUser.getUuid());
-            existingUserInfo.put("email", existingUser.getEmail());
-            data.put("existingUser", existingUserInfo);
+            data.put("success", true);
+            data.put("merged", true);
+            data.put("targetUuid", existingUser.getUuid());
             return ApiResponse.success(data);
         }
 
         // No conflict, bind directly
-        emailVerificationService.markCodeAsUsed(
-                emailVerificationService.verifyCode(request.getEmail(), request.getCode()));
-        userService.updateEmail(request.getEmail());
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("success", true);
-        return ApiResponse.success(data);
-    }
-
-    @PostMapping("/merge-account")
-    public ApiResponse<Map<String, Object>> mergeAccount(@RequestBody MergeAccountRequest request) {
-        // 1. Verify code
-        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
-
-        Long currentUserId = RequestContext.getCurrentUserId();
-        Long targetUserId = request.getTargetUserId();
-
-        // 2. Mark current user as merged to target user
-        userService.mergeUser(currentUserId, targetUserId);
-
-        // 3. Mark code as used
         emailVerificationService.markCodeAsUsed(record);
-
-        // 4. Get target user's UUID for frontend switching
-        User targetUser = userService.findByUuid(request.getTargetUuid());
-        String targetUuid = targetUser != null ? targetUser.getUuid() : request.getTargetUuid();
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("success", true);
-        data.put("targetUuid", targetUuid);
-        return ApiResponse.success(data);
-    }
-
-    @PostMapping("/keep-device-new")
-    public ApiResponse<Map<String, Object>> keepDeviceNew(@RequestBody BindEmailRequest request) {
-        // 1. Verify code
-        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
-
-        // 2. Find existing user with this email and deactivate it
-        User existingUser = userService.findByEmail(request.getEmail());
-        if (existingUser != null) {
-            userService.deactivateUser(existingUser.getId());
-        }
-
-        // 3. Bind email to current user
         userService.updateEmail(request.getEmail());
-
-        // 4. Mark code as used
-        emailVerificationService.markCodeAsUsed(record);
 
         Map<String, Object> data = new HashMap<>();
         data.put("success", true);

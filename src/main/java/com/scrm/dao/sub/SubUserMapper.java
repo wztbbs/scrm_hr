@@ -14,7 +14,5 @@ public interface SubUserMapper extends UserMapper {
 
     User selectByUuid(@Param("uuid") String uuid);
 
-    int deactivateById(@Param("id") Long id);
-
     int mergeToUser(@Param("id") Long id, @Param("targetUserId") Long targetUserId);
 }
