@@ -33,9 +33,6 @@ public class UserController {
     @Value("${feedback.to-email}")
     private String feedbackToEmail;
 
-    @Value("${support.to-email}")
-    private String supportToEmail;
-
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me() {
         User user = userService.getCurrentUser();
@@ -52,7 +49,6 @@ public class UserController {
         data.put("isPro", isPro);
         data.put("needBindEmail", needBindEmail);
         data.put("feedbackEmail", feedbackToEmail);
-        data.put("supportEmail", supportToEmail);
         return ApiResponse.success(data);
     }
 

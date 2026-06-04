@@ -2858,7 +2858,6 @@ let currentUserEmail = null;
 let currentUserNeedBindEmail = false;
 let currentUserUuid = null;
 let currentUserFeedbackEmail = null;
-let currentUserSupportEmail = null;
 
 async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
   console.log('[PLUGIN_INIT] initBindEmailState START');
@@ -2874,7 +2873,6 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
       currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
-      currentUserSupportEmail = user.supportEmail || 'richardtao2001@gmail.com';
       updateBindEmailButton();
       renderEmailAlertCard();
     }
@@ -3011,13 +3009,7 @@ function updateBindEmailButton() {
       closeBindModal();
     } catch (e) {
       console.error('[BindEmail] Failed to bind:', e);
-      const msg = e.message || '';
-      if (msg.toLowerCase().includes('already in use') || msg.includes('Email already in use')) {
-        closeBindModal();
-        openEmailConflictModal();
-      } else {
-        showToast(msg || 'Failed to bind email. Please try again.');
-      }
+      showToast(e.message || 'Failed to bind email. Please try again.');
     } finally {
       bindSubmitBtn.disabled = false;
       bindSubmitBtn.textContent = 'Save';
@@ -3025,94 +3017,6 @@ function updateBindEmailButton() {
   });
 })();
 
-// ========== Email Conflict Modal ==========
-(function initEmailConflictModal() {
-  const conflictOverlay = $('emailConflictOverlay');
-  const conflictCloseBtn = $('emailConflictCloseBtn');
-  const conflictCloseBtn2 = $('emailConflictCloseBtn2');
-  const conflictCopyBtn = $('emailConflictCopyBtn');
-  const conflictCopyEmailContentBtn = $('emailConflictCopyEmailContentBtn');
-  const conflictEmailBtn = $('emailConflictEmailBtn');
-  const conflictUuidInput = $('emailConflictUuidInput');
-  const conflictUuidSpan = $('emailConflictUuid');
-  const conflictSupportEmail = $('emailConflictSupportEmail');
-
-  function openEmailConflictModal() {
-    if (currentUserUuid) {
-      conflictUuidInput.value = currentUserUuid;
-      conflictUuidSpan.textContent = currentUserUuid;
-    }
-    if (currentUserSupportEmail) {
-      conflictSupportEmail.textContent = currentUserSupportEmail;
-    }
-    conflictOverlay.classList.remove('hidden');
-  }
-
-  function closeEmailConflictModal() {
-    conflictOverlay.classList.add('hidden');
-  }
-
-  window.openEmailConflictModal = openEmailConflictModal;
-
-  conflictCloseBtn.addEventListener('click', closeEmailConflictModal);
-  conflictCloseBtn2.addEventListener('click', closeEmailConflictModal);
-  conflictOverlay.addEventListener('click', (e) => {
-    if (e.target === conflictOverlay) closeEmailConflictModal();
-  });
-
-  async function copyUuid() {
-    if (!currentUserUuid) return;
-    try {
-      await navigator.clipboard.writeText(currentUserUuid);
-      showToast('User ID copied!');
-    } catch (err) {
-      const ta = document.createElement('textarea');
-      ta.value = currentUserUuid;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast('User ID copied!');
-      } catch (e) {
-        showToast('Copy failed. Please copy manually.');
-      }
-      document.body.removeChild(ta);
-    }
-  }
-
-  conflictCopyBtn.addEventListener('click', copyUuid);
-
-  async function copyEmailContent() {
-    if (!currentUserUuid || !currentUserSupportEmail) return;
-    const text = `To: ${currentUserSupportEmail}\nSubject: [Email Conflict] User: ${currentUserUuid}\n\nHi team,\n\nI tried to bind my email but it says "Email already in use". Please help resolve this conflict.\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`;
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('Email content copied! Paste into your email client.');
-    } catch (err) {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand('copy');
-        showToast('Email content copied! Paste into your email client.');
-      } catch (e) {
-        showToast('Copy failed. Please copy manually.');
-      }
-      document.body.removeChild(ta);
-    }
-  }
-
-  conflictCopyEmailContentBtn.addEventListener('click', copyEmailContent);
-
-  conflictEmailBtn.addEventListener('click', () => {
-    if (!currentUserUuid || !currentUserSupportEmail) return;
-    const subject = encodeURIComponent(`[Email Conflict] User: ${currentUserUuid}`);
-    const body = encodeURIComponent(`Hi team,\n\nI tried to bind my email but it says "Email already in use". Please help resolve this conflict.\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`);
-    const mailtoUrl = `mailto:${currentUserSupportEmail}?subject=${subject}&body=${body}`;
-    chrome.tabs.create({ url: mailtoUrl });
-  });
-})();
 // ========== AI Message Generation ==========
 (function initAiMessage() {
   $('ovAiGenerateBtn').addEventListener('click', async () => {

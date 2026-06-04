@@ -50,9 +50,6 @@ paddle:
 feedback:
   to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
 
-support:
-  to-email: ${SUPPORT_TO_EMAIL:richardtao2001@gmail.com}
-
 logging:
   level:
     com.scrm: INFO
