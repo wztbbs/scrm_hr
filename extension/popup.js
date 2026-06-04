@@ -3019,10 +3019,21 @@ function updateProBadge() {
     bindSubmitBtn.textContent = 'Saving...';
     try {
       const resp = await window.API.user.bindEmail(email, code);
+      console.log('[BindEmail] resp:', resp);
       if (resp && resp.merged) {
+        console.log('[BindEmail] merged=true, targetUuid=', resp.targetUuid);
         currentUserUuid = resp.targetUuid || currentUserUuid;
+        if (resp.targetUuid) {
+          await setSetting('userId', resp.targetUuid);
+        }
         const modal = $('mergeModal');
-        modal.classList.remove('hidden');
+        console.log('[BindEmail] mergeModal element:', modal);
+        if (modal) {
+          modal.classList.remove('hidden');
+          console.log('[BindEmail] mergeModal shown');
+        } else {
+          console.error('[BindEmail] mergeModal not found');
+        }
         closeBindModal();
       } else {
         showToast('Email linked successfully!');

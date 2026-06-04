@@ -1440,7 +1440,7 @@
       font-size: 11px;
       font-weight: 600;
     }
-    .modal-overlay {
+    .merge-modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.45);
@@ -1450,7 +1450,7 @@
       justify-content: center;
       z-index: 9999;
     }
-    .modal-overlay.hidden { display: none; }
+    .merge-modal-overlay.hidden { display: none; }
     .modal-box {
       background: #fff;
       border-radius: 16px;
@@ -1586,7 +1586,7 @@
           <input type="email" class="feedback-input" id="bindEmailInput" placeholder="your@email.com">
           <button class="send-code-btn" id="bindEmailSendCodeBtn">Send Code</button>
         </div>
-        <div class="spam-hint">Can't find it? Check your spam or junk folder.</div>
+        <div class="spam-hint">If you can't find it, please check your spam or junk folder.</div>
       </div>
       <div class="feedback-field">
         <label class="feedback-label">Verification Code</label>
@@ -1598,9 +1598,10 @@
       <button class="feedback-btn-primary" id="bindEmailSubmitBtn">Save</button>
     </div>
   </div>
+</div>
 
 <!-- Merge Success Modal -->
-<div class="modal-overlay hidden" id="mergeModal">
+<div class="merge-modal-overlay hidden" id="mergeModal">
   <div class="modal-box">
     <div class="modal-icon">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#667eea" stroke-width="2">
@@ -1629,7 +1630,6 @@
       </button>
     </div>
   </div>
-</div>
 </div>
 
 
