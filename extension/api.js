@@ -39,14 +39,14 @@ function toTimestamp(iso) {
 async function apiRequest(method, path, body = null, query = null) {
   const perfLabel = `[API_PERF] ${method} ${path}`;
   const start = performance.now();
-  console.log(`${perfLabel} START`);
+  log(`${perfLabel} START`);
 
   const t1 = performance.now();
   const base = await getApiBase();
   const t2 = performance.now();
   const userId = await getSetting('userId', '');
   const t3 = performance.now();
-  console.log(`${perfLabel} storageReady apiBase=${(t2-t1).toFixed(1)}ms userId=${(t3-t2).toFixed(1)}ms`);
+  log(`${perfLabel} storageReady apiBase=${(t2-t1).toFixed(1)}ms userId=${(t3-t2).toFixed(1)}ms`);
 
   let url = `${base}${path}`;
   if (query && Object.keys(query).length > 0) {
@@ -96,7 +96,7 @@ async function apiRequest(method, path, body = null, query = null) {
     }
 
     const t5 = performance.now();
-    console.log(`${perfLabel} networkDone fetch=${(t5-t4).toFixed(1)}ms`);
+    log(`${perfLabel} networkDone fetch=${(t5-t4).toFixed(1)}ms`);
     if (resp.status === 429) {
       const json = await resp.json().catch(() => null);
       const err = new Error(json && json.message ? json.message : 'Rate limit exceeded');
@@ -116,7 +116,7 @@ async function apiRequest(method, path, body = null, query = null) {
       err.data = json.data || null;
       throw err;
     }
-    console.log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);
+    log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);
     return json;
   } catch (err) {
     console.warn(`${perfLabel} FAILED total=${(performance.now() - start).toFixed(1)}ms fetch=${(performance.now()-t4).toFixed(1)}ms`, err.message);
@@ -166,8 +166,8 @@ function candidateToBackend(frontendCandidate) {
     updateFollowupFromSequence: frontendCandidate.updateFollowupFromSequence || false,
     sequenceFollowupAt: frontendCandidate.sequenceFollowupAt ? new Date(frontendCandidate.sequenceFollowupAt).toISOString() : null
   };
-  console.log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
-  console.log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
+  log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
+  log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
   return body;
 }
 
@@ -181,7 +181,7 @@ function candidateFromBackend(backend) {
 
   const tempRaw = backend.temperature;
   const tempConverted = (tempRaw ? tempRaw.charAt(0).toUpperCase() + tempRaw.slice(1).toLowerCase() : null) || 'Cold';
-  console.log('[SCRM_BASE] api.js candidateFromBackend temperature conversion:', tempRaw, '->', tempConverted);
+  log('[SCRM_BASE] api.js candidateFromBackend temperature conversion:', tempRaw, '->', tempConverted);
   const fc = {
     id: backend.id || '',
     name: backend.fullName || '',
@@ -278,7 +278,7 @@ const CandidatesAPI = {
   async getByLinkedInId(linkedinId) {
     const resp = await apiRequest('GET', '/api/v1/candidates/by-linkedin-id', null, { linkedin_id: linkedinId });
     const result = resp.data ? candidateFromBackend(resp.data) : null;
-    console.log('[SCRM_TEMPLATE] api.js getByLinkedInId result:', JSON.stringify(result));
+    log('[SCRM_TEMPLATE] api.js getByLinkedInId result:', JSON.stringify(result));
     return result;
   },
 

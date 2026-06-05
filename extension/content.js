@@ -1,5 +1,10 @@
 // content.js - 直接在 LinkedIn 页面执行
 
+// === 调试开关：提交前设为 false ===
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const debug = DEBUG ? console.debug.bind(console) : () => {};
+
 const CACHE_TTL = 30 * 60 * 1000; // 30分钟缓存
 
 const extractLinkedInId = () => {
@@ -13,7 +18,7 @@ const extractLinkedInId = () => {
         if (recipientMatch) {
             const id = recipientMatch[1];
             if (id.startsWith('ACo')) {
-                console.log('[SCRM] extractLinkedInId: URN from messaging recipient:', id);
+                log('[SCRM] extractLinkedInId: URN from messaging recipient:', id);
                 return id;
             }
         }
@@ -22,7 +27,7 @@ const extractLinkedInId = () => {
         if (urnMatch) {
             const id = decodeURIComponent(urnMatch[1]);
             if (id.startsWith('ACo')) {
-                console.log('[SCRM] extractLinkedInId: URN from messaging profileUrn:', id);
+                log('[SCRM] extractLinkedInId: URN from messaging profileUrn:', id);
                 return id;
             }
         }
@@ -36,7 +41,7 @@ const extractLinkedInId = () => {
         if (match) {
             const id = match[1];
             if (id.startsWith('ACo')) {
-                console.log('[SCRM] extractLinkedInId: URN from connectionOf:', id);
+                log('[SCRM] extractLinkedInId: URN from connectionOf:', id);
                 return id;
             }
         }
@@ -50,7 +55,7 @@ const extractLinkedInId = () => {
         if (match) {
             const id = match[1];
             if (id.startsWith('ACo')) {
-                console.log('[SCRM] extractLinkedInId: URN from componentkey:', id);
+                log('[SCRM] extractLinkedInId: URN from componentkey:', id);
                 return id;
             }
         }
@@ -368,7 +373,7 @@ async function fetchAndCacheData(force = false) {
         linkedInId: linkedInId,
         cachedAt: Date.now()
     };
-    console.log('[SCRM_BASE] content.js scraped data:', JSON.stringify(data));
+    log('[SCRM_BASE] content.js scraped data:', JSON.stringify(data));
 
     await chrome.storage.local.set({ [cacheKey]: data });
     return data;
@@ -438,14 +443,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             try {
                 // 显式请求麦克风权限 - 浏览器会弹出原生权限框
-                console.log('[SCRM] Requesting microphone permission...');
+                log('[SCRM] Requesting microphone permission...');
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach(track => track.stop());
-                console.log('[SCRM] Microphone permission granted');
+                log('[SCRM] Microphone permission granted');
 
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
-                    console.log('[SCRM] SpeechRecognition not supported');
+                    log('[SCRM] SpeechRecognition not supported');
                     chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not supported' });
                     sendResponse({ success: false, error: 'not supported' });
                     return;
@@ -465,23 +470,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     for (let i = 0; i < event.results.length; i++) {
                         transcript += event.results[i][0].transcript;
                     }
-                    console.log('[SCRM] Speech recognition result:', transcript);
+                    log('[SCRM] Speech recognition result:', transcript);
                     // 实时发送给 popup，边说边显示
                     chrome.runtime.sendMessage({ action: 'voiceRecordingInterim', text: transcript });
                 };
                 contentRecognition.onerror = (event) => {
                     // aborted 是主动 stop() 导致的正常错误，不算真正的错误
                     if (event.error === 'aborted') {
-                        console.log('[SCRM] Speech recognition aborted (normal stop)');
+                        log('[SCRM] Speech recognition aborted (normal stop)');
                         return;
                     }
                     hasRealError = true;
-                    console.log('[SCRM] Speech recognition error:', event.error);
+                    log('[SCRM] Speech recognition error:', event.error);
                     chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: event.error });
                     contentRecognition = null;
                 };
                 contentRecognition.onend = () => {
-                    console.log('[SCRM] Speech recognition ended, transcript:', transcript, 'hasRealError:', hasRealError);
+                    log('[SCRM] Speech recognition ended, transcript:', transcript, 'hasRealError:', hasRealError);
                     // 真正出错时 onerror 已经发送了消息，这里避免重复发送
                     if (!hasRealError) {
                         chrome.runtime.sendMessage({ action: 'voiceRecordingResult', text: transcript });
@@ -489,17 +494,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     contentRecognition = null;
                 };
                 contentRecognition.start();
-                console.log('[SCRM] Speech recognition started');
+                log('[SCRM] Speech recognition started');
                 sendResponse({ success: true });
 
                 // 如果 start 之前收到了 stop 请求，立即 stop
                 if (pendingStop) {
                     pendingStop = false;
-                    console.log('[SCRM] Pending stop detected, stopping immediately');
+                    log('[SCRM] Pending stop detected, stopping immediately');
                     try { contentRecognition.stop(); } catch (e) {}
                 }
             } catch (err) {
-                console.log('[SCRM] Start recording error:', err);
+                log('[SCRM] Start recording error:', err);
                 if (err.name === 'NotAllowedError') {
                     chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not-allowed' });
                 } else {
@@ -512,13 +517,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'stopVoiceRecording') {
-        console.log('[SCRM] Stop voice recording requested');
+        log('[SCRM] Stop voice recording requested');
         if (contentRecognition) {
             try { contentRecognition.stop(); } catch (e) {}
         } else {
             // 如果 recognition 还没创建，设置 pending stop，等 start 后立即 stop
             pendingStop = true;
-            console.log('[SCRM] No active recognition, setting pending stop');
+            log('[SCRM] No active recognition, setting pending stop');
         }
         sendResponse({ success: true });
         return false;
@@ -594,7 +599,7 @@ class LinkedInMessageScraper {
         this.container = container;
         this.onMessage = callback;
         this._stopped = false;
-        console.log('[SCRM] ===== MessageScraper 启动 =====');
+        log('[SCRM] ===== MessageScraper 启动 =====');
         this.watch();
         this.scan();
     }
@@ -623,28 +628,28 @@ class LinkedInMessageScraper {
             }));
 
             if (hasNew) {
-                console.log(`[SCRM] MutationObserver 检测到 ${newMsgCount} 个新增消息相关节点，触发扫描`);
+                log(`[SCRM] MutationObserver 检测到 ${newMsgCount} 个新增消息相关节点，触发扫描`);
                 setTimeout(() => this.scan(), 100);
             }
         });
 
         this.observer.observe(this.container, { childList: true, subtree: true });
-        console.log('[SCRM] MutationObserver 已开始监听变化');
+        log('[SCRM] MutationObserver 已开始监听变化');
     }
 
     scan() {
         if (this._stopped || !this.container) return;
-        console.log('[SCRM] ===== 开始扫描消息 =====');
+        log('[SCRM] ===== 开始扫描消息 =====');
 
         const items = [...this.container.querySelectorAll('.msg-s-event-listitem')];
-        console.log(`[SCRM] 容器内 ".msg-s-event-listitem" 匹配到 ${items.length} 个元素`);
+        log(`[SCRM] 容器内 ".msg-s-event-listitem" 匹配到 ${items.length} 个元素`);
 
         let parsedCount = 0;
         items.forEach(el => {
             const wasParsed = this.parse(el);
             if (wasParsed) parsedCount++;
         });
-        console.log(`[SCRM] 扫描完成: 共 ${items.length} 条消息元素，新解析 ${parsedCount} 条，已缓存 ${this.seen.size} 条`);
+        log(`[SCRM] 扫描完成: 共 ${items.length} 条消息元素，新解析 ${parsedCount} 条，已缓存 ${this.seen.size} 条`);
     }
 
     parse(el) {
@@ -680,8 +685,8 @@ class LinkedInMessageScraper {
 
         const directionLabel = isInbound ? '收到' : '发送';
         const targetName = otherName || sender;
-        console.log(`[SCRM] ${directionLabel}消息 | ${targetName}: "${text}"`);
-        console.log('[SCRM] Chat message full data:', msg);
+        log(`[SCRM] ${directionLabel}消息 | ${targetName}: "${text}"`);
+        log('[SCRM] Chat message full data:', msg);
 
         this.onMessage?.(msg);
         this.seen.add(id);
@@ -761,7 +766,7 @@ function findAllChatContainers() {
 function syncScrapers() {
     if (!isLinkedInPage()) return;
     const containers = findAllChatContainers();
-    console.log(`[SCRM] syncScrapers: 发现 ${containers.length} 个聊天窗口`);
+    log(`[SCRM] syncScrapers: 发现 ${containers.length} 个聊天窗口`);
 
     // 收集当前所有窗口的 linkedinId
     const activeIds = new Set();
@@ -769,25 +774,25 @@ function syncScrapers() {
     containers.forEach(container => {
         const info = extractChatCandidateInfo(container);
         if (!info || !info.linkedinId) {
-            console.log('[SCRM] 该窗口无法提取候选人标识，跳过');
+            log('[SCRM] 该窗口无法提取候选人标识，跳过');
             return;
         }
         activeIds.add(info.linkedinId);
 
         if (scrapers.has(info.linkedinId) || pendingIds.has(info.linkedinId)) {
-            console.log(`[SCRM] linkedinId=${info.linkedinId} 已在监听或保存中，跳过`);
+            log(`[SCRM] linkedinId=${info.linkedinId} 已在监听或保存中，跳过`);
             return;
         }
 
         pendingIds.add(info.linkedinId);
-        console.log('[SCRM] 识别到新聊天窗口，准备保存候选人:', info);
-        console.log('[SCRM] pendingIds 当前状态:', [...pendingIds]);
+        log('[SCRM] 识别到新聊天窗口，准备保存候选人:', info);
+        log('[SCRM] pendingIds 当前状态:', [...pendingIds]);
 
         chrome.runtime.sendMessage(
             { type: 'SAVE_CHAT_CANDIDATE', payload: info },
             (response) => {
                 pendingIds.delete(info.linkedinId);
-                console.log('[SCRM] SAVE_CHAT_CANDIDATE 回调执行, linkedinId=' + info.linkedinId);
+                log('[SCRM] SAVE_CHAT_CANDIDATE 回调执行, linkedinId=' + info.linkedinId);
                 if (chrome.runtime.lastError) {
                     console.error('[SCRM] 保存候选人出错:', chrome.runtime.lastError);
                     return;
@@ -797,7 +802,7 @@ function syncScrapers() {
                     return;
                 }
                 const candidateId = response.data?.id;
-                console.log('[SCRM] 候选人已保存/确认，candidateId=' + candidateId);
+                log('[SCRM] 候选人已保存/确认，candidateId=' + candidateId);
 
                 const scraper = new LinkedInMessageScraper();
                 scraper.candidateId = candidateId ? String(candidateId) : null;
@@ -805,7 +810,7 @@ function syncScrapers() {
                     chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
                 });
                 scrapers.set(info.linkedinId, { scraper, container });
-                console.log('[SCRM] scraper 已启动并注册, linkedinId=' + info.linkedinId + ', scrapers.size=' + scrapers.size);
+                log('[SCRM] scraper 已启动并注册, linkedinId=' + info.linkedinId + ', scrapers.size=' + scrapers.size);
             }
         );
     });
@@ -813,7 +818,7 @@ function syncScrapers() {
     // 清理已关闭窗口的 scraper
     scrapers.forEach((entry, linkedinId) => {
         if (!activeIds.has(linkedinId)) {
-            console.log('[SCRM] 窗口已关闭，停止 scraper, linkedinId=' + linkedinId);
+            log('[SCRM] 窗口已关闭，停止 scraper, linkedinId=' + linkedinId);
             entry.scraper.stop();
             scrapers.delete(linkedinId);
         }
@@ -831,7 +836,7 @@ function stopMessageScraper() {
 
 function startMessageScraper() {
     if (!isLinkedInPage()) {
-        console.log('[SCRM] 当前不是 LinkedIn 页面，跳过启动');
+        log('[SCRM] 当前不是 LinkedIn 页面，跳过启动');
         return;
     }
     syncScrapers();
@@ -839,10 +844,10 @@ function startMessageScraper() {
 
 // 页面加载时检查
 if (isLinkedInPage()) {
-    console.log('[SCRM] 当前是 LinkedIn 页面，1.5秒后检查聊天容器');
+    log('[SCRM] 当前是 LinkedIn 页面，1.5秒后检查聊天容器');
     setTimeout(startMessageScraper, 1500);
 } else {
-    console.log('[SCRM] 当前不是 LinkedIn 页面，不启动消息监听');
+    log('[SCRM] 当前不是 LinkedIn 页面，不启动消息监听');
 }
 
 // 监听 DOM 变化 + 轮询：当聊天窗口出现/消失时自动启停 scraper
@@ -850,7 +855,7 @@ let chatObserver = null;
 let chatPollInterval = null;
 function startChatPresenceObserver() {
     if (chatObserver) return;
-    console.log('[SCRM] 启动聊天容器监听（轮询 + DOM 辅助）');
+    log('[SCRM] 启动聊天容器监听（轮询 + DOM 辅助）');
 
     chatPollInterval = setInterval(() => {
         syncScrapers();
@@ -884,7 +889,7 @@ function startPreconnect() {
     if (preconnectInterval) return;
     const doPing = () => {
         try {
-            console.log('[SCRM] Preconnect ping → background');
+            log('[SCRM] Preconnect ping → background');
             chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
         } catch (e) {
             // Extension context invalidated (e.g. extension reloaded or updated)
@@ -894,14 +899,14 @@ function startPreconnect() {
     };
     doPing(); // 立即执行一次
     preconnectInterval = setInterval(doPing, 25000);
-    console.log('[SCRM] Preconnect started, interval=25s');
+    log('[SCRM] Preconnect started, interval=25s');
 }
 
 function stopPreconnect() {
     if (preconnectInterval) {
         clearInterval(preconnectInterval);
         preconnectInterval = null;
-        console.log('[SCRM] Preconnect stopped');
+        log('[SCRM] Preconnect stopped');
     }
 }
 
@@ -910,15 +915,15 @@ let lastUrl = location.href;
 new MutationObserver(() => {
     const url = location.href;
     if (url !== lastUrl) {
-        console.log(`[SCRM] 路由变化: ${lastUrl} → ${url}`);
+        log(`[SCRM] 路由变化: ${lastUrl} → ${url}`);
         lastUrl = url;
         if (!isLinkedInPage()) {
-            console.log('[SCRM] 已离开 LinkedIn，停止所有监听');
+            log('[SCRM] 已离开 LinkedIn，停止所有监听');
             stopMessageScraper();
             stopPreconnect();
             stopChatPresenceObserver();
         } else if (!chatObserver) {
-            console.log('[SCRM] 进入 LinkedIn，重新启动容器监听');
+            log('[SCRM] 进入 LinkedIn，重新启动容器监听');
             startChatPresenceObserver();
             setTimeout(startMessageScraper, 1500);
         }

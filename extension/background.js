@@ -1,5 +1,10 @@
 // background.js - Service Worker
 
+// === 调试开关：提交前设为 false ===
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const debug = DEBUG ? console.debug.bind(console) : () => {};
+
 importScripts('db.js');
 
 const DEFAULT_API_BASE = 'https://api.hrscrm.net';
@@ -29,7 +34,7 @@ async function getOrCreateUserId() {
         if (!userId) {
             userId = crypto.randomUUID();
             await setSetting('userId', userId);
-            console.log('[SCRM] Generated new userId:', userId);
+            log('[SCRM] Generated new userId:', userId);
         }
         return userId;
     } catch (e) {
@@ -50,11 +55,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         try {
             if (chrome.action.openPopup) {
                 chrome.action.openPopup().catch(err => {
-                    console.log('[SCRM] openPopup failed:', err);
+                    log('[SCRM] openPopup failed:', err);
                 });
             }
         } catch (e) {
-            console.log('[SCRM] openPopup error:', e);
+            log('[SCRM] openPopup error:', e);
         }
         return false;
     }
@@ -62,11 +67,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'CHAT_MESSAGE') {
         const directionLabel = request.payload.isInbound ? '收到' : '发送';
         const candidateName = request.payload.otherName;
-        console.log(`[SCRM] ${directionLabel}消息 | ${candidateName || '(未识别)'}: "${request.payload.text}"`);
-        console.log('[SCRM] Chat message full data:', request.payload);
+        log(`[SCRM] ${directionLabel}消息 | ${candidateName || '(未识别)'}: "${request.payload.text}"`);
+        log('[SCRM] Chat message full data:', request.payload);
 
         if (!candidateName) {
-            console.log('[SCRM] 未提取到候选人名字，跳过同步');
+            log('[SCRM] 未提取到候选人名字，跳过同步');
             sendResponse({ success: false, error: '候选人名字未识别，跳过同步' });
             return true;
         }
@@ -78,7 +83,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const userId = await getOrCreateUserId();
                 const base = await getApiBase();
                 const url = `${base}/api/v1/chat-messages`;
-                console.log(`[SCRM] Sending chat message to: ${url}`);
+                log(`[SCRM] Sending chat message to: ${url}`);
                 const resp = await fetch(url, {
                     method: 'POST',
                     headers: {
@@ -88,7 +93,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     },
                     body: JSON.stringify(request.payload)
                 });
-                console.log(`[SCRM] Chat message API status: ${resp.status}`);
+                log(`[SCRM] Chat message API status: ${resp.status}`);
                 if (!resp.ok) {
                     const text = await resp.text();
                     console.warn('[SCRM] Chat message API failed:', resp.status, text);
@@ -101,7 +106,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ success: false, error: json.message });
                     return;
                 }
-                console.log('[SCRM] Chat message saved:', json.data);
+                log('[SCRM] Chat message saved:', json.data);
                 // Track chat-import event to backend
                 try {
                     const trackBody = {
@@ -125,7 +130,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.type === 'SAVE_CHAT_CANDIDATE') {
-        console.log('[SCRM][BG] 收到 SAVE_CHAT_CANDIDATE, payload=', request.payload);
+        log('[SCRM][BG] 收到 SAVE_CHAT_CANDIDATE, payload=', request.payload);
         (async () => {
             try {
                 const userId = await getOrCreateUserId();
@@ -135,7 +140,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     ...request.payload,
                     pipelineStage: 'unclaimed'
                 };
-                console.log(`[SCRM][BG] 准备请求 POST ${url}, payload=`, payload);
+                log(`[SCRM][BG] 准备请求 POST ${url}, payload=`, payload);
                 const resp = await fetch(url, {
                     method: 'POST',
                     headers: {
@@ -145,7 +150,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     },
                     body: JSON.stringify(payload)
                 });
-                console.log(`[SCRM] Save candidate API status: ${resp.status}`);
+                log(`[SCRM] Save candidate API status: ${resp.status}`);
                 if (!resp.ok) {
                     const text = await resp.text();
                     console.warn('[SCRM] Save candidate API failed:', resp.status, text);
@@ -158,7 +163,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ success: false, error: json.message });
                     return;
                 }
-                console.log('[SCRM] Candidate saved:', json.data);
+                log('[SCRM] Candidate saved:', json.data);
                 sendResponse({ success: true, data: json.data });
             } catch (err) {
                 console.warn('[SCRM] Failed to save candidate:', err);
@@ -173,7 +178,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             try {
                 const base = await getApiBase();
                 const userId = await getOrCreateUserId();
-                console.log(`[SCRM] Preconnect ping → ${base}/api/v1/pipeline/stages`);
+                log(`[SCRM] Preconnect ping → ${base}/api/v1/pipeline/stages`);
                 fetch(`${base}/api/v1/pipeline/stages`, {
                     method: 'GET',
                     headers: {

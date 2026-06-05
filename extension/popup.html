@@ -48,6 +48,27 @@
       box-shadow: 0 2px 4px rgba(245, 175, 25, 0.3);
     }
     .pro-badge.hidden { display: none; }
+    .upgrade-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      color: #8b8ba7;
+      border: 1px solid #d1d1db;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin-left: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .upgrade-badge.hidden { display: none; }
+    .upgrade-badge:hover {
+      color: #667eea;
+      border-color: #667eea;
+      background: #f0f2ff;
+    }
     .feedback-btn {
       background: rgba(255,255,255,0.15);
       border: none;
@@ -1532,6 +1553,12 @@
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
       PRO
+    </span>
+    <span class="upgrade-badge hidden" id="upgradeBadge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+      Upgrade
     </span>
   </div>
   <div class="header-actions">

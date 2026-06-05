@@ -1,5 +1,10 @@
 // popup.js - Main popup logic
 
+// === 调试开关：提交前设为 false ===
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const debug = DEBUG ? console.debug.bind(console) : () => {};
+
 let currentCandidate = null;
 let currentTab = 'overview';
 let currentSequenceSubTab = 'templates';
@@ -176,7 +181,7 @@ document.querySelectorAll('.sub-tab').forEach(tab => {
 
 // ========== Overview: Load Candidate from LinkedIn ==========
 async function loadCurrentCandidate(preloadedBackendCandidate = null) {
-  console.log('[PLUGIN_INIT] loadCurrentCandidate START');
+  log('[PLUGIN_INIT] loadCurrentCandidate START');
   const start = performance.now();
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -191,7 +196,7 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
     const tabUrl = tab.url || '';
     if (response && response.success && response.data) {
       const data = response.data;
-      console.log('[SCRM_BASE] popup.js received data from content:', JSON.stringify(data));
+      log('[SCRM_BASE] popup.js received data from content:', JSON.stringify(data));
       // Build candidate immediately from scraped data for instant render
       currentCandidate = {
         linkedInId: data.linkedInId,
@@ -217,8 +222,8 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
 
       // Merge preloaded backend candidate if available
       if (preloadedBackendCandidate) {
-        console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(preloadedBackendCandidate));
-        console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
+        log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(preloadedBackendCandidate));
+        log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
         Object.assign(currentCandidate, preloadedBackendCandidate, {
           linkedInUrl: tabUrl || preloadedBackendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
           name: data.name || preloadedBackendCandidate.name || currentCandidate.name,
@@ -229,14 +234,14 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
           educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (preloadedBackendCandidate.educationExperiences || currentCandidate.educationExperiences),
           websites: data.websites?.length ? data.websites : (preloadedBackendCandidate.websites || currentCandidate.websites),
         });
-        console.log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
+        log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
         renderOverview();
       } else if (typeof window !== 'undefined' && window.API) {
         // Fallback: fetch backend details asynchronously
         window.API.candidates.getByLinkedInId(data.linkedInId).then(backendCandidate => {
           if (backendCandidate) {
-            console.log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
-            console.log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
+            log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
+            log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
             Object.assign(currentCandidate, backendCandidate, {
               linkedInUrl: tabUrl || backendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
               name: data.name || backendCandidate.name || currentCandidate.name,
@@ -247,7 +252,7 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
               educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (backendCandidate.educationExperiences || currentCandidate.educationExperiences),
               websites: data.websites?.length ? data.websites : (backendCandidate.websites || currentCandidate.websites),
             });
-            console.log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
+            log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
             renderOverview();
           }
         }).catch(e => {
@@ -259,21 +264,21 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
       $('ovTitle').textContent = 'Try refreshing the page or click Save & Track';
     }
   } catch (e) {
-    console.log('Load candidate error:', e);
+    log('Load candidate error:', e);
     $('ovName').textContent = 'Error';
     $('ovTitle').textContent = e.message || 'Please open a LinkedIn profile';
   } finally {
-    console.log(`[PLUGIN_INIT] loadCurrentCandidate END 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    log(`[PLUGIN_INIT] loadCurrentCandidate END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
 
 function renderOverview() {
   if (!currentCandidate) return;
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview currentCandidate:', JSON.stringify(currentCandidate));
+  log('[SCRM_TEMPLATE] popup.js renderOverview currentCandidate:', JSON.stringify(currentCandidate));
   // Apply draft if exists (before rendering)
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview before applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
+  log('[SCRM_TEMPLATE] popup.js renderOverview before applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
   applyDraft(currentCandidate);
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview after applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
+  log('[SCRM_TEMPLATE] popup.js renderOverview after applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
 
   $('ovAvatar').textContent = getInitials(currentCandidate.name);
   $('ovAvatar').style.background = getAvatarColor(currentCandidate.name);
@@ -281,10 +286,10 @@ function renderOverview() {
   $('ovTitle').textContent = currentCandidate.company || '-';
 
   const ovTempEl = $('ovTemperature');
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature options:', Array.from(ovTempEl.options).map(o => o.value));
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'Cold');
+  log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature options:', Array.from(ovTempEl.options).map(o => o.value));
+  log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'Cold');
   ovTempEl.value = currentCandidate.temperature || 'Cold';
-  console.log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature.value after set:', ovTempEl.value, 'selectedIndex:', ovTempEl.selectedIndex);
+  log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature.value after set:', ovTempEl.value, 'selectedIndex:', ovTempEl.selectedIndex);
 
   const isRecruiting = currentCandidate.contactMode === 'recruiting';
   $('ovModeRecruiting').classList.toggle('active', isRecruiting);
@@ -497,7 +502,7 @@ function renderOverviewVoiceMemo() {
 }
 
 async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueCount = null) {
-  console.log('[PLUGIN_INIT] renderOverviewTodayTasks START');
+  log('[PLUGIN_INIT] renderOverviewTodayTasks START');
   const start = performance.now();
   let candidates = preloadedTasks;
   let overdueCount = preloadedOverdueCount;
@@ -578,7 +583,7 @@ async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueC
       });
     });
   }
-  console.log(`[PLUGIN_INIT] renderOverviewTodayTasks END 耗时=${(performance.now() - start).toFixed(1)}ms`);
+  log(`[PLUGIN_INIT] renderOverviewTodayTasks END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // Overview events
@@ -668,20 +673,20 @@ $('ovSaveBtn').addEventListener('click', async () => {
   showLoading();
   const savePerfStart = performance.now();
   const perfLabel = '[SCRM_SAVE_PERF]';
-  console.log(`${perfLabel} SAVE_START id=${currentCandidate.id || 'new'} mode=${currentCandidate.id ? 'UPDATE' : 'CREATE'}`);
+  log(`${perfLabel} SAVE_START id=${currentCandidate.id || 'new'} mode=${currentCandidate.id ? 'UPDATE' : 'CREATE'}`);
   try {
     let saved;
     if (currentCandidate.id) {
-      console.log(`${perfLabel} UPDATE_API_START id=${currentCandidate.id}`);
+      log(`${perfLabel} UPDATE_API_START id=${currentCandidate.id}`);
       const updateStart = performance.now();
       saved = await window.API.candidates.update(currentCandidate.id, currentCandidate);
-      console.log(`${perfLabel} UPDATE_API_END duration=${(performance.now() - updateStart).toFixed(1)}ms`);
+      log(`${perfLabel} UPDATE_API_END duration=${(performance.now() - updateStart).toFixed(1)}ms`);
     } else {
-      console.log(`${perfLabel} CREATE_API_START`);
+      log(`${perfLabel} CREATE_API_START`);
       const createStart = performance.now();
       currentCandidate.source = 'linkedin_profile';
       saved = await window.API.candidates.create(currentCandidate);
-      console.log(`${perfLabel} CREATE_API_END duration=${(performance.now() - createStart).toFixed(1)}ms`);
+      log(`${perfLabel} CREATE_API_END duration=${(performance.now() - createStart).toFixed(1)}ms`);
       if (saved) {
         currentCandidate.id = saved.id;
       }
@@ -690,14 +695,14 @@ $('ovSaveBtn').addEventListener('click', async () => {
     showToast('Saved & tracked!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'overview' });
 
-    console.log(`${perfLabel} RENDER_OVERVIEW_START`);
+    log(`${perfLabel} RENDER_OVERVIEW_START`);
     const renderOvStart = performance.now();
     await renderOverviewNextFollowup();
     await renderOverviewActiveSequence();
-    console.log(`${perfLabel} RENDER_OVERVIEW_END duration=${(performance.now() - renderOvStart).toFixed(1)}ms`);
+    log(`${perfLabel} RENDER_OVERVIEW_END duration=${(performance.now() - renderOvStart).toFixed(1)}ms`);
 
     // Switch to pipeline tab after saving
-    console.log(`${perfLabel} SWITCH_TAB_START`);
+    log(`${perfLabel} SWITCH_TAB_START`);
     const tabStart = performance.now();
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelector('.nav-tab[data-tab="pipeline"]').classList.add('active');
@@ -709,7 +714,7 @@ $('ovSaveBtn').addEventListener('click', async () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
-    console.log(`${perfLabel} SWITCH_TAB_END duration=${(performance.now() - tabStart).toFixed(1)}ms`);
+    log(`${perfLabel} SWITCH_TAB_END duration=${(performance.now() - tabStart).toFixed(1)}ms`);
   } catch (e) {
     console.error(`${perfLabel} SAVE_FAILED`, e);
     const handled = await handleQuotaError(e);
@@ -717,7 +722,7 @@ $('ovSaveBtn').addEventListener('click', async () => {
   } finally {
     isSavingCandidate = false;
     hideLoading();
-    console.log(`${perfLabel} SAVE_TOTAL duration=${(performance.now() - savePerfStart).toFixed(1)}ms`);
+    log(`${perfLabel} SAVE_TOTAL duration=${(performance.now() - savePerfStart).toFixed(1)}ms`);
   }
   trackEvent('plugin_opened', { category: 'engagement' });
 });
@@ -729,9 +734,9 @@ let recordingTimeout = null;
 let preRecordText = ''; // 录音前 textarea 的内容快照
 
 const toggleRecording = async () => {
-  console.log('[SCRM Popup] Toggle clicked, current state:', recordingState);
+  log('[SCRM Popup] Toggle clicked, current state:', recordingState);
   if (recordingState === 'starting' || recordingState === 'stopping') {
-    console.log('[SCRM Popup] Ignoring click, still processing');
+    log('[SCRM Popup] Ignoring click, still processing');
     return;
   }
   if (recordingState === 'recording') {
@@ -749,14 +754,14 @@ const startRecording = async () => {
   }
 
   recordingState = 'starting';
-  console.log('[SCRM Popup] Starting recording...');
+  log('[SCRM Popup] Starting recording...');
 
   // 2. 通过内容脚本请求麦克风权限并录音（浏览器会在页面弹出原生权限框）
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       await chrome.tabs.sendMessage(tab.id, { action: 'startVoiceRecording' });
-      console.log('[SCRM Popup] Content script acknowledged start');
+      log('[SCRM Popup] Content script acknowledged start');
       // 成功确认后才进入 recording 状态并更新 UI
       recordingState = 'recording';
       preRecordText = $('ovVoiceMemoTextarea').value;
@@ -769,14 +774,14 @@ const startRecording = async () => {
       if (recordingTimeout) clearTimeout(recordingTimeout);
       recordingTimeout = setTimeout(() => {
         if (recordingState === 'recording') {
-          console.log('[SCRM Popup] Auto-stop after 60s');
+          log('[SCRM Popup] Auto-stop after 60s');
           stopRecording();
         }
       }, 60000);
       return;
     }
   } catch (e) {
-    console.log('[SCRM Popup] Start recording via content script error', e);
+    log('[SCRM Popup] Start recording via content script error', e);
   }
 
   // 3. Fallback: 尝试在 popup 中直接录音
@@ -791,11 +796,11 @@ const startRecording = async () => {
 
 const stopRecording = async () => {
   if (recordingState !== 'recording') {
-    console.log('[SCRM Popup] Cannot stop, not recording. State:', recordingState);
+    log('[SCRM Popup] Cannot stop, not recording. State:', recordingState);
     return;
   }
   recordingState = 'stopping';
-  console.log('[SCRM Popup] Stopping recording...');
+  log('[SCRM Popup] Stopping recording...');
   if (recordingTimeout) {
     clearTimeout(recordingTimeout);
     recordingTimeout = null;
@@ -809,11 +814,11 @@ const stopRecording = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       await chrome.tabs.sendMessage(tab.id, { action: 'stopVoiceRecording' });
-      console.log('[SCRM Popup] Content script acknowledged stop');
+      log('[SCRM Popup] Content script acknowledged stop');
       return;
     }
   } catch (e) {
-    console.log('[SCRM Popup] Stop recording via content script error', e);
+    log('[SCRM Popup] Stop recording via content script error', e);
   }
 
   // fallback
@@ -840,7 +845,7 @@ function initSpeechRecognition() {
     showToast('Voice memo saved');
   };
   rec.onerror = (event) => {
-    console.log('[SCRM Popup] Fallback speech recognition error:', event.error);
+    log('[SCRM Popup] Fallback speech recognition error:', event.error);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -882,7 +887,7 @@ function startRecordingInPopup() {
   try {
     recognition.start();
   } catch (e) {
-    console.log('[SCRM Popup] Recognition start error', e);
+    log('[SCRM Popup] Recognition start error', e);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -905,7 +910,7 @@ chrome.runtime.onMessage.addListener((request) => {
     }
   }
   if (request.action === 'voiceRecordingResult') {
-    console.log('[SCRM Popup] Received voiceRecordingResult:', request.text);
+    log('[SCRM Popup] Received voiceRecordingResult:', request.text);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -923,7 +928,7 @@ chrome.runtime.onMessage.addListener((request) => {
     }
   }
   if (request.action === 'voiceRecordingError') {
-    console.log('[SCRM Popup] Received voiceRecordingError:', request.error);
+    log('[SCRM Popup] Received voiceRecordingError:', request.error);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -2103,7 +2108,7 @@ $('historyCandidateSelect').addEventListener('change', async () => {
 
 // ========== Content Script Communication ==========
 async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
-  console.log(`[PLUGIN_INIT] sendMessageToContentScript START action=${message.action}`);
+  log(`[PLUGIN_INIT] sendMessageToContentScript START action=${message.action}`);
   const start = performance.now();
   return new Promise((resolve, reject) => {
     let retries = 0;
@@ -2112,7 +2117,7 @@ async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
         if (chrome.runtime.lastError) {
           if (retries < maxRetries) {
             retries++;
-            console.log(`[PLUGIN_INIT] sendMessageToContentScript retry ${retries}/${maxRetries}`);
+            log(`[PLUGIN_INIT] sendMessageToContentScript retry ${retries}/${maxRetries}`);
             chrome.scripting.executeScript({
               target: { tabId }, files: ['content.js']
             }, () => {
@@ -2128,7 +2133,7 @@ async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
             reject(new Error('Content script not responding'));
           }
         } else {
-          console.log(`[PLUGIN_INIT] sendMessageToContentScript END 耗时=${(performance.now() - start).toFixed(1)}ms`);
+          log(`[PLUGIN_INIT] sendMessageToContentScript END 耗时=${(performance.now() - start).toFixed(1)}ms`);
           resolve(response);
         }
       });
@@ -2155,7 +2160,7 @@ async function loadPipelineStagesFromCache() {
     const cached = await getSetting(PIPELINE_CACHE_KEY, null);
     if (cached && cached.stages && cached.ts && (Date.now() - cached.ts) < PIPELINE_CACHE_TTL_MS) {
       pipelineStages = cached.stages;
-      console.log('[PLUGIN_INIT] pipeline stages loaded from cache, count=' + pipelineStages.length);
+      log('[PLUGIN_INIT] pipeline stages loaded from cache, count=' + pipelineStages.length);
       return true;
     }
   } catch (e) { /* ignore */ }
@@ -2163,17 +2168,17 @@ async function loadPipelineStagesFromCache() {
 }
 
 async function initBackendData() {
-  console.log('[PLUGIN_INIT] initBackendData START');
+  log('[PLUGIN_INIT] initBackendData START');
   const start = performance.now();
   if (typeof window === 'undefined' || !window.API) {
-    console.log(`[PLUGIN_INIT] initBackendData END (skipped, no API) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    log(`[PLUGIN_INIT] initBackendData END (skipped, no API) 耗时=${(performance.now() - start).toFixed(1)}ms`);
     return;
   }
 
   // 1. Try cache first — pipeline stages are hardcoded enum, never change
   const hadCache = await loadPipelineStagesFromCache();
   if (hadCache) {
-    console.log(`[PLUGIN_INIT] initBackendData END (cache hit, no network) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    log(`[PLUGIN_INIT] initBackendData END (cache hit, no network) 耗时=${(performance.now() - start).toFixed(1)}ms`);
     return;
   }
 
@@ -2193,12 +2198,12 @@ async function initBackendData() {
     console.warn('[Popup] Init backend data failed:', e.message);
   }
 
-  console.log(`[PLUGIN_INIT] initBackendData END 耗时=${(performance.now() - start).toFixed(1)}ms`);
+  log(`[PLUGIN_INIT] initBackendData END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[PLUGIN_INIT] ===== 插件初始化开始 =====');
+  log('[PLUGIN_INIT] ===== 插件初始化开始 =====');
   const totalStart = performance.now();
   showLoading();
 
@@ -2263,10 +2268,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let useOverview = false;
     if (typeof window !== 'undefined' && window.API) {
       try {
-        console.log('[PLUGIN_INIT] calling overview API, linkedinId=' + linkedInId);
+        log('[PLUGIN_INIT] calling overview API, linkedinId=' + linkedInId);
         overview = await window.API.overview.get(linkedInId);
         useOverview = true;
-        console.log('[PLUGIN_INIT] overview API success');
+        log('[PLUGIN_INIT] overview API success');
       } catch (e) {
         console.warn('[PLUGIN_INIT] overview API failed, fallback to legacy init:', e.message);
       }
@@ -2299,7 +2304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {
     console.error('Init error:', e);
   } finally {
-    console.log(`[PLUGIN_INIT] ===== 插件初始化完成 总耗时=${(performance.now() - totalStart).toFixed(1)}ms =====`);
+    log(`[PLUGIN_INIT] ===== 插件初始化完成 总耗时=${(performance.now() - totalStart).toFixed(1)}ms =====`);
     hideLoading();
   }
 });
@@ -2861,7 +2866,7 @@ let currentUserIsPro = false;
 let currentUserFeedbackEmail = null;
 
 async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
-  console.log('[PLUGIN_INIT] initBindEmailState START');
+  log('[PLUGIN_INIT] initBindEmailState START');
   const start = performance.now();
   try {
     let user = preloadedUser;
@@ -2873,7 +2878,7 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       currentUserEmail = user.email || null;
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
-      currentUserIsPro = user.isPro || false;
+      currentUserIsPro = (preloadedSubscription ? preloadedSubscription.isPro : user.isPro) || false;
       currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
       updateBindEmailButton();
       updateProBadge();
@@ -2882,7 +2887,7 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
   } catch (e) {
     console.error('[BindEmail] Failed to get user:', e);
   } finally {
-    console.log(`[PLUGIN_INIT] initBindEmailState END 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    log(`[PLUGIN_INIT] initBindEmailState END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
 
@@ -2912,13 +2917,26 @@ function updateBindEmailButton() {
 }
 
 function updateProBadge() {
-  const badge = $('proBadge');
+  const proBadge = $('proBadge');
+  const upgradeBadge = $('upgradeBadge');
   if (currentUserIsPro) {
-    badge.classList.remove('hidden');
+    proBadge.classList.remove('hidden');
+    upgradeBadge.classList.add('hidden');
   } else {
-    badge.classList.add('hidden');
+    proBadge.classList.add('hidden');
+    upgradeBadge.classList.remove('hidden');
   }
 }
+
+(function initUpgradeBadge() {
+  const upgradeBadge = $('upgradeBadge');
+  if (upgradeBadge) {
+    upgradeBadge.addEventListener('click', async () => {
+      trackEvent('upgrade_badge_clicked', { category: 'conversion' });
+      await showUpgradeModal({ scenario: 'header' });
+    });
+  }
+})();
 
 (function initBindEmailModal() {
   const bindOverlay = $('bindEmailOverlay');
@@ -3019,18 +3037,18 @@ function updateProBadge() {
     bindSubmitBtn.textContent = 'Saving...';
     try {
       const resp = await window.API.user.bindEmail(email, code);
-      console.log('[BindEmail] resp:', resp);
+      log('[BindEmail] resp:', resp);
       if (resp && resp.merged) {
-        console.log('[BindEmail] merged=true, targetUuid=', resp.targetUuid);
+        log('[BindEmail] merged=true, targetUuid=', resp.targetUuid);
         currentUserUuid = resp.targetUuid || currentUserUuid;
         if (resp.targetUuid) {
           await setSetting('userId', resp.targetUuid);
         }
         const modal = $('mergeModal');
-        console.log('[BindEmail] mergeModal element:', modal);
+        log('[BindEmail] mergeModal element:', modal);
         if (modal) {
           modal.classList.remove('hidden');
-          console.log('[BindEmail] mergeModal shown');
+          log('[BindEmail] mergeModal shown');
         } else {
           console.error('[BindEmail] mergeModal not found');
         }
@@ -3055,6 +3073,7 @@ function updateProBadge() {
 (function initAiMessage() {
   $('ovAiGenerateBtn').addEventListener('click', async () => {
     if (!currentCandidate) {
+      showToast("Please open a candidate's LinkedIn profile to use this feature.");
       return;
     }
 
