@@ -90,11 +90,12 @@ async function trackEvent(eventName, eventData = {}) {
 // ========== Utility ==========
 function $(id) { return document.getElementById(id); }
 
-function showToast(message) {
+function showToast(message, type) {
   const toast = $('toast');
   toast.textContent = message;
+  toast.className = 'toast' + (type ? ' ' + type : '');
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2000);
+  setTimeout(() => toast.classList.remove('show'), type === 'warning' ? 4000 : 3000);
 }
 
 function showLoading() { $('loadingOverlay').classList.add('active'); }
@@ -1273,13 +1274,14 @@ function renderPlanCard(plan, options) {
   const ai = formatLimit(plan.dailyConnectLimit, 'ai');
   const seq = formatLimit(plan.sequenceLimit, 'sequences');
 
+  // Reordered: pain points first
   const items = [
     { key: 'candidates', text: '• ' + candidates },
-    { key: 'ai', text: '• ' + ai },
-    { key: 'sequences', text: '• ' + seq }
+    { key: 'sequences', text: '• ' + seq },
+    { key: 'ai', text: '• ' + ai }
   ];
   if (!isFree) {
-    items.push({ key: 'sync', text: '• Cross-device sync' });
+    items.push({ key: 'support', text: '• Priority support' });
   }
 
   const listHtml = items.map(it => {
@@ -1287,16 +1289,24 @@ function renderPlanCard(plan, options) {
     return `<li class="${hl}">${escapeHtml(it.text)}</li>`;
   }).join('');
 
+  const popularBadge = options.isPopular ? '<div class="plan-popular-badge">★ MOST POPULAR</div>' : '';
+  const savingsHtml = options.savings ? `<div class="plan-savings">Save $${options.savings} — 2 months free</div>` : '';
+
   let actionHtml = '';
   if (isCurrent) {
     actionHtml = `<div class="plan-badge">Current</div>`;
   } else {
     const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
+    let btnText = 'Upgrade';
+    if (plan.planCode === 'pro_monthly') btnText = `Get Pro — ${price}`;
+    if (plan.planCode === 'pro_yearly') btnText = `Get Pro Yearly — Save $${options.savings || ''}`;
     actionHtml = `<div class="plan-price">${escapeHtml(price || '')}</div>
-      <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">Upgrade</button>`;
+      ${savingsHtml}
+      <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">${escapeHtml(btnText)}</button>`;
   }
 
   return `<div class="${cls}">
+    ${popularBadge}
     <div class="plan-card-title">${escapeHtml(plan.name)}</div>
     <ul>${listHtml}</ul>
     ${actionHtml}
@@ -1311,9 +1321,10 @@ async function showUpgradeModal(config) {
   const currentPlanCode = (usage && usage.subscription && usage.subscription.plan && usage.subscription.plan.planCode) || 'free';
 
   const headerEl = $('modalUpgradeHeader');
+  const subheaderEl = $('modalUpgradeSubheader');
   const plansEl = $('modalUpgradePlans');
 
-  let headerText = config.header || "You've reached your daily limit";
+  let headerText = config.header || "You've hit the free limit";
   if (config.scenario === 'ai') {
     const used = config.used || 0;
     const limit = config.limit || 10;
@@ -1328,13 +1339,21 @@ async function showUpgradeModal(config) {
     headerText = `Sequence limit reached (${used}/${limit})`;
   }
   headerEl.textContent = headerText;
+  subheaderEl.textContent = 'Upgrade to unlock unlimited candidates and AI messages';
 
   const highlight = config.scenario === 'ai' ? 'ai' : config.scenario === 'candidate' ? 'candidates' : config.scenario === 'sequence' ? 'sequences' : '';
+
+  // Calculate yearly savings
+  const monthlyPlan = plans.find(p => p.planCode === 'pro_monthly');
+  const yearlyPlan = plans.find(p => p.planCode === 'pro_yearly');
+  const savings = monthlyPlan && yearlyPlan ? ((monthlyPlan.price * 12) - yearlyPlan.price).toFixed(0) : '58';
 
   const sorted = [...plans].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   const cardsHtml = sorted.map(p => renderPlanCard(p, {
     isCurrent: p.planCode === currentPlanCode,
-    highlight: highlight
+    highlight: highlight,
+    isPopular: p.planCode === 'pro_monthly',
+    savings: p.planCode === 'pro_yearly' ? savings : null
   })).join('');
 
   plansEl.innerHTML = cardsHtml;
@@ -1411,7 +1430,8 @@ async function showUpgradeModal(config) {
             user_id: currentUserId || '',
             plan_code: d.plan_code || '',
             token: d.client_token,
-            env: d.environment
+            env: d.environment,
+            session_id: sessionId || ''
           });
           const checkoutUrl = `https://www.hrscrm.net/checkout.html?${params.toString()}`;
           chrome.tabs.create({ url: checkoutUrl });
@@ -1487,6 +1507,22 @@ async function showAiLimitModal(used, limit) {
 async function handleQuotaError(err) {
   if (err.status === 429 || (err.data && err.data.scenario)) {
     const scenario = err.data && err.data.scenario ? err.data.scenario : 'ai';
+
+    // Paid users who hit their quota cannot upgrade further — show info toast instead
+    if (err.data && err.data.canUpgrade === false) {
+      if (scenario === 'ai') {
+        const limit = err.data.limit || 50;
+        showToast(`Daily AI limit reached\nYou have used all ${limit} AI messages for today.\nNew messages will be available tomorrow.`);
+      } else if (scenario === 'sequence') {
+        const limit = err.data.limit || 10;
+        showToast(`Sequence limit reached. You have used all ${limit} Sequences. Delete an unused one to create new.`, 'warning');
+      } else {
+        showToast(err.message);
+      }
+      return true;
+    }
+
+    // Free users can upgrade
     const used = err.data && err.data.used !== undefined ? err.data.used : 0;
     const limit = err.data && err.data.limit !== undefined ? err.data.limit : 10;
     await showUpgradeModal({ scenario, used, limit });
@@ -1960,6 +1996,10 @@ $('modalSeqCancel').addEventListener('click', () => {
   $('modalNewSequence').classList.remove('active');
 });
 
+$('modalSeqClose').addEventListener('click', () => {
+  $('modalNewSequence').classList.remove('active');
+});
+
 $('modalSeqAddStep').addEventListener('click', () => {
   const lastDelay = seqSteps.length > 0 ? seqSteps[seqSteps.length - 1].delayDays : 0;
   seqSteps.push({ name: '', delayDays: lastDelay });
@@ -2000,9 +2040,7 @@ $('modalSeqSave').addEventListener('click', async () => {
   }
 });
 
-$('modalNewSequence').addEventListener('click', (e) => {
-  if (e.target === $('modalNewSequence')) $('modalNewSequence').classList.remove('active');
-});
+// Click outside modal does NOT close — only Cancel or X button closes
 
 // ========== History ==========
 async function getHistoryByCandidate(candidateId) {

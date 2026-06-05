@@ -39,9 +39,9 @@ CREATE TABLE IF NOT EXISTS `subscription_plans` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅套餐表';
 
 INSERT INTO `subscription_plans` (`plan_code`, `name`, `description`, `price`, `currency`, `billing_cycle`, `features`, `daily_connect_limit`, `sequence_limit`, `total_candidate_limit`, `sort_order`) VALUES
-('free', 'Free', '基础免费版', 0.00, 'USD', 'monthly', '["basic_pipeline","basic_notes","10_daily_connects"]', 10, 1, 20, 1),
-('pro_monthly', 'Pro Monthly', '专业版月付 $29/月', 29.00, 'USD', 'monthly', '["unlimited_pipeline","ai_assistant","sequences","voice_memo","50_daily_connects","unlimited_candidates"]', 50, 10, 999999, 2),
-('pro_yearly', 'Pro Yearly', '专业版年付 $290/年（省$58）', 290.00, 'USD', 'yearly', '["unlimited_pipeline","ai_assistant","sequences","voice_memo","50_daily_connects","unlimited_candidates","priority_support"]', 50, 10, 999999, 3);
+('free', 'Free', '基础免费版', 0.00, 'USD', 'monthly', '["20 candidates","1 Sequence","10 AI/day"]', 10, 1, 20, 1),
+('pro_monthly', 'Pro Monthly', '专业版月付 $29/月', 29.00, 'USD', 'monthly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 2),
+('pro_yearly', 'Pro Yearly', '专业版年付 $290/年（省$58）', 290.00, 'USD', 'yearly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 3);
 
 -- ============================================================
 -- LinkedIn SCRM 支付表结构（Paddle + Stripe 双兼容）

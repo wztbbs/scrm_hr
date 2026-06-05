@@ -57,6 +57,7 @@
       const planCode = params.get('plan_code');
       const token = params.get('token');
       const env = params.get('env') || 'sandbox';
+      const sessionId = params.get('session_id');
 
       const msgEl = document.getElementById('msg');
       const spinnerEl = document.getElementById('spinner');
@@ -66,6 +67,21 @@
         msgEl.className = 'error';
         msgEl.textContent = 'Missing checkout parameters. Please try again.';
         return;
+      }
+
+      // Track checkout opened
+      if (userId) {
+        try {
+          fetch('/api/v1/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-User-Id': userId },
+            body: JSON.stringify({
+              event_name: 'checkout_opened',
+              event_data: JSON.stringify({ plan_code: planCode, price_id: priceId, source: 'paddle_checkout' }),
+              session_id: sessionId || null
+            })
+          }).catch(() => {});
+        } catch (e) { /* ignore */ }
       }
 
       try {

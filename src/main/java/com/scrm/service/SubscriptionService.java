@@ -63,7 +63,7 @@ public class SubscriptionService {
 
     public Map<String, Object> getCurrentSubscription() {
         Long userId = RequestContext.getCurrentUserId();
-        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
+        Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(userId);
 
         Map<String, Object> result = new HashMap<>();
         result.put("has_subscription", activeSub != null);
@@ -188,6 +188,12 @@ public class SubscriptionService {
             result.put("message", "No active subscription");
             return result;
         }
+        // If subscription already expired, treat as success (idempotent)
+        if (sub.getCurrentPeriodEnd() != null && sub.getCurrentPeriodEnd().before(new Date())) {
+            result.put("success", true);
+            result.put("message", "Subscription already expired");
+            return result;
+        }
 
         if (!"paddle".equals(sub.getPaymentProvider()) || sub.getPaddleSubscriptionId() == null) {
             result.put("success", false);
@@ -293,7 +299,7 @@ public class SubscriptionService {
     }
 
     public SubscriptionPlan getCurrentPlan(Long userId) {
-        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
+        Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(userId);
         if (activeSub != null) {
             return planMapper.selectByPrimaryKey(activeSub.getPlanId());
         }

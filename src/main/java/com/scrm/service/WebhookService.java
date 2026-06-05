@@ -1,11 +1,13 @@
 package com.scrm.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scrm.dao.EventMapper;
 import com.scrm.dao.OrderMapper;
 import com.scrm.dao.SubscriptionMapper;
 import com.scrm.dao.SubscriptionPlanMapper;
 import com.scrm.dao.sub.SubOrderMapper;
 import com.scrm.dao.sub.SubSubscriptionMapper;
+import com.scrm.entity.Event;
 import com.scrm.entity.Order;
 import com.scrm.entity.Subscription;
 import com.scrm.entity.SubscriptionPlan;
@@ -18,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,8 +39,23 @@ public class WebhookService {
     private SubscriptionMapper subscriptionMapper;
     @Autowired
     private SubscriptionPlanMapper planMapper;
+    @Autowired
+    private EventMapper eventMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private void trackEvent(Long userId, String eventName, Map<String, Object> eventData) {
+        try {
+            Event event = new Event();
+            event.setUserId(userId);
+            event.setEventName(eventName);
+            event.setEventData(objectMapper.writeValueAsString(eventData));
+            event.setCreatedAt(new Date());
+            eventMapper.insert(event);
+        } catch (Exception e) {
+            log.warn("Failed to track event {}: {}", eventName, e.getMessage());
+        }
+    }
 
     @Transactional
     @SuppressWarnings("unchecked")
@@ -51,10 +69,11 @@ public class WebhookService {
 
         switch (eventType) {
             case "transaction.completed" -> handleTransactionCompleted(data);
+            case "transaction.payment_failed" -> handleTransactionFailed(data);
             case "subscription.created" -> handleSubscriptionCreated(data);
             case "subscription.updated" -> handleSubscriptionUpdated(data);
             case "subscription.canceled" -> handleSubscriptionCanceled(data);
-            case "subscription.past_due", "subscription.payment_failed" -> handleSubscriptionPastDue(data);
+            case "subscription.past_due" -> handleSubscriptionPastDue(data);
             default -> log.info("Unhandled Paddle event type: {}", eventType);
         }
     }
@@ -86,6 +105,84 @@ public class WebhookService {
             subOrderMapper.updateStatusPaidById(orderId, "paid", paddleTransactionId, paddleSubscriptionId, new Date());
             log.info("Order {} updated to paid, transaction {}", orderId, paddleTransactionId);
         }
+
+        // Track: checkout_completed or subscription_renewed
+        try {
+            String origin = (String) data.get("origin");
+            boolean isCheckout = "web".equals(origin) || "api".equals(origin);
+            String eventName = isCheckout ? "checkout_completed" : "subscription_renewed";
+
+            Long uid = null;
+            if (orderId != null) {
+                Order order = orderMapper.selectByPrimaryKey(orderId);
+                if (order != null) uid = order.getUserId();
+            }
+            if (uid == null && customData != null) {
+                Object userIdObj = customData.get("user_id");
+                if (userIdObj instanceof Number) uid = ((Number) userIdObj).longValue();
+                else if (userIdObj instanceof String) {
+                    try { uid = Long.parseLong((String) userIdObj); } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            String planCode = customData != null ? (String) customData.get("plan_code") : null;
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("plan_code", planCode);
+            eventData.put("transaction_id", paddleTransactionId);
+            eventData.put("subscription_id", paddleSubscriptionId);
+            eventData.put("origin", origin);
+
+            Map<String, Object> details = (Map<String, Object>) data.get("details");
+            if (details != null) {
+                Map<String, Object> totals = (Map<String, Object>) details.get("totals");
+                if (totals != null) {
+                    Object total = totals.get("total");
+                    if (total != null) eventData.put("revenue", total);
+                }
+            }
+
+            trackEvent(uid, eventName, eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track transaction event: {}", e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handleTransactionFailed(Map<String, Object> data) {
+        String paddleTransactionId = (String) data.get("id");
+        if (paddleTransactionId == null) {
+            return;
+        }
+
+        Map<String, Object> customData = (Map<String, Object>) data.get("customData");
+        if (customData == null) {
+            customData = (Map<String, Object>) data.get("custom_data");
+        }
+
+        String errorCode = (String) data.get("error_code");
+        String planCode = customData != null ? (String) customData.get("plan_code") : null;
+
+        Long uid = null;
+        if (customData != null) {
+            Object userIdObj = customData.get("user_id");
+            if (userIdObj instanceof Number) uid = ((Number) userIdObj).longValue();
+            else if (userIdObj instanceof String) {
+                try { uid = Long.parseLong((String) userIdObj); } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        // Track payment_failed
+        try {
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("plan_code", planCode);
+            eventData.put("transaction_id", paddleTransactionId);
+            eventData.put("error_code", errorCode);
+            trackEvent(uid, "payment_failed", eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track payment_failed: {}", e.getMessage());
+        }
+
+        log.info("Transaction {} payment_failed, error_code={}", paddleTransactionId, errorCode);
     }
 
     @SuppressWarnings("unchecked")
@@ -183,6 +280,18 @@ public class WebhookService {
         }
 
         log.info("Subscription {} created for user {}", paddleSubId, sub.getUserId());
+
+        // Track subscription_created
+        try {
+            String planCode = customData != null ? (String) customData.get("plan_code") : null;
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("plan_code", planCode);
+            eventData.put("subscription_id", paddleSubId);
+            eventData.put("customer_id", customerId);
+            trackEvent(userId, "subscription_created", eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track subscription_created: {}", e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -245,6 +354,22 @@ public class WebhookService {
         }
 
         log.info("Subscription {} updated", paddleSubId);
+
+        // Track subscription_updated
+        try {
+            String oldPlanCode = null;
+            if (sub.getPlanId() != null) {
+                SubscriptionPlan oldPlan = planMapper.selectByPrimaryKey(sub.getPlanId());
+                if (oldPlan != null) oldPlanCode = oldPlan.getPlanCode();
+            }
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("subscription_id", paddleSubId);
+            eventData.put("old_plan_code", oldPlanCode);
+            eventData.put("new_status", update.getStatus());
+            trackEvent(sub.getUserId(), "subscription_updated", eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track subscription_updated: {}", e.getMessage());
+        }
     }
 
     private void handleSubscriptionCanceled(Map<String, Object> data) {
@@ -266,6 +391,19 @@ public class WebhookService {
         subscriptionMapper.updateByPrimaryKeySelective(update);
 
         log.info("Subscription {} canceled", paddleSubId);
+
+        // Track subscription_cancelled
+        try {
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("subscription_id", paddleSubId);
+            if (sub.getPlanId() != null) {
+                SubscriptionPlan plan = planMapper.selectByPrimaryKey(sub.getPlanId());
+                if (plan != null) eventData.put("plan_code", plan.getPlanCode());
+            }
+            trackEvent(sub.getUserId(), "subscription_cancelled", eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track subscription_cancelled: {}", e.getMessage());
+        }
     }
 
     private void handleSubscriptionPastDue(Map<String, Object> data) {
@@ -286,6 +424,20 @@ public class WebhookService {
         subscriptionMapper.updateByPrimaryKeySelective(update);
 
         log.info("Subscription {} past_due", paddleSubId);
+
+        // Track subscription_past_due
+        try {
+            Map<String, Object> eventData = new HashMap<>();
+            eventData.put("subscription_id", paddleSubId);
+            eventData.put("customer_id", sub.getPaddleCustomerId());
+            if (sub.getPlanId() != null) {
+                SubscriptionPlan plan = planMapper.selectByPrimaryKey(sub.getPlanId());
+                if (plan != null) eventData.put("plan_code", plan.getPlanCode());
+            }
+            trackEvent(sub.getUserId(), "subscription_past_due", eventData);
+        } catch (Exception e) {
+            log.warn("Failed to track subscription_past_due: {}", e.getMessage());
+        }
     }
 
     private String mapPaddleStatus(String paddleStatus) {

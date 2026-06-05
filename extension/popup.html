@@ -1098,6 +1098,28 @@
       width: 100%;
       margin-bottom: 8px;
     }
+    .plan-popular-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #6366f1;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 12px;
+      z-index: 10;
+    }
+    .plan-card {
+      position: relative;
+    }
+    .plan-savings {
+      font-size: 11px;
+      color: #16a34a;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 6px;
+    }
 
     /* Toast */
     .toast {
@@ -1113,10 +1135,16 @@
       opacity: 0;
       transition: all 0.3s;
       z-index: 3000;
+      white-space: pre-line;
+      max-width: 320px;
+      text-align: center;
     }
     .toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
+    }
+    .toast.warning {
+      background: #f59e0b;
     }
 
     /* Loading */
@@ -2013,7 +2041,10 @@
 <!-- New Sequence Modal -->
 <div class="modal-overlay" id="modalNewSequence">
   <div class="modal" style="max-width:420px;">
-    <div class="modal-title" id="modalSeqTitle">New Sequence</div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <div class="modal-title" id="modalSeqTitle" style="margin-bottom: 0;">New Sequence</div>
+      <button class="feedback-modal-close" id="modalSeqClose">&#10005;</button>
+    </div>
     <div class="form-row">
       <label class="form-label">Sequence Name</label>
       <input type="text" class="form-input" id="modalSeqName" placeholder="e.g. Sr. Director Role Sequence">
@@ -2064,11 +2095,13 @@
     <div style="position:relative;padding:20px 20px 0;">
       <button id="modalUpgradeClose" style="position:absolute;top:8px;right:8px;background:none;border:none;font-size:20px;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
       <div style="font-size:15px;font-weight:600;color:#111827;margin-top:8px;" id="modalUpgradeHeader"></div>
+      <div style="font-size:13px;color:#6b7280;margin-top:4px;" id="modalUpgradeSubheader"></div>
     </div>
-    <div style="padding:16px 20px 20px;">
+    <div style="padding:16px 20px 12px;">
       <div id="modalUpgradePlans" style="display:flex;gap:12px;justify-content:center;margin:16px 0;">
         <!-- Plans rendered dynamically -->
       </div>
+      <p style="font-size:12px;color:#9ca3af;margin-top:8px;">Cancel anytime. Money-back guarantee.</p>
     </div>
   </div>
 </div>
