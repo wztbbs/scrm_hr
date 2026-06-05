@@ -1265,7 +1265,6 @@ function formatLimit(value, type) {
 }
 
 function renderPlanCard(plan, options) {
-  const isFree = plan.planCode === 'free';
   const isCurrent = options.isCurrent;
   const highlightType = options.highlight;
   const cls = 'plan-card ' + (isCurrent ? 'current' : 'pro');
@@ -1274,42 +1273,47 @@ function renderPlanCard(plan, options) {
   const ai = formatLimit(plan.dailyConnectLimit, 'ai');
   const seq = formatLimit(plan.sequenceLimit, 'sequences');
 
-  // Reordered: pain points first
   const items = [
     { key: 'candidates', text: '• ' + candidates },
     { key: 'sequences', text: '• ' + seq },
-    { key: 'ai', text: '• ' + ai }
+    { key: 'ai', text: '• ' + ai },
+    { key: 'support', text: '• Priority support' }
   ];
-  if (!isFree) {
-    items.push({ key: 'support', text: '• Priority support' });
-  }
 
   const listHtml = items.map(it => {
-    const hl = !isFree && it.key === highlightType ? 'highlight' : '';
+    const hl = it.key === highlightType ? 'highlight' : '';
     return `<li class="${hl}">${escapeHtml(it.text)}</li>`;
   }).join('');
 
   const popularBadge = options.isPopular ? '<div class="plan-popular-badge">★ MOST POPULAR</div>' : '';
-  const savingsHtml = options.savings ? `<div class="plan-savings">Save $${options.savings} — 2 months free</div>` : '';
+  const savingsHtml = options.savings
+    ? `<div class="plan-savings-sub">Save $${options.savings} (2 months free)</div>`
+    : '';
 
-  let actionHtml = '';
-  if (isCurrent) {
-    actionHtml = `<div class="plan-badge">Current</div>`;
-  } else {
-    const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
-    let btnText = 'Upgrade';
-    if (plan.planCode === 'pro_monthly') btnText = `Get Pro — ${price}`;
-    if (plan.planCode === 'pro_yearly') btnText = `Get Pro Yearly — Save $${options.savings || ''}`;
-    actionHtml = `<div class="plan-price">${escapeHtml(price || '')}</div>
-      ${savingsHtml}
-      <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">${escapeHtml(btnText)}</button>`;
-  }
+  const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
+  let btnText = 'Upgrade';
+  if (plan.planCode === 'pro_monthly') btnText = 'Upgrade Now';
+  if (plan.planCode === 'pro_yearly') btnText = 'Get Yearly';
 
   return `<div class="${cls}">
     ${popularBadge}
     <div class="plan-card-title">${escapeHtml(plan.name)}</div>
     <ul>${listHtml}</ul>
-    ${actionHtml}
+    <div class="plan-price">${escapeHtml(price || '')}</div>
+    ${savingsHtml}
+    <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">${escapeHtml(btnText)}</button>
+  </div>`;
+}
+
+function renderFreeRow(plan, isCurrent) {
+  const candidates = formatLimit(plan.totalCandidateLimit, 'candidates');
+  const ai = formatLimit(plan.dailyConnectLimit, 'ai');
+  const seq = formatLimit(plan.sequenceLimit, 'sequences');
+  const badge = isCurrent ? '<span class="plan-free-badge">Current</span>' : '';
+  return `<div class="plan-free-row">
+    <span class="plan-free-label">Free plan:</span>
+    <span>${escapeHtml(candidates)} · ${escapeHtml(seq)} · ${escapeHtml(ai)}</span>
+    ${badge}
   </div>`;
 }
 
@@ -1348,8 +1352,19 @@ async function showUpgradeModal(config) {
   const yearlyPlan = plans.find(p => p.planCode === 'pro_yearly');
   const savings = monthlyPlan && yearlyPlan ? ((monthlyPlan.price * 12) - yearlyPlan.price).toFixed(0) : '58';
 
-  const sorted = [...plans].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  const cardsHtml = sorted.map(p => renderPlanCard(p, {
+  const freePlan = plans.find(p => p.planCode === 'free');
+  const proPlans = plans.filter(p => p.planCode !== 'free').sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  // Render free plan as top row
+  const freeRowEl = $('modalUpgradeFreeRow');
+  if (freePlan) {
+    freeRowEl.innerHTML = renderFreeRow(freePlan, currentPlanCode === 'free');
+  } else {
+    freeRowEl.innerHTML = '';
+  }
+
+  // Render pro plans as two columns
+  const cardsHtml = proPlans.map(p => renderPlanCard(p, {
     isCurrent: p.planCode === currentPlanCode,
     highlight: highlight,
     isPopular: p.planCode === 'pro_monthly',
