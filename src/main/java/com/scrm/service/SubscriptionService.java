@@ -158,7 +158,7 @@ public class SubscriptionService {
             throw new BusinessException("Email is required for checkout");
         }
 
-        Map<String, Object> customerData = paddleApiService.createCustomer(emailForPaddle);
+        Map<String, Object> customerData = paddleApiService.getOrCreateCustomer(emailForPaddle);
         String customerId = (String) customerData.get("id");
 
         // 3. Order created with paddle fields left empty, will be updated by webhook

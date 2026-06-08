@@ -1277,6 +1277,42 @@
       background: #f9fafb;
     }
 
+    /* Follow-up Toggle */
+    .toggle-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .toggle-btn {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1.5px solid #e2e2ea;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      color: #6b7280;
+      cursor: pointer;
+      text-align: center;
+    }
+    .toggle-btn.active {
+      border-color: #667eea;
+      background: #f8f7ff;
+      color: #667eea;
+    }
+    .toggle-hint {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: #8b8ba7;
+      margin-top: 2px;
+    }
+    .source-hint {
+      font-size: 12px;
+      color: #8b8ba7;
+      margin: 0;
+    }
+
     /* Today Section */
     .today-header {
       display: flex;
@@ -1615,6 +1651,109 @@
       transition: all 0.2s;
     }
     .btn-secondary:hover { background: #f5f5f8; }
+
+    /* Empty page: hide feature cards */
+    #tab-overview.empty-page .ov-hide-on-empty {
+      display: none !important;
+    }
+
+    /* Overview empty state */
+    .ov-empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 16px 24px;
+      text-align: center;
+    }
+    .ov-empty-state .welcome-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin: 0 0 2px;
+    }
+    .ov-empty-state .title-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+    .ov-empty-state .empty-desc {
+      font-size: 13px;
+      color: #8b8ba7;
+      margin: 0 0 16px;
+    }
+    .ov-empty-state .step-card {
+      background: #fff;
+      border: 2px solid #667eea;
+      border-radius: 16px;
+      padding: 24px 20px;
+      text-align: center;
+      width: 100%;
+      max-width: 280px;
+    }
+    .ov-empty-state .step-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin: 0 0 8px;
+    }
+    .ov-empty-state .step-card p {
+      font-size: 13px;
+      color: #6b7280;
+      margin: 0 0 16px;
+      line-height: 1.4;
+      text-align: center;
+    }
+    .ov-empty-state .btn-primary {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      border: none;
+      padding: 8px 0;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    .ov-empty-state .step-hint {
+      font-size: 12px;
+      color: #667eea;
+      text-align: center;
+      margin: 0 0 12px;
+    }
+    .ov-empty-state .divider {
+      margin: 12px 0;
+      font-size: 11px;
+      color: #d1d1db;
+      text-align: center;
+      position: relative;
+    }
+    .ov-empty-state .divider::before, .ov-empty-state .divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: #e2e2ea;
+    }
+    .ov-empty-state .divider::before { left: 0; }
+    .ov-empty-state .divider::after { right: 0; }
+    .ov-empty-state .btn-text {
+      background: transparent;
+      color: #667eea;
+      border: none;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 4px;
+      width: 100%;
+    }
+    .ov-empty-state .btn-text:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -1743,7 +1882,7 @@
 
 <!-- Overview Tab -->
 <div class="tab-content active" id="tab-overview">
-  <div class="email-alert-card hidden" id="ovEmailAlertCard">
+  <div class="email-alert-card hidden ov-hide-on-empty" id="ovEmailAlertCard">
     <div class="email-alert-title">⚠️ Bind Your Email</div>
     <div class="email-alert-desc">
       You have an active Pro subscription. To prevent losing your data when clearing browser cache, please bind your email now.
@@ -1751,7 +1890,7 @@
     <button class="email-alert-btn" id="ovEmailAlertBtn">Bind Email Now</button>
   </div>
 
-  <div class="overdue-banner hidden" id="ovOverdueBanner">
+  <div class="overdue-banner hidden ov-hide-on-empty" id="ovOverdueBanner">
     <span class="banner-icon">⚠️</span>
     <span class="banner-text"><span id="ovOverdueCount">0</span> follow-up<span id="ovOverduePlural">s</span> overdue</span>
     <span class="banner-action">Click to view →</span>
@@ -1771,16 +1910,17 @@
   </div>
 
   <div class="card">
-    <div class="profile-header">
+    <div class="profile-header" id="ovProfileHeader">
       <div class="profile-avatar" id="ovAvatar">?</div>
       <div class="profile-info">
         <div class="profile-name" id="ovName">-</div>
         <div class="profile-title" id="ovTitle">Open a LinkedIn profile to load data</div>
       </div>
     </div>
+    <div class="ov-empty-state hidden" id="ovEmptyState"></div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">
       Temperature
       <small>AI suggested</small>
@@ -1794,14 +1934,14 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">Key Memory</div>
     <div class="form-row">
       <textarea class="form-textarea" id="ovKeyMemory" placeholder="Add notes about this candidate..."></textarea>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">
       AI Message Assistant
       <small>Based on chat history</small>
@@ -1829,48 +1969,63 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">Active Sequence</div>
     <div id="ovActiveSequence">
       <div class="text-gray text-center text-sm" style="padding:12px">No active sequence</div>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">Next Follow-up</div>
     <div class="form-row">
-      <!-- Main follow-up time (user-set or from sequence) -->
-      <div class="followup-status-bar status-none" id="ovFollowupStatusBar">⚪ Set reminder</div>
-      <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;" id="ovFollowupSourceTag"></div>
-      <div class="datetime-picker-wrapper">
-        <input type="text" class="form-input" id="ovNextFollowupInput" placeholder="Select date &amp; time" readonly>
-        <div class="datetime-picker-popup hidden" id="ovDatetimePicker">
-          <div class="dtp-header">
-            <button class="dtp-nav-btn" id="dtpPrevMonth">&#10094;</button>
-            <span class="dtp-month-year" id="dtpMonthYear"></span>
-            <button class="dtp-nav-btn" id="dtpNextMonth">&#10095;</button>
-          </div>
-          <div class="dtp-weekdays">
-            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-          </div>
-          <div class="dtp-days" id="dtpDays"></div>
-          <div class="dtp-time-row">
-            <select id="dtpHour"></select>
-            <span>:</span>
-            <select id="dtpMinute"></select>
-          </div>
-          <div class="dtp-footer">
-            <button class="dtp-btn dtp-btn-text" id="dtpBtnToday">Today</button>
-            <button class="dtp-btn dtp-btn-text" id="dtpBtnClear">Clear</button>
-            <button class="dtp-btn dtp-btn-primary" id="dtpBtnOk">OK</button>
+      <!-- Toggle: Sequence vs Manual -->
+      <div class="toggle-group" id="ovFollowupToggleGroup">
+        <button class="toggle-btn" data-mode="sequence" id="ovToggleSequence">
+          📅 Sequence
+          <span class="toggle-hint">Auto-calculated</span>
+        </button>
+        <button class="toggle-btn" data-mode="manual" id="ovToggleManual">
+          ✏️ Manual
+          <span class="toggle-hint">Custom date</span>
+        </button>
+      </div>
+
+      <!-- Sequence mode: read-only display -->
+      <div id="ovFollowupSequenceMode" class="hidden">
+        <div class="followup-status-bar status-none" id="ovFollowupStatusBar">⚪ Set reminder</div>
+        <p class="source-hint" id="ovFollowupSourceHint"></p>
+      </div>
+
+      <!-- Manual mode: editable picker -->
+      <div id="ovFollowupManualMode">
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px;" id="ovFollowupSourceTag"></div>
+        <div class="datetime-picker-wrapper">
+          <input type="text" class="form-input" id="ovNextFollowupInput" placeholder="Select date &amp; time" readonly>
+          <div class="datetime-picker-popup hidden" id="ovDatetimePicker">
+            <div class="dtp-header">
+              <button class="dtp-nav-btn" id="dtpPrevMonth">&#10094;</button>
+              <span class="dtp-month-year" id="dtpMonthYear"></span>
+              <button class="dtp-nav-btn" id="dtpNextMonth">&#10095;</button>
+            </div>
+            <div class="dtp-weekdays">
+              <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+            </div>
+            <div class="dtp-days" id="dtpDays"></div>
+            <div class="dtp-time-row">
+              <select id="dtpHour"></select>
+              <span>:</span>
+              <select id="dtpMinute"></select>
+            </div>
+            <div class="dtp-footer">
+              <button class="dtp-btn dtp-btn-text" id="dtpBtnToday">Today</button>
+              <button class="dtp-btn dtp-btn-text" id="dtpBtnClear">Clear</button>
+              <button class="dtp-btn dtp-btn-primary" id="dtpBtnOk">OK</button>
+            </div>
           </div>
         </div>
       </div>
-      <!-- Sequence suggestion (shown when source=manual and sequence has suggestion) -->
-      <div id="ovSequenceSuggestion" style="display:none;margin-top:8px;padding:8px;background:#f9fafb;border-radius:6px;font-size:12px;color:#6b7280;">
-        <div>💡 <span id="ovSequenceSuggestionText"></span></div>
-        <button class="btn-sm" id="ovSyncToSequenceBtn" style="margin-top:6px;width:auto;padding:4px 10px;font-size:11px;">Sync to Sequence</button>
-      </div>
+
       <!-- Mark Done button -->
       <div id="ovMarkDoneRow" style="display:none;margin-top:8px;">
         <button class="btn-sm" id="ovMarkDoneBtn" style="width:auto;padding:6px 14px;font-size:12px;background:#10b981;">✓ Mark Done</button>
@@ -1878,7 +2033,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card ov-hide-on-empty">
     <div class="card-title">
       Voice Memo
       <small>Click to record or type below</small>
@@ -1892,7 +2047,7 @@
     <div class="text-center text-sm text-gray mt-2 hidden" id="ovVoiceMemoStatus"></div>
   </div>
 
-  <button class="btn-primary mt-2" id="ovSaveBtn">Save & Track</button>
+  <button class="btn-primary mt-2 ov-hide-on-empty" id="ovSaveBtn">Save & Track</button>
 </div>
 
 <!-- Pipeline Tab -->
@@ -2036,27 +2191,43 @@
     </div>
     <div class="form-row">
       <label class="form-label">Next Follow-up</label>
-      <div class="datetime-picker-wrapper">
-        <input type="text" class="form-input" id="meNextFollowup" placeholder="Select date &amp; time" readonly>
-        <div class="datetime-picker-popup hidden" id="meDatetimePicker">
-          <div class="dtp-header">
-            <button class="dtp-nav-btn" id="meDtpPrevMonth">&#10094;</button>
-            <span class="dtp-month-year" id="meDtpMonthYear"></span>
-            <button class="dtp-nav-btn" id="meDtpNextMonth">&#10095;</button>
-          </div>
-          <div class="dtp-weekdays">
-            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-          </div>
-          <div class="dtp-days" id="meDtpDays"></div>
-          <div class="dtp-time-row">
-            <select id="meDtpHour"></select>
-            <span>:</span>
-            <select id="meDtpMinute"></select>
-          </div>
-          <div class="dtp-footer">
-            <button class="dtp-btn dtp-btn-text" id="meDtpBtnToday">Today</button>
-            <button class="dtp-btn dtp-btn-text" id="meDtpBtnClear">Clear</button>
-            <button class="dtp-btn dtp-btn-primary" id="meDtpBtnOk">OK</button>
+      <div class="toggle-group">
+        <button class="toggle-btn" data-mode="sequence" id="meToggleSequence">
+          📅 Sequence
+          <span class="toggle-hint">Auto-calculated</span>
+        </button>
+        <button class="toggle-btn" data-mode="manual" id="meToggleManual">
+          ✏️ Manual
+          <span class="toggle-hint">Custom date</span>
+        </button>
+      </div>
+      <div id="meFollowupSequenceMode" class="hidden">
+        <div class="followup-status-bar status-none" id="meFollowupStatusBar">⚪ Set reminder</div>
+        <p class="source-hint" id="meFollowupSourceHint"></p>
+      </div>
+      <div id="meFollowupManualMode">
+        <div class="datetime-picker-wrapper">
+          <input type="text" class="form-input" id="meNextFollowup" placeholder="Select date &amp; time" readonly>
+          <div class="datetime-picker-popup hidden" id="meDatetimePicker">
+            <div class="dtp-header">
+              <button class="dtp-nav-btn" id="meDtpPrevMonth">&#10094;</button>
+              <span class="dtp-month-year" id="meDtpMonthYear"></span>
+              <button class="dtp-nav-btn" id="meDtpNextMonth">&#10095;</button>
+            </div>
+            <div class="dtp-weekdays">
+              <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+            </div>
+            <div class="dtp-days" id="meDtpDays"></div>
+            <div class="dtp-time-row">
+              <select id="meDtpHour"></select>
+              <span>:</span>
+              <select id="meDtpMinute"></select>
+            </div>
+            <div class="dtp-footer">
+              <button class="dtp-btn dtp-btn-text" id="meDtpBtnToday">Today</button>
+              <button class="dtp-btn dtp-btn-text" id="meDtpBtnClear">Clear</button>
+              <button class="dtp-btn dtp-btn-primary" id="meDtpBtnOk">OK</button>
+            </div>
           </div>
         </div>
       </div>
@@ -2100,21 +2271,6 @@
     <div class="modal-footer">
       <button class="btn-outline" id="modalSeqCancel">Cancel</button>
       <button class="btn-sm" id="modalSeqSave">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- Sequence Follow-up Confirm Modal -->
-<div class="modal-overlay" id="modalSeqFollowup">
-  <div class="modal" style="max-width:360px;text-align:center;">
-    <div class="modal-title">Sequence Suggests Follow-up</div>
-    <div style="font-size:14px;color:#4b5563;margin:12px 0;" id="modalSeqFollowupText"></div>
-    <div class="form-row" id="modalSeqFollowupEditRow" style="display:none;">
-      <input type="datetime-local" class="form-input" id="modalSeqFollowupEditInput">
-    </div>
-    <div class="modal-footer" style="justify-content:center;">
-      <button class="btn-outline" id="modalSeqFollowupEdit">Edit Date</button>
-      <button class="btn-sm" id="modalSeqFollowupAccept">Accept</button>
     </div>
   </div>
 </div>

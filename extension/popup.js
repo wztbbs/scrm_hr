@@ -187,10 +187,14 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url || !tab.url.includes('linkedin.com/in/')) {
-      $('ovName').textContent = 'No LinkedIn Profile';
-      $('ovTitle').textContent = 'Open a candidate profile to get started';
+      currentCandidate = null;
+      $('tab-overview').classList.add('empty-page');
+      renderEmptyState();
       return;
     }
+    $('tab-overview').classList.remove('empty-page');
+    if ($('ovEmptyState')) $('ovEmptyState').classList.add('hidden');
+    if ($('ovProfileHeader')) $('ovProfileHeader').classList.remove('hidden');
 
     // Try to get cached data from content script
     const response = await sendMessageToContentScript(tab.id, { action: 'scrape' });
@@ -271,6 +275,34 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
   } finally {
     log(`[PLUGIN_INIT] loadCurrentCandidate END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
+}
+
+function renderEmptyState() {
+  const container = $('ovEmptyState');
+  const profileHeader = $('ovProfileHeader');
+  if (!container) return;
+
+  container.innerHTML = `
+    <h2 class="welcome-title"><span class="title-icon">🎯</span>Welcome to LinkedIn SCRM</h2>
+    <div class="step-card active">
+      <h3>👋 Get Started</h3>
+      <p>Open a LinkedIn profile to start tracking candidates.</p>
+      <button class="btn-primary" id="esOpenProfileBtn">
+        Try on My Profile
+      </button>
+      <div class="divider">or</div>
+      <button class="btn-text" id="esManualAddBtn">
+        + Add candidate manually
+      </button>
+    </div>
+  `;
+  container.querySelector('#esOpenProfileBtn').addEventListener('click', () => {
+    window.open('https://www.linkedin.com/in/', '_blank');
+  });
+  container.querySelector('#esManualAddBtn').addEventListener('click', () => openManualEntryModal());
+
+  container.classList.remove('hidden');
+  if (profileHeader) profileHeader.classList.add('hidden');
 }
 
 function renderOverview() {
@@ -378,119 +410,141 @@ async function renderOverviewActiveSequence() {
     select.addEventListener('change', async () => {
       const seqId = select.value;
       currentCandidate.sequenceId = seqId || null;
-      currentCandidate.updateFollowupFromSequence = false;
-      currentCandidate.sequenceFollowupAt = null;
 
-      renderOverviewActiveSequence();
-      renderOverviewNextFollowup();
-
-      if (seqId) {
+      if (seqId && seqId != 0) {
+        // 绑定 Sequence → 自动切 Sequence 模式
+        currentCandidate.nextFollowupSource = 'sequence';
         const seq = await getSequenceById(seqId);
         if (seq && seq.steps && seq.steps.length >= 2) {
           const nextStep = seq.steps[1];
-          const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
-          const suggestedDate = new Date(suggestedTime);
-          const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
-
-          const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
-          if (choice && choice.accepted) {
-            currentCandidate.updateFollowupFromSequence = true;
-            currentCandidate.sequenceFollowupAt = choice.time ? choice.time.getTime() : suggestedTime;
-          }
+          currentCandidate.nextFollowup = Date.now() + nextStep.delayDays * 86400000;
+          currentCandidate.nextFollowupSequenceStepId = nextStep.id || null;
         }
+      } else {
+        // 解绑 Sequence → 切 Manual 模式，保留当前日期
+        currentCandidate.nextFollowupSource = 'manual';
+        currentCandidate.nextFollowupSequenceStepId = null;
       }
       saveDraft(currentCandidate);
-      showToast(seqId ? 'Sequence selected' : 'Sequence unselected');
+      renderOverviewActiveSequence();
+      renderOverviewNextFollowup();
+      showToast(seqId && seqId != 0 ? 'Sequence selected' : 'Sequence unselected');
     });
   }
 }
 
 async function renderOverviewNextFollowup() {
+  const toggleGroup = $('ovFollowupToggleGroup');
+  const toggleSeq = $('ovToggleSequence');
+  const toggleManual = $('ovToggleManual');
+  const seqModeEl = $('ovFollowupSequenceMode');
+  const manualModeEl = $('ovFollowupManualMode');
   const input = $('ovNextFollowupInput');
-  const statusBar = $('ovFollowupStatusBar');
   const sourceTag = $('ovFollowupSourceTag');
-  const suggestionEl = $('ovSequenceSuggestion');
-  const suggestionText = $('ovSequenceSuggestionText');
+  const sourceHint = $('ovFollowupSourceHint');
   const markDoneRow = $('ovMarkDoneRow');
 
   if (!currentCandidate) {
     input.value = '';
-    statusBar.textContent = '⚪ Set reminder';
-    statusBar.className = 'followup-status-bar status-none';
     sourceTag.textContent = '';
-    suggestionEl.style.display = 'none';
     markDoneRow.style.display = 'none';
+    seqModeEl.classList.add('hidden');
+    manualModeEl.classList.remove('hidden');
+    toggleSeq.classList.remove('active');
+    toggleManual.classList.remove('active');
     return;
   }
+
+  // Determine mode
+  const source = currentCandidate.nextFollowupSource || 'none';
+  const isSequenceMode = source === 'sequence' && currentCandidate.sequenceId;
+
+  // Update toggle buttons
+  toggleSeq.classList.toggle('active', isSequenceMode);
+  toggleManual.classList.toggle('active', !isSequenceMode);
 
   let followupTime = null;
-
-  // Use nextFollowup (from backend/manual) as primary source
   if (currentCandidate.nextFollowup) {
     followupTime = new Date(currentCandidate.nextFollowup).getTime();
-    input.value = fmtDateTimeInput(new Date(currentCandidate.nextFollowup));
   }
 
-  // Show source tag
-  const source = currentCandidate.nextFollowupSource || 'none';
-  if (source === 'manual') {
-    sourceTag.textContent = 'Manual · Set by you';
-  } else if (source === 'sequence') {
-    sourceTag.textContent = 'From Sequence';
-  } else {
-    sourceTag.textContent = '';
-  }
+  if (isSequenceMode) {
+    seqModeEl.classList.remove('hidden');
+    manualModeEl.classList.add('hidden');
 
-  // If no primary follow-up, calculate sequence suggestion from bound sequence steps
-  let sequenceSuggestTime = null;
-  if (currentCandidate.sequenceId && currentCandidate.sequenceId != 0 && !followupTime) {
+    let seqDate = followupTime;
+    if (!seqDate && currentCandidate.sequenceId) {
+      const seq = await getSequenceById(currentCandidate.sequenceId);
+      if (seq && seq.steps && seq.steps.length >= 2) {
+        const nextStep = seq.steps[1];
+        seqDate = Date.now() + nextStep.delayDays * 86400000;
+        currentCandidate.nextFollowup = seqDate;
+      }
+    }
+
+    const statusBar = $('ovFollowupStatusBar');
+    if (!seqDate) {
+      statusBar.textContent = '⚪ Set reminder';
+      statusBar.className = 'followup-status-bar status-none';
+      sourceHint.textContent = '';
+      markDoneRow.style.display = 'none';
+      return;
+    }
+
     const seq = await getSequenceById(currentCandidate.sequenceId);
     if (seq && seq.steps && seq.steps.length >= 2) {
-      const nextStep = seq.steps[1]; // step 2
-      sequenceSuggestTime = Date.now() + nextStep.delayDays * 86400000;
-      followupTime = sequenceSuggestTime;
-      input.value = fmtDateTimeInput(new Date(sequenceSuggestTime));
-      sourceTag.textContent = 'From Sequence';
+      const nextStep = seq.steps[1];
+      sourceHint.textContent = `From "${escapeHtml(seq.name)}" — Step 2 (${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)`;
+    } else {
+      sourceHint.textContent = 'From Sequence';
     }
-  }
 
-  if (!followupTime) {
-    input.value = '';
-    statusBar.textContent = '⚪ Set reminder';
-    statusBar.className = 'followup-status-bar status-none';
-    suggestionEl.style.display = 'none';
-    markDoneRow.style.display = 'none';
-    return;
-  }
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-  const now = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  if (followupTime < now) {
-    const days = Math.ceil((now - followupTime) / 86400000);
-    statusBar.textContent = `📅 Follow up now — ${days} day${days > 1 ? 's' : ''} overdue`;
-    statusBar.className = 'followup-status-bar status-overdue';
-    markDoneRow.style.display = 'block';
-  } else if (followupTime <= todayEnd.getTime()) {
-    statusBar.textContent = '📅 Follow up today';
-    statusBar.className = 'followup-status-bar status-today';
-    markDoneRow.style.display = 'block';
+    if (seqDate < now) {
+      const days = Math.ceil((now - seqDate) / 86400000);
+      statusBar.textContent = `📅 Follow up now — ${days} day${days > 1 ? 's' : ''} overdue`;
+      statusBar.className = 'followup-status-bar status-overdue';
+      markDoneRow.style.display = 'block';
+    } else if (seqDate <= todayEnd.getTime()) {
+      statusBar.textContent = '📅 Follow up today';
+      statusBar.className = 'followup-status-bar status-today';
+      markDoneRow.style.display = 'block';
+    } else {
+      const dateStr = new Date(seqDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      statusBar.textContent = `📅 Follow up on ${dateStr}`;
+      statusBar.className = 'followup-status-bar status-future';
+      markDoneRow.style.display = 'none';
+    }
   } else {
-    const dateStr = new Date(followupTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    statusBar.textContent = `📅 Follow up on ${dateStr}`;
-    statusBar.className = 'followup-status-bar status-future';
-    markDoneRow.style.display = 'none';
-  }
+    seqModeEl.classList.add('hidden');
+    manualModeEl.classList.remove('hidden');
 
-  // Show sequence suggestion layer when source=manual but sequence has a suggestion
-  if (source === 'manual' && sequenceSuggestTime) {
-    const dateStr = new Date(sequenceSuggestTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    suggestionText.textContent = `Sequence suggests: ${dateStr}`;
-    suggestionEl.style.display = 'block';
-  } else {
-    suggestionEl.style.display = 'none';
+    if (followupTime) {
+      input.value = fmtDateTimeInput(new Date(currentCandidate.nextFollowup));
+    } else {
+      input.value = '';
+    }
+    sourceTag.textContent = source === 'manual' ? 'Manual · Set by you' : '';
+
+    if (!followupTime) {
+      markDoneRow.style.display = 'none';
+      return;
+    }
+
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    if (followupTime < now) {
+      markDoneRow.style.display = 'block';
+    } else if (followupTime <= todayEnd.getTime()) {
+      markDoneRow.style.display = 'block';
+    } else {
+      markDoneRow.style.display = 'none';
+    }
   }
 }
 
@@ -1657,8 +1711,9 @@ function openManualEntryModal(candidateId = null) {
       });
       // Load current bound sequence
       await loadSequenceOptions($('meSequence'), candidate.sequenceId || '');
-      $('meSequence').dataset.updateFollowup = 'false';
-      delete $('meSequence').dataset.followupAt;
+      // Set follow-up toggle mode
+      const isSeqMode = candidate.nextFollowupSource === 'sequence' && candidate.sequenceId;
+      toggleMeFollowupMode(isSeqMode ? 'sequence' : 'manual');
       $('modalManualEntry').classList.add('active');
     }).catch(e => {
       console.warn('[MANUAL_ENTRY] load candidate failed:', e);
@@ -1678,8 +1733,7 @@ function openManualEntryModal(candidateId = null) {
       btn.classList.toggle('active', btn.dataset.temp === 'Warm');
     });
     loadSequenceOptions($('meSequence'), '');
-    $('meSequence').dataset.updateFollowup = 'false';
-    delete $('meSequence').dataset.followupAt;
+    toggleMeFollowupMode('manual');
     $('modalManualEntry').classList.add('active');
   }
 }
@@ -1689,27 +1743,55 @@ function closeManualEntryModal() {
   manualEntryCandidateId = null;
 }
 
+function toggleMeFollowupMode(mode) {
+  const isSequence = mode === 'sequence';
+  $('meToggleSequence').classList.toggle('active', isSequence);
+  $('meToggleManual').classList.toggle('active', !isSequence);
+  $('meFollowupSequenceMode').classList.toggle('hidden', !isSequence);
+  $('meFollowupManualMode').classList.toggle('hidden', isSequence);
+  if (isSequence) {
+    const seqId = $('meSequence').value;
+    const statusBar = $('meFollowupStatusBar');
+    if (seqId && seqId != 0) {
+      getSequenceById(seqId).then(seq => {
+        if (seq && seq.steps && seq.steps.length >= 2) {
+          const nextStep = seq.steps[1];
+          const seqDate = Date.now() + nextStep.delayDays * 86400000;
+          const dateStr = new Date(seqDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          statusBar.textContent = `📅 Follow up on ${dateStr}`;
+          statusBar.className = 'followup-status-bar status-future';
+          $('meFollowupSourceHint').textContent = `From "${escapeHtml(seq.name)}" — Step 2 (${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)`;
+        } else {
+          statusBar.textContent = '⚪ Set reminder';
+          statusBar.className = 'followup-status-bar status-none';
+          $('meFollowupSourceHint').textContent = '';
+        }
+      });
+    } else {
+      statusBar.textContent = '⚪ Set reminder';
+      statusBar.className = 'followup-status-bar status-none';
+      $('meFollowupSourceHint').textContent = '';
+    }
+  }
+}
+
+$('meToggleSequence').addEventListener('click', () => toggleMeFollowupMode('sequence'));
+$('meToggleManual').addEventListener('click', () => toggleMeFollowupMode('manual'));
+
 $('meSequence').addEventListener('change', async () => {
   const seqId = $('meSequence').value;
-  $('meSequence').dataset.updateFollowup = 'false';
-  delete $('meSequence').dataset.followupAt;
-
   if (seqId && seqId != 0) {
     const seq = await getSequenceById(seqId);
     if (seq && seq.steps && seq.steps.length >= 2) {
       const nextStep = seq.steps[1];
       const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
-      const suggestedDate = new Date(suggestedTime);
-      const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
-
-      const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
-      if (choice && choice.accepted) {
-        $('meSequence').dataset.updateFollowup = 'true';
-        const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
-        $('meSequence').dataset.followupAt = String(followupTime);
-      }
+      $('meNextFollowup').value = fmtDateTimeInput(new Date(suggestedTime));
+      $('meSequence').dataset.stepId = nextStep.id || '';
     }
+    toggleMeFollowupMode('sequence');
+  } else {
+    $('meSequence').dataset.stepId = '';
+    toggleMeFollowupMode('manual');
   }
 });
 
@@ -1770,10 +1852,10 @@ $('meSaveBtn').addEventListener('click', async () => {
     candidate.pipelineStage = $('meStatus').value;
     const nextFollowupVal = $('meNextFollowup').value;
     candidate.nextFollowup = nextFollowupVal ? new Date(nextFollowupVal).getTime() : '';
+    candidate.nextFollowupSource = $('meToggleSequence').classList.contains('active') ? 'sequence' : 'manual';
+    candidate.nextFollowupSequenceStepId = $('meSequence').dataset.stepId ? Number($('meSequence').dataset.stepId) : null;
     candidate.keyMemory = $('meNotes').value.trim();
     candidate.sequenceId = $('meSequence').value || null;
-    candidate.updateFollowupFromSequence = $('meSequence').dataset.updateFollowup === 'true';
-    candidate.sequenceFollowupAt = $('meSequence').dataset.followupAt ? Number($('meSequence').dataset.followupAt) : null;
 
     const canSave = await checkCandidateLimit();
     if (!canSave) { hideLoading(); return; }
@@ -1800,8 +1882,13 @@ $('meSaveBtn').addEventListener('click', async () => {
     showToast(manualEntryCandidateId ? 'Candidate updated!' : 'Candidate added!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'manual_entry' });
     closeManualEntryModal();
-    if (currentTab === 'pipeline') renderPipeline();
-    if (currentTab === 'history') renderHistory();
+    // Switch to pipeline tab after saving
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.nav-tab[data-tab="pipeline"]').classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    $('tab-pipeline').classList.add('active');
+    currentTab = 'pipeline';
+    renderPipeline();
   } catch (e) {
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
@@ -2593,6 +2680,10 @@ initDatetimePicker({
   }
 });
 
+// Follow-up mode toggle buttons
+$('ovToggleSequence').addEventListener('click', () => toggleFollowupMode('sequence'));
+$('ovToggleManual').addEventListener('click', () => toggleFollowupMode('manual'));
+
 // Initialize Manual Entry (Pipeline) datetime picker
 initDatetimePicker({
   inputId: 'meNextFollowup',
@@ -2605,62 +2696,16 @@ initDatetimePicker({
   nextMonthId: 'meDtpNextMonth',
   btnTodayId: 'meDtpBtnToday',
   btnClearId: 'meDtpBtnClear',
-  btnOkId: 'meDtpBtnOk'
+  btnOkId: 'meDtpBtnOk',
+  onConfirm: (d) => {
+    toggleMeFollowupMode('manual');
+  },
+  onClear: () => {
+    // no-op
+  }
 });
 
-// ========== Sequence Follow-up Confirm Modal ==========
-function showSeqFollowupConfirm(messageHtml) {
-  return new Promise((resolve) => {
-    const overlay = $('modalSeqFollowup');
-    const textEl = $('modalSeqFollowupText');
-    const acceptBtn = $('modalSeqFollowupAccept');
-    const editBtn = $('modalSeqFollowupEdit');
-    const editRow = $('modalSeqFollowupEditRow');
-    const editInput = $('modalSeqFollowupEditInput');
 
-    textEl.innerHTML = messageHtml;
-    editRow.style.display = 'none';
-    overlay.classList.add('active');
-
-    const cleanup = () => {
-      overlay.classList.remove('active');
-      acceptBtn.onclick = null;
-      editBtn.onclick = null;
-      overlay.onclick = null;
-    };
-
-    acceptBtn.onclick = () => {
-      const edited = editRow.style.display !== 'none';
-      const time = edited && editInput.value ? new Date(editInput.value) : null;
-      cleanup();
-      resolve({ accepted: true, edited, time });
-    };
-
-    editBtn.onclick = () => {
-      if (editRow.style.display === 'none') {
-        editRow.style.display = 'block';
-        // Default to suggested time + 3 days if not set
-        if (!editInput.value) {
-          const d = new Date(Date.now() + 3 * 86400000);
-          const pad = n => n.toString().padStart(2, '0');
-          editInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        }
-        editInput.focus();
-      } else {
-        const time = editInput.value ? new Date(editInput.value) : null;
-        cleanup();
-        resolve({ accepted: true, edited: true, time });
-      }
-    };
-
-    overlay.onclick = (e) => {
-      if (e.target === overlay) {
-        cleanup();
-        resolve({ accepted: false });
-      }
-    };
-  });
-}
 
 // ========== Mark Done Follow-up Confirm Modal ==========
 function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
@@ -2790,37 +2835,25 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
   });
 });
 
-// Sync to Sequence button
-$('ovSyncToSequenceBtn').addEventListener('click', async () => {
-  if (!currentCandidate || !currentCandidate.sequenceId) return;
-  showLoading();
-  try {
-    const seq = await getSequenceById(currentCandidate.sequenceId);
-    if (seq && seq.steps && seq.steps.length >= 2) {
-      const nextStep = seq.steps[1]; // step 2
-      const d = new Date(Date.now() + nextStep.delayDays * 86400000);
-      if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-        try {
-          await window.API.candidates.updateFollowup(
-            currentCandidate.id,
-            d,
-            'sequence',
-            null
-          );
-        } catch (e) {
-          console.warn('[SyncToSeq] update followup failed:', e);
-        }
+// Toggle follow-up mode (sequence / manual)
+function toggleFollowupMode(mode) {
+  if (!currentCandidate) return;
+  currentCandidate.nextFollowupSource = mode;
+  if (mode === 'sequence' && currentCandidate.sequenceId) {
+    // Recalculate from sequence
+    getSequenceById(currentCandidate.sequenceId).then(seq => {
+      if (seq && seq.steps && seq.steps.length >= 2) {
+        const nextStep = seq.steps[1];
+        currentCandidate.nextFollowup = Date.now() + nextStep.delayDays * 86400000;
+        saveDraft(currentCandidate);
+        renderOverviewNextFollowup();
       }
-      renderOverviewNextFollowup();
-      showToast('Synced to sequence');
-    }
-  } catch (e) {
-    console.error('[SyncToSeq] error:', e);
-    showToast('Failed to sync');
-  } finally {
-    hideLoading();
+    });
+  } else {
+    saveDraft(currentCandidate);
+    renderOverviewNextFollowup();
   }
-});
+}
 
 // ========== Feedback Modal ==========
 (function initFeedbackModal() {
@@ -2940,6 +2973,10 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
   } catch (e) {
     console.error('[BindEmail] Failed to get user:', e);
   } finally {
+    // Re-render empty state if on empty page (email may have loaded after first render)
+    if ($('tab-overview') && $('tab-overview').classList.contains('empty-page')) {
+      renderEmptyState();
+    }
     log(`[PLUGIN_INIT] initBindEmailState END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
@@ -3009,6 +3046,7 @@ function updateProBadge() {
     bindCodeInput.value = '';
     bindEmailInput.focus();
   }
+  window.openBindModal = openBindModal;
 
   function closeBindModal() {
     bindOverlay.classList.add('hidden');

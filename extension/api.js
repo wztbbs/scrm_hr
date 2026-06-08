@@ -162,9 +162,7 @@ function candidateToBackend(frontendCandidate) {
     nextFollowupAt: frontendCandidate.nextFollowup ? new Date(frontendCandidate.nextFollowup).toISOString() : null,
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null,
-    sequenceId: frontendCandidate.sequenceId != null ? Number(frontendCandidate.sequenceId) : null,
-    updateFollowupFromSequence: frontendCandidate.updateFollowupFromSequence || false,
-    sequenceFollowupAt: frontendCandidate.sequenceFollowupAt ? new Date(frontendCandidate.sequenceFollowupAt).toISOString() : null
+    sequenceId: frontendCandidate.sequenceId != null ? Number(frontendCandidate.sequenceId) : null
   };
   log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
   log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
@@ -209,8 +207,6 @@ function candidateFromBackend(backend) {
     nextFollowupSource: backend.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: backend.nextFollowupSequenceStepId || null,
     sequenceId: backend.sequenceId != null ? backend.sequenceId : null,
-    updateFollowupFromSequence: backend.updateFollowupFromSequence || false,
-    sequenceFollowupAt: backend.sequenceFollowupAt ? toTimestamp(backend.sequenceFollowupAt) : null,
     taskStatus: backend.taskStatus || null,
     createdAt: toTimestamp(backend.createdAt) || Date.now(),
     updatedAt: toTimestamp(backend.updatedAt) || Date.now()
