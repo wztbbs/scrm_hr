@@ -22,16 +22,16 @@ public interface SubCandidateMapper extends CandidateMapper {
     int updatePipelineStage(@Param("id") Long id,
                             @Param("pipelineStage") String pipelineStage);
 
-    List<Candidate> searchByKeyword(@Param("userId") Long userId,
-                                    @Param("search") String search,
-                                    @Param("temperature") String temperature,
-                                    @Param("status") String status,
-                                    @Param("source") String source,
-                                    @Param("syncSince") Date syncSince,
-                                    @Param("sortBy") String sortBy,
-                                    @Param("sortOrder") String sortOrder,
-                                    @Param("offset") int offset,
-                                    @Param("pageSize") int pageSize);
+    List<CandidateWithBLOBs> searchByKeyword(@Param("userId") Long userId,
+                                             @Param("search") String search,
+                                             @Param("temperature") String temperature,
+                                             @Param("status") String status,
+                                             @Param("source") String source,
+                                             @Param("syncSince") Date syncSince,
+                                             @Param("sortBy") String sortBy,
+                                             @Param("sortOrder") String sortOrder,
+                                             @Param("offset") int offset,
+                                             @Param("pageSize") int pageSize);
 
     long countSearchByKeyword(@Param("userId") Long userId,
                               @Param("search") String search,

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS `subscription_plans` (
   `sequence_limit` int NOT NULL DEFAULT 10 COMMENT '序列数量上限',
   `total_candidate_limit` int NOT NULL DEFAULT 20 COMMENT '管理的候选人上限',
   `is_active` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否在售',
+  `is_purchasable` tinyint(1) NOT NULL DEFAULT 1 COMMENT '是否可购买（0=仅内部赠送/不可购买）',
   `sort_order` int NOT NULL DEFAULT 0 COMMENT '排序',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -38,10 +39,11 @@ CREATE TABLE IF NOT EXISTS `subscription_plans` (
   KEY `idx_is_active` (`is_active`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='订阅套餐表';
 
-INSERT INTO `subscription_plans` (`plan_code`, `name`, `description`, `price`, `currency`, `billing_cycle`, `features`, `daily_connect_limit`, `sequence_limit`, `total_candidate_limit`, `sort_order`) VALUES
-('free', 'Free', '基础免费版', 0.00, 'USD', 'monthly', '["20 candidates","1 Sequence","10 AI/day"]', 10, 1, 20, 1),
-('pro_monthly', 'Pro Monthly', '专业版月付 $29/月', 29.00, 'USD', 'monthly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 2),
-('pro_yearly', 'Pro Yearly', '专业版年付 $290/年（省$58）', 290.00, 'USD', 'yearly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 3);
+INSERT INTO `subscription_plans` (`plan_code`, `name`, `description`, `price`, `currency`, `billing_cycle`, `features`, `daily_connect_limit`, `sequence_limit`, `total_candidate_limit`, `sort_order`, `is_purchasable`) VALUES
+('free', 'Free', '基础免费版', 0.00, 'USD', 'monthly', '["20 candidates","1 Sequence","10 AI/day"]', 10, 1, 20, 1, 1),
+('pro_monthly', 'Pro Monthly', '专业版月付 $29/月', 29.00, 'USD', 'monthly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 2, 1),
+('pro_yearly', 'Pro Yearly', '专业版年付 $290/年（省$58）', 290.00, 'USD', 'yearly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 3, 1),
+('pro_beta', 'Pro Beta', '赠送体验版', 0.00, 'USD', 'monthly', '["Unlimited candidates","10 outreach sequences","50 AI messages/day","Priority support"]', 50, 10, 999999, 4, 0);
 
 -- ============================================================
 -- LinkedIn SCRM 支付表结构（Paddle + Stripe 双兼容）
@@ -137,7 +139,7 @@ CREATE TABLE IF NOT EXISTS `candidates` (
   `phone` varchar(32) DEFAULT NULL COMMENT '电话号码',
   `avatar_url` varchar(512) DEFAULT NULL COMMENT '头像URL',
   `connection_degree` enum('1st','2nd','3rd','out_of_network') DEFAULT NULL COMMENT '连接度数（1度/2度/3度）',
-  `temperature` enum('hot','warm','cold','dead') NOT NULL DEFAULT 'cold' COMMENT '候选人温度/意向度',
+  `temperature` enum('hot','warm','cold','dead','new') NOT NULL DEFAULT 'new' COMMENT '候选人温度/意向度',
   `is_ai_suggested_temp` tinyint(1) NOT NULL DEFAULT 0 COMMENT '温度是否为AI建议',
   `source` enum('linkedin_profile','manual_entry','import','linkedin_chat') NOT NULL DEFAULT 'linkedin_profile' COMMENT '来源',
   `tags` json DEFAULT NULL COMMENT '标签数组JSON',

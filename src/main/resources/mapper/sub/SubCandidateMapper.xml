@@ -34,7 +34,7 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.BaseResultMap">
+  <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.ResultMapWithBLOBs">
     SELECT * FROM candidates
     WHERE user_id = #{userId}
     <if test="search != null and search != ''">

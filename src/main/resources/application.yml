@@ -19,7 +19,7 @@ spring:
       # 阿里云百炼兼容模式（OpenAI API 兼容）
       # 注意：base-url 不要带 /v1，Spring AI 内部会自动追加 /v1/chat/completions
       api-key: ${DASHSCOPE_API_KEY:dummy}
-      base-url: https://dashscope-us.aliyuncs.com/compatible-mode
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
       chat:
         options:
           model: qwen-plus
@@ -50,6 +50,11 @@ paddle:
 
 feedback:
   to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
+
+feature:
+  pro-beta-gift:
+    # 新用户创建时是否自动赠送 Pro Beta（默认开启，线上可随时改为 false 关闭）
+    enabled: ${PRO_BETA_GIFT_ENABLED:true}
 
 logging:
   level:

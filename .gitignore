@@ -1,2 +1,10 @@
 /.idea/
 /target/
+.DS_Store
+/extension-prod.zip
+/extension-test.zip
+/profile.html
+/message.html
+/extension.zip
+/extension.pem
+/extension.crx

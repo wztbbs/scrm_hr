@@ -50,6 +50,10 @@ paddle:
 feedback:
   to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
 
+feature:
+  pro-beta-gift:
+    enabled: ${PRO_BETA_GIFT_ENABLED:true}
+
 logging:
   level:
     com.scrm: INFO

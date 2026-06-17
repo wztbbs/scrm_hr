@@ -1,13 +1,16 @@
 package com.scrm.controller;
 
 import com.scrm.common.ApiResponse;
+import com.scrm.common.ProBetaConstants;
 import com.scrm.common.RequestContext;
 import com.scrm.dto.BindEmailRequest;
 import com.scrm.dto.SendVerificationCodeRequest;
 import com.scrm.entity.EmailVerification;
 import com.scrm.entity.User;
+import com.scrm.dao.SubscriptionPlanMapper;
 import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.entity.Subscription;
+import com.scrm.entity.SubscriptionPlan;
 import com.scrm.service.EmailVerificationService;
 import com.scrm.service.UserService;
 import org.slf4j.Logger;
@@ -34,6 +37,9 @@ public class UserController {
     @Autowired
     private SubSubscriptionMapper subSubscriptionMapper;
 
+    @Autowired
+    private SubscriptionPlanMapper planMapper;
+
     @Value("${feedback.to-email}")
     private String feedbackToEmail;
 
@@ -42,7 +48,8 @@ public class UserController {
         User user = userService.getCurrentUser();
         Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(user.getId());
         boolean isPro = activeSub != null;
-        boolean needBindEmail = isPro && (user.getEmail() == null || user.getEmail().trim().isEmpty());
+        boolean isProBeta = isProBetaSubscription(activeSub);
+        boolean needBindEmail = isPro && !isProBeta && (user.getEmail() == null || user.getEmail().trim().isEmpty());
 
         Map<String, Object> data = new HashMap<>();
         data.put("id", user.getId());
@@ -53,6 +60,14 @@ public class UserController {
         data.put("isPro", isPro);
         data.put("needBindEmail", needBindEmail);
         data.put("feedbackEmail", feedbackToEmail);
+        if (activeSub != null) {
+            SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+            if (plan != null) {
+                data.put("plan", plan);
+                data.put("plan_code", plan.getPlanCode());
+                data.put("plan_name", plan.getName());
+            }
+        }
         return ApiResponse.success(data);
     }
 
@@ -74,6 +89,14 @@ public class UserController {
         Map<String, Object> data = new HashMap<>();
         data.put("success", true);
         return ApiResponse.success(data);
+    }
+
+    private boolean isProBetaSubscription(Subscription activeSub) {
+        if (activeSub == null) {
+            return false;
+        }
+        SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+        return plan != null && ProBetaConstants.PLAN_CODE.equals(plan.getPlanCode());
     }
 
     @PostMapping("/bind-email")

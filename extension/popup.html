@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LinkedIn SCRM</title>
+  <title>TalentFlow SCRM for LinkedIn</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -48,6 +48,10 @@
       box-shadow: 0 2px 4px rgba(245, 175, 25, 0.3);
     }
     .pro-badge.hidden { display: none; }
+    .pro-beta-badge {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+    }
     .upgrade-badge {
       display: inline-flex;
       align-items: center;
@@ -219,6 +223,29 @@
       line-height: 1;
     }
     .feedback-modal-close:hover { color: #4b5563; }
+    .manual-entry-close {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: #9ca3af;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .manual-entry-close:hover {
+      color: #4b5563;
+      background: #f3f4f6;
+    }
     .feedback-modal-body {
       padding: 16px 18px;
     }
@@ -641,10 +668,12 @@
     .temp-btn.hot { background: #fee2e2; color: #ef4444; border-color: #fecaca; }
     .temp-btn.warm { background: #fef3c7; color: #d97706; border-color: #fde68a; }
     .temp-btn.cold { background: #dbeafe; color: #2563eb; border-color: #bfdbfe; }
+    .temp-btn.new { background: #e0f2fe; color: #0369a1; border-color: #bae6fd; }
     .temp-btn.dead { background: #f3f4f6; color: #9ca3af; border-color: #e5e7eb; }
     .temp-btn.active.hot { background: #ef4444; color: #fff; border-color: #ef4444; }
     .temp-btn.active.warm { background: #f59e0b; color: #fff; border-color: #f59e0b; }
     .temp-btn.active.cold { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .temp-btn.active.new { background: #0ea5e9; color: #fff; border-color: #0ea5e9; }
     .temp-btn.active.dead { background: #6b7280; color: #fff; border-color: #6b7280; }
 
     .board {
@@ -653,10 +682,11 @@
       overflow-x: auto;
       padding-bottom: 8px;
     }
-    .board::-webkit-scrollbar { height: 4px; }
-    .board::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+    .board::-webkit-scrollbar { height: 10px; }
+    .board::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 5px; }
+    .board::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 5px; }
     .board-column {
-      min-width: 116px;
+      min-width: 150px;
       flex: 1;
       background: #f9fafb;
       border-radius: 10px;
@@ -678,97 +708,174 @@
       background: #fff;
       border: 1px solid #e5e7eb;
       border-radius: 8px;
-      padding: 10px;
+      padding: 10px 28px 10px 10px;
       margin-bottom: 8px;
       cursor: grab;
       transition: all 0.2s;
       position: relative;
+      overflow: hidden;
     }
     .board-card:hover { border-color: #5b4cdb; box-shadow: 0 2px 6px rgba(91,76,219,0.08); }
     .board-card.dragging { opacity: 0.5; }
     .board-card-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
+      gap: 6px;
+      margin-bottom: 4px;
     }
     .board-card-avatar {
-      width: 28px; height: 28px;
+      width: 24px; height: 24px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: 12px;
+      font-size: 10px;
       font-weight: 600;
       flex-shrink: 0;
-      position: relative;
     }
-    .board-card-name { font-size: 13px; font-weight: 600; color: #1a1a1a; }
-    .board-card-title { font-size: 11px; color: #666; line-height: 1.3; }
+    .board-card-name-row {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+    }
+    .board-card-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1a1a1a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .board-card-link {
+      margin-left: 4px;
+      color: #5b4cdb;
+      text-decoration: none;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .board-card-meta {
+      font-size: 12px;
+      color: #6b7280;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 6px;
+    }
+    .board-card-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #374151;
+      margin-bottom: 6px;
+      overflow: hidden;
+    }
+    .board-card-status-row span {
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .board-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
     .board-card-time {
       font-size: 10px;
       color: #9ca3af;
-      text-align: right;
-      margin-top: 4px;
+      flex-shrink: 0;
     }
     .board-card-delete {
       position: absolute;
-      top: -6px;
-      right: -6px;
-      width: 16px; height: 16px;
+      top: 6px;
+      right: 6px;
+      width: 18px; height: 18px;
       border-radius: 50%;
       border: 1px solid #fff;
       background: #e5e7eb;
       color: #6b7280;
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 0;
+      opacity: 0;
       transition: all 0.2s;
-      z-index: 2;
+      z-index: 10;
     }
+    .board-card:hover .board-card-delete { opacity: 1; }
     .board-card-delete:hover {
       background: #ef4444;
       color: #fff;
       border-color: #ef4444;
     }
-    .unclaimed-hint {
-      background: #fef3c7;
-      color: #92400e;
+    .board-card-actions {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
+      padding: 3px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(4px);
+      pointer-events: none;
+      transition: all 0.15s ease;
+      z-index: 5;
+    }
+    .board-card:hover .board-card-actions {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .board-card-action {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      gap: 4px;
+      height: 22px;
+      padding: 0 6px;
       font-size: 11px;
-      font-weight: 500;
-      padding: 6px 10px;
-      border-radius: 6px;
-      margin-bottom: 10px;
-      text-align: center;
-      border: 1px solid #fde68a;
-    }
-    .board-card-save-to-new {
-      width: 100%;
-      margin-top: 8px;
-      padding: 6px 0;
-      background: #6366f1;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
+      color: #374151;
       cursor: pointer;
-      transition: background 0.2s;
+      border-radius: 4px;
+      text-decoration: none;
+      width: auto;
     }
-    .board-card-save-to-new:hover {
-      background: #4f46e5;
+    .board-card-action:hover {
+      background: #f3f4f6;
+      color: #4f46e5;
+    }
+    .board-card-action-icon {
+      font-size: 13px;
+      width: 13px;
+      text-align: center;
+      flex-shrink: 0;
     }
     .board-column.drag-over { background: #ede9fe; border: 1px dashed #5b4cdb; }
+    .board-footer {
+      text-align: center;
+      padding: 10px 0 4px;
+      font-size: 12px;
+      color: #6b7280;
+      cursor: pointer;
+      user-select: none;
+    }
+    .board-footer:hover { color: #5b4cdb; }
     .board-hint {
       text-align: center;
       color: #9ca3af;
       font-size: 12px;
-      margin-top: 16px;
+      margin-top: 12px;
       font-style: italic;
     }
 
@@ -1760,12 +1867,12 @@
 
 <div class="app-header">
   <div class="header-title">
-    <span class="brand-name">LinkedIn SCRM</span>
+    <span class="brand-name">TalentFlow SCRM<br>for LinkedIn</span>
     <span class="pro-badge hidden" id="proBadge">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
-      PRO
+      <span id="proBadgeText">PRO</span>
     </span>
     <span class="upgrade-badge hidden" id="upgradeBadge">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1927,9 +2034,10 @@
     </div>
     <div class="form-row">
       <select class="form-select" id="ovTemperature">
-        <option value="Cold">🧊 Cold</option>
+        <option value="New">🆕 New</option>
         <option value="Warm">🌤 Warm</option>
         <option value="Hot">🔥 Hot</option>
+        <option value="Cold">🧊 Cold</option>
       </select>
     </div>
   </div>
@@ -1937,7 +2045,7 @@
   <div class="card ov-hide-on-empty">
     <div class="card-title">Key Memory</div>
     <div class="form-row">
-      <textarea class="form-textarea" id="ovKeyMemory" placeholder="Add notes about this candidate..."></textarea>
+      <textarea class="form-textarea" id="ovKeyMemory" placeholder="e.g., 8yrs backend, salary $120-140k, available in 4 weeks, interviewing with 2 fintechs..."></textarea>
     </div>
   </div>
 
@@ -2039,7 +2147,7 @@
       <small>Click to record or type below</small>
     </div>
     <div class="form-row">
-      <textarea class="form-textarea" id="ovVoiceMemoTextarea" placeholder="Type notes or click the button below to record voice..."></textarea>
+      <textarea class="form-textarea" id="ovVoiceMemoTextarea" placeholder="Record quick thoughts after a call — auto-transcribed to text"></textarea>
     </div>
     <button class="voice-memo-btn" id="ovVoiceMemoBtn">
       🎙 Record
@@ -2065,6 +2173,7 @@
   <div class="board" id="pipelineBoard">
     <div style="text-align:center;color:#9ca3af;padding:20px;">Loading pipeline...</div>
   </div>
+  <div class="board-footer" id="pipelineShowDone"></div>
   <div class="board-hint">Drag cards to move between stages</div>
 </div>
 
@@ -2137,7 +2246,8 @@
 <!-- Manual Entry Modal -->
 <div class="modal-overlay" id="modalManualEntry">
   <div class="modal" style="max-width:420px;max-height:90vh;overflow-y:auto;">
-    <div style="text-align:center;margin-bottom:16px;">
+    <div style="position:relative;text-align:center;margin-bottom:16px;">
+      <button type="button" id="meCloseBtn" class="manual-entry-close" title="Close">×</button>
       <div style="font-size:18px;font-weight:700;">Manual Entry</div>
       <div style="font-size:13px;color:#9ca3af;margin-top:4px;">Add candidate manually</div>
     </div>
@@ -2168,8 +2278,9 @@
     <div class="form-row">
       <label class="form-label">Temperature</label>
       <div style="display:flex;gap:6px;">
+        <button type="button" class="temp-btn new active" data-temp="New" id="meTempNew">New</button>
         <button type="button" class="temp-btn hot" data-temp="Hot" id="meTempHot">Hot</button>
-        <button type="button" class="temp-btn warm active" data-temp="Warm" id="meTempWarm">Warm</button>
+        <button type="button" class="temp-btn warm" data-temp="Warm" id="meTempWarm">Warm</button>
         <button type="button" class="temp-btn cold" data-temp="Cold" id="meTempCold">Cold</button>
         <button type="button" class="temp-btn dead" data-temp="Dead" id="meTempDead">Dead</button>
       </div>

@@ -15,6 +15,9 @@ import com.scrm.entity.CandidateSequenceExample;
 import com.scrm.entity.CandidateWithBLOBs;
 import com.scrm.entity.SequenceStep;
 import com.scrm.exception.BusinessException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -40,14 +43,45 @@ public class CandidateService {
     private HistoryService historyService;
     @Autowired
     private CandidateSequenceMapper candidateSequenceMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-    public List<Candidate> listCandidates(String search, String temperature, String status,
+    public List<CandidateWithBLOBs> listCandidates(String search, String temperature, String status,
                                           String source, String sortBy, String sortOrder,
                                           Date syncSince, int page, int pageSize) {
         Long userId = RequestContext.getCurrentUserId();
         int offset = (page - 1) * pageSize;
-        return subCandidateMapper.searchByKeyword(userId, search, temperature, status, source,
+        List<CandidateWithBLOBs> list = subCandidateMapper.searchByKeyword(userId, search, temperature, status, source,
                 syncSince, sortBy, sortOrder, offset, pageSize);
+        for (CandidateWithBLOBs candidate : list) {
+            enrichProfileExperiences(candidate);
+        }
+        return list;
+    }
+
+    private void enrichProfileExperiences(CandidateWithBLOBs candidate) {
+        String rawProfileData = candidate.getRawProfileData();
+        if (rawProfileData == null || rawProfileData.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(rawProfileData);
+            if (root.has("workExperiences")) {
+                List<Map<String, Object>> workExperiences = objectMapper.convertValue(root.get("workExperiences"),
+                        new TypeReference<List<Map<String, Object>>>() {});
+                // 只返回最新一条工作经历，前端卡片也只需要展示当前职位
+                if (workExperiences != null && !workExperiences.isEmpty()) {
+                    candidate.setWorkExperiences(workExperiences.subList(0, 1));
+                }
+            }
+            if (root.has("educationExperiences")) {
+                candidate.setEducationExperiences(objectMapper.convertValue(root.get("educationExperiences"),
+                        new TypeReference<List<Map<String, Object>>>() {}));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse rawProfileData for candidate {}", candidate.getId(), e);
+        }
+        candidate.setRawProfileData(null);
     }
 
     public long countCandidates(String search, String temperature, String status,
@@ -101,10 +135,16 @@ public class CandidateService {
             String existingStage = existing.getPipelineStage();
             if (existingStage == null) existingStage = PipelineStageEnum.NEW.getValue();
 
-            // If existing stage is delete or unclaimed, re-calculate to 'new' for manual save
-            // Skip for linkedin_chat source: keep unclaimed as-is
             boolean isChatSource = "linkedin_chat".equalsIgnoreCase(candidate.getSource())
                     || "linkedin_chat".equalsIgnoreCase(existing.getSource());
+
+            // 聊天来源保存已有候选人时，如果还是未认领状态，直接返回现有记录，避免覆盖已有阶段
+            if (isChatSource && PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(candidate.getPipelineStage())) {
+                return existing;
+            }
+
+            // If existing stage is delete or unclaimed, re-calculate to 'new' for manual save
+            // Skip for linkedin_chat source: keep unclaimed as-is
             if (!isChatSource && (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existingStage)
                     || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(existingStage))) {
                 candidate.setPipelineStage(PipelineStageEnum.NEW.getValue());
@@ -128,7 +168,7 @@ public class CandidateService {
         candidate.setUserId(userId);
 
         if (candidate.getTemperature() == null) {
-            candidate.setTemperature("cold");
+            candidate.setTemperature("new");
         }
         if (candidate.getSource() == null) {
             candidate.setSource("linkedin_profile");

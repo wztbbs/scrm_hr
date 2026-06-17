@@ -58,7 +58,9 @@ public class SubscriptionService {
         SubscriptionPlanExample example = new SubscriptionPlanExample();
         example.createCriteria().andIsActiveEqualTo(true);
         example.setOrderByClause("sort_order ASC");
-        return planMapper.selectByExample(example);
+        return planMapper.selectByExample(example).stream()
+                .filter(p -> Boolean.TRUE.equals(p.getIsPurchasable()))
+                .toList();
     }
 
     public Map<String, Object> getCurrentSubscription() {
@@ -73,6 +75,10 @@ public class SubscriptionService {
             subMap.put("id", activeSub.getId());
             SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
             subMap.put("plan", plan);
+            if (plan != null) {
+                subMap.put("plan_code", plan.getPlanCode());
+                subMap.put("plan_name", plan.getName());
+            }
             subMap.put("status", activeSub.getStatus());
             subMap.put("current_period_start", activeSub.getCurrentPeriodStart());
             subMap.put("current_period_end", activeSub.getCurrentPeriodEnd());
@@ -132,6 +138,9 @@ public class SubscriptionService {
         SubscriptionPlan plan = plans.isEmpty() ? null : plans.get(0);
         if (plan == null) {
             throw new BusinessException("Plan not found: " + planCode);
+        }
+        if (!Boolean.TRUE.equals(plan.getIsPurchasable())) {
+            throw new BusinessException("This plan is not available for purchase: " + planCode);
         }
 
         String priceId = paddleProperties.getPriceIds().get(planCode);

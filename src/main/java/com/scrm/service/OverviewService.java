@@ -1,10 +1,13 @@
 package com.scrm.service;
 
+import com.scrm.common.ProBetaConstants;
 import com.scrm.common.RequestContext;
+import com.scrm.dao.SubscriptionPlanMapper;
 import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.dto.OverviewVO;
 import com.scrm.entity.CandidateWithBLOBs;
 import com.scrm.entity.Subscription;
+import com.scrm.entity.SubscriptionPlan;
 import com.scrm.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +25,8 @@ public class OverviewService {
     private UserService userService;
     @Autowired
     private SubSubscriptionMapper subSubscriptionMapper;
+    @Autowired
+    private SubscriptionPlanMapper planMapper;
     @Autowired
     private PipelineService pipelineService;
     @Autowired
@@ -44,7 +49,8 @@ public class OverviewService {
 
             Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(user.getId());
             boolean isPro = activeSub != null;
-            boolean needBindEmail = isPro && (user.getEmail() == null || user.getEmail().trim().isEmpty());
+            boolean isProBeta = isProBetaSubscription(activeSub);
+            boolean needBindEmail = isPro && !isProBeta && (user.getEmail() == null || user.getEmail().trim().isEmpty());
             Map<String, Object> subMap = new HashMap<>();
             subMap.put("isPro", isPro);
             subMap.put("needBindEmail", needBindEmail);
@@ -52,6 +58,12 @@ public class OverviewService {
                 subMap.put("status", activeSub.getStatus());
                 subMap.put("currentPeriodEnd", activeSub.getCurrentPeriodEnd());
                 subMap.put("cancelAtPeriodEnd", activeSub.getCancelAtPeriodEnd());
+                SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+                if (plan != null) {
+                    subMap.put("plan", plan);
+                    subMap.put("plan_code", plan.getPlanCode());
+                    subMap.put("plan_name", plan.getName());
+                }
             }
             vo.setSubscription(subMap);
         } catch (Exception e) {
@@ -87,5 +99,13 @@ public class OverviewService {
         }
 
         return vo;
+    }
+
+    private boolean isProBetaSubscription(Subscription activeSub) {
+        if (activeSub == null) {
+            return false;
+        }
+        SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+        return plan != null && ProBetaConstants.PLAN_CODE.equals(plan.getPlanCode());
     }
 }

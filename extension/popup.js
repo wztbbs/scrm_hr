@@ -12,6 +12,7 @@ let currentFilter = 'All Roles';
 let manualEntryCandidateId = null;
 let isDraggingCard = false;
 let pipelineStages = [];
+let pipelineShowDone = false;
 let isSavingCandidate = false;
 let hasSyncedData = false;
 
@@ -137,6 +138,23 @@ function formatTime(timestamp) {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatPipelineTemp(temp) {
+  const map = {
+    'Hot':  '🔥 Hot',
+    'Warm': '🌤 Warm',
+    'Cold': '🧊 Cold',
+    'New':  '🆕 New',
+    'Dead': '⚰️ Dead'
+  };
+  return map[temp] || (temp ? temp : '');
+}
+
+function formatShortFollowup(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function getTaskStatusConfig(taskStatus) {
   const map = {
     'OVERDUE':  { label: 'Follow up now — overdue',      color: '#ef4444', borderClass: 'task-border-overdue',  bgClass: 'task-border-overdue' },
@@ -217,7 +235,7 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
         websites: data.websites || [],
         emails: [],
         phones: [],
-        temperature: 'Cold',
+        temperature: 'New',
         contactMode: 'recruiting',
         keyMemory: '',
         nextFollowup: '',
@@ -261,7 +279,7 @@ async function loadCurrentCandidate(preloadedBackendCandidate = null) {
             renderOverview();
           }
         }).catch(e => {
-          console.warn('[Popup] Backend candidate fetch failed:', e.message);
+          log('[Popup] Backend candidate fetch failed:', e.message);
         });
       }
     } else {
@@ -283,7 +301,7 @@ function renderEmptyState() {
   if (!container) return;
 
   container.innerHTML = `
-    <h2 class="welcome-title"><span class="title-icon">🎯</span>Welcome to LinkedIn SCRM</h2>
+    <h2 class="welcome-title"><span class="title-icon">🎯</span>Welcome to TalentFlow SCRM for LinkedIn</h2>
     <div class="step-card active">
       <h3>👋 Get Started</h3>
       <p>Open a LinkedIn profile to start tracking candidates.</p>
@@ -320,8 +338,8 @@ function renderOverview() {
 
   const ovTempEl = $('ovTemperature');
   log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature options:', Array.from(ovTempEl.options).map(o => o.value));
-  log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'Cold');
-  ovTempEl.value = currentCandidate.temperature || 'Cold';
+  log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'New');
+  ovTempEl.value = currentCandidate.temperature || 'New';
   log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature.value after set:', ovTempEl.value, 'selectedIndex:', ovTempEl.selectedIndex);
 
   const isRecruiting = currentCandidate.contactMode === 'recruiting';
@@ -572,7 +590,7 @@ async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueC
         overdueCount = resp.data.overdueCount;
       }
     } catch (e) {
-      console.warn('[Popup] Backend tasks fetch failed:', e.message);
+      log('[Popup] Backend tasks fetch failed:', e.message);
       candidates = [];
       overdueCount = 0;
     }
@@ -591,7 +609,7 @@ async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueC
     countEl.textContent = `${candidates.length} task${candidates.length !== 1 ? 's' : ''} ▲`;
   } else {
     content.classList.add('hidden');
-    countEl.textContent = '0 tasks ▼';
+    countEl.textContent = 'No tasks yet ▼';
   }
 
   // Overdue banner
@@ -771,7 +789,7 @@ $('ovSaveBtn').addEventListener('click', async () => {
     document.documentElement.scrollTop = 0;
     log(`${perfLabel} SWITCH_TAB_END duration=${(performance.now() - tabStart).toFixed(1)}ms`);
   } catch (e) {
-    console.error(`${perfLabel} SAVE_FAILED`, e);
+    log(`${perfLabel} SAVE_FAILED`, e);
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
   } finally {
@@ -1014,7 +1032,11 @@ async function renderPipeline() {
   }
 
   // Rebuild board columns dynamically based on backend stages
-  boardEl.innerHTML = pipelineStages.map(stage => `
+  // By default hide the Done column; user can expand via the footer link
+  const visibleStages = pipelineShowDone
+    ? pipelineStages
+    : pipelineStages.filter(stage => stage.id !== 'done');
+  boardEl.innerHTML = visibleStages.map(stage => `
     <div class="board-column" data-status="${escapeHtml(stage.id)}" id="column-${stage.id}">
       <div class="board-column-header">${escapeHtml(stage.name)} (<span class="col-count">0</span>)</div>
       <div class="col-cards" id="col-${stage.id}"></div>
@@ -1028,93 +1050,98 @@ async function renderPipeline() {
       allCandidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[Pipeline] Failed to fetch candidates:', e.message);
+    log('[Pipeline] Failed to fetch candidates:', e.message);
   }
   if (currentFilter !== 'All Roles') {
-    allCandidates = allCandidates.filter(c => c.headline === currentFilter);
+    allCandidates = allCandidates.filter(c => c.workExperiences?.[0]?.title === currentFilter);
   }
-
-  const THIRTY_DAYS = 30 * 86400000;
-  const now = Date.now();
 
   for (const stage of pipelineStages) {
     const col = $(`col-${stage.id}`);
     if (!col) continue;
 
-    let stageCandidates = allCandidates.filter(c => {
+    const stageCandidates = allCandidates.filter(c => {
       const ps = c.pipelineStage || 'new';
       return ps === stage.id;
     });
-
-    // For unclaimed stage, only show candidates updated within 30 days
-    let hiddenCount = 0;
-    if (stage.id === 'unclaimed') {
-      const visible = stageCandidates.filter(c => {
-        const updated = c.updatedAt || c.createdAt || 0;
-        return (now - updated) <= THIRTY_DAYS;
-      });
-      hiddenCount = stageCandidates.length - visible.length;
-      stageCandidates = visible;
-    }
 
     const count = stageCandidates.length;
     const colEl = col.closest('.board-column');
     if (colEl) colEl.querySelector('.col-count').textContent = count;
 
-    // Hide unclaimed column if empty
-    if (stage.id === 'unclaimed' && count === 0) {
-      if (colEl) colEl.style.display = 'none';
-      continue;
-    }
-
-    let cardsHtml = stageCandidates.map(c => renderPipelineCard(c)).join('');
-
-    // Show auto-delete hint at top of unclaimed column
-    if (stage.id === 'unclaimed' && count > 0) {
-      cardsHtml = `
-        <div class="unclaimed-hint">
-          Auto-delete after 30 days
-        </div>
-      ` + cardsHtml;
-    }
-
-    // Show hint for hidden unclaimed candidates
-    if (stage.id === 'unclaimed' && hiddenCount > 0) {
-      cardsHtml += `
-        <div style="padding:8px 12px;font-size:12px;color:#9ca3af;text-align:center;border-top:1px dashed #e5e7eb;margin-top:4px;">
-          ${hiddenCount} candidate${hiddenCount > 1 ? 's' : ''} hidden (older than 30 days)
-        </div>
-      `;
-    }
-
+    const cardsHtml = stageCandidates.map(c => renderPipelineCard(c)).join('');
     col.innerHTML = cardsHtml;
   }
+
+  // Show / hide Done column toggle
+  const doneStage = pipelineStages.find(s => s.id === 'done');
+  const footerEl = $('pipelineShowDone');
+  if (footerEl && doneStage) {
+    const doneCount = allCandidates.filter(c => (c.pipelineStage || 'new') === 'done').length;
+    footerEl.innerHTML = pipelineShowDone
+      ? '<span id="pipelineToggleDone">📁 Hide Completed</span>'
+      : `<span id="pipelineToggleDone">📁 Completed (${doneCount}) →</span>`;
+    footerEl.style.display = 'block';
+    $('pipelineToggleDone').addEventListener('click', () => {
+      pipelineShowDone = !pipelineShowDone;
+      renderPipeline();
+    });
+  } else if (footerEl) {
+    footerEl.style.display = 'none';
+  }
+
   bindPipelineDragEvents();
   bindPipelineCardClickEvents();
   bindPipelineDeleteEvents();
-  bindPipelineSaveToNewEvents();
+  bindPipelineActionEvents();
 }
 
 function renderPipelineCard(candidate) {
+  log('[SCRM_DEBUG] renderPipelineCard', candidate.name, 'workExperiences:', candidate.workExperiences, 'jobTitle:', candidate.jobTitle, 'headline:', candidate.headline, 'company:', candidate.company);
   const color = getAvatarColor(candidate.name);
-  const linkedInLink = candidate.linkedInUrl ? `<a href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" style="margin-left:4px;color:#0077b5;text-decoration:none;font-size:12px;" title="Open LinkedIn">&#128279;</a>` : '';
-  const saveToNewBtn = (candidate.pipelineStage || 'new') === 'unclaimed'
-    ? `<button class="board-card-save-to-new" data-id="${candidate.id}">Save → New</button>`
+  const linkedInLink = candidate.linkedInUrl
+    ? `<a href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" class="board-card-link" title="Open LinkedIn">↗</a>`
     : '';
+  const latestTitle = candidate.workExperiences?.[0]?.title || candidate.jobTitle || candidate.headline || '';
+  const latestCompany = candidate.workExperiences?.[0]?.company || candidate.company || '';
+  const metaText = latestTitle && latestCompany
+    ? `${latestTitle} @ ${latestCompany}`
+    : (latestTitle || latestCompany || '');
+  log('[SCRM_DEBUG] metaText', candidate.name, '=>', metaText, '(latestTitle:', latestTitle, ', latestCompany:', latestCompany, ')');
+  const tempLabel = formatPipelineTemp(candidate.temperature);
+  const followupLabel = candidate.nextFollowup
+    ? `· 📅 ${formatShortFollowup(candidate.nextFollowup)}`
+    : '';
+  const statusRow = tempLabel
+    ? `<div class="board-card-status-row"><span>${tempLabel}</span><span>${followupLabel}</span></div>`
+    : '';
+
+  const actionRows = [];
+  if (candidate.linkedInUrl) {
+    actionRows.push(`<a class="board-card-action" href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" data-action="open" data-id="${candidate.id}"><span class="board-card-action-icon">↗</span><span>Open Profile</span></a>`);
+  }
+  actionRows.push(`<div class="board-card-action" data-action="edit" data-id="${candidate.id}"><span class="board-card-action-icon">✏️</span><span>See & Edit</span></div>`);
+  actionRows.push(`<div class="board-card-action" data-action="move-done" data-id="${candidate.id}"><span class="board-card-action-icon">✅</span><span>to Completed</span></div>`);
+  const actionsOverlay = `<div class="board-card-actions">${actionRows.join('')}</div>`;
+
   return `
     <div class="board-card" draggable="true" data-id="${candidate.id}" data-pipeline-stage="${candidate.pipelineStage || 'new'}">
+      <button class="board-card-delete" data-id="${candidate.id}" title="Delete">×</button>
       <div class="board-card-header">
         <div class="board-card-avatar" style="background:${color}">
           ${getInitials(candidate.name)}
-          <button class="board-card-delete" data-id="${candidate.id}" title="Delete">×</button>
         </div>
-        <div style="flex:1;min-width:0;">
-          <div class="board-card-name">${escapeHtml(candidate.name)}${linkedInLink}</div>
-          <div class="board-card-title">${escapeHtml(candidate.headline || '')}</div>
+        <div class="board-card-name-row">
+          <span class="board-card-name">${escapeHtml(candidate.name)}</span>
+          ${linkedInLink}
         </div>
       </div>
-      <div class="board-card-time">${timeAgo(candidate.updatedAt || candidate.createdAt)}</div>
-      ${saveToNewBtn}
+      <div class="board-card-meta">${escapeHtml(metaText)}</div>
+      ${statusRow}
+      <div class="board-card-footer">
+        <span class="board-card-time">🕐 Added ${timeAgo(candidate.createdAt || candidate.updatedAt)}</span>
+      </div>
+      ${actionsOverlay}
     </div>
   `;
 }
@@ -1159,7 +1186,7 @@ function bindPipelineDragEvents() {
           renderPipeline();
         }
       } catch (e) {
-        console.warn('[Pipeline] Move failed:', e.message);
+        log('[Pipeline] Move failed:', e.message);
       }
     });
   });
@@ -1200,34 +1227,43 @@ function bindPipelineDeleteEvents() {
           }
         }
       } catch (e) {
-        console.warn('[Pipeline] Delete fetch failed:', e.message);
+        log('[Pipeline] Delete fetch failed:', e.message);
       }
     });
   });
 }
 
-function bindPipelineSaveToNewEvents() {
-  document.querySelectorAll('.board-card-save-to-new').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+function bindPipelineActionEvents() {
+  document.querySelectorAll('.board-card-action').forEach(row => {
+    row.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const candidateId = parseInt(btn.dataset.id);
+      const action = row.dataset.action;
+      const candidateId = parseInt(row.dataset.id);
+      if (!candidateId || !action) return;
+
+      if (action === 'edit') {
+        openManualEntryModal(candidateId);
+        return;
+      }
+
+      if (action === 'open') {
+        // <a> with target="_blank" handles navigation; just prevent card click
+        return;
+      }
+
       try {
-        const candidate = await window.API.candidates.get(candidateId);
-        if (!candidate) return;
         showLoading();
-        try {
-          await window.API.candidates.updatePipelineStage(candidateId, 'new');
-          trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
-          showToast('Candidate saved to New');
-          renderPipeline();
-          if (currentTab === 'history') renderHistory();
-        } catch (err) {
-          showToast('Save failed: ' + err.message);
-        } finally {
-          hideLoading();
+        if (action === 'move-done') {
+          await window.API.candidates.updatePipelineStage(candidateId, 'done');
+          trackEvent('pipeline_moved', { category: 'engagement', label: 'to_done' });
+          showToast('Moved to Completed');
         }
-      } catch (e) {
-        console.warn('[Pipeline] Promote fetch failed:', e.message);
+        renderPipeline();
+        if (currentTab === 'history') renderHistory();
+      } catch (err) {
+        showToast('Action failed: ' + err.message);
+      } finally {
+        hideLoading();
       }
     });
   });
@@ -1278,7 +1314,7 @@ async function getSubscriptionUsage() {
     _usageCacheTime = now;
     return _cachedUsage;
   } catch (e) {
-    console.warn('[Popup] Failed to fetch subscription usage:', e.message);
+    log('[Popup] Failed to fetch subscription usage:', e.message);
     return null;
   }
 }
@@ -1300,7 +1336,7 @@ async function fetchPlans() {
       return _cachedPlans;
     }
   } catch (e) {
-    console.warn('[Popup] Failed to fetch plans:', e.message);
+    log('[Popup] Failed to fetch plans:', e.message);
   }
   return [];
 }
@@ -1502,7 +1538,7 @@ async function showUpgradeModal(config) {
             env: d.environment,
             session_id: sessionId || ''
           });
-          const checkoutUrl = `https://www.hrscrm.net/checkout.html?${params.toString()}`;
+          const checkoutUrl = `http://localhost:8080/checkout.html?${params.toString()}`;
           chrome.tabs.create({ url: checkoutUrl });
           showToast('Checkout opened in new tab. Complete payment there.');
         } else {
@@ -1608,9 +1644,9 @@ async function updateFilterDropdown() {
       candidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[Filter] Failed to fetch candidates:', e.message);
+    log('[Filter] Failed to fetch candidates:', e.message);
   }
-  const roles = ['All Roles', ...new Set(candidates.map(c => c.headline).filter(Boolean))];
+  const roles = ['All Roles', ...new Set(candidates.map(c => c.workExperiences?.[0]?.title).filter(Boolean))];
   const dropdown = $('pipelineFilterDropdown');
   dropdown.innerHTML = roles.map(r =>
     `<div class="pipeline-filter-dropdown-item ${r === currentFilter ? 'active' : ''}" data-role="${r}">${r}</div>`
@@ -1705,7 +1741,7 @@ function openManualEntryModal(candidateId = null) {
         $('meNextFollowup').value = '';
       }
       $('meNotes').value = candidate.keyMemory || '';
-      const temp = candidate.temperature || 'Warm';
+      const temp = candidate.temperature || 'New';
       document.querySelectorAll('.temp-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.temp === temp);
       });
@@ -1716,7 +1752,7 @@ function openManualEntryModal(candidateId = null) {
       toggleMeFollowupMode(isSeqMode ? 'sequence' : 'manual');
       $('modalManualEntry').classList.add('active');
     }).catch(e => {
-      console.warn('[MANUAL_ENTRY] load candidate failed:', e);
+      log('[MANUAL_ENTRY] load candidate failed:', e);
       showToast('Failed to load candidate');
     });
   } else {
@@ -1730,7 +1766,7 @@ function openManualEntryModal(candidateId = null) {
     $('meNextFollowup').value = '';
     $('meNotes').value = '';
     document.querySelectorAll('.temp-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.temp === 'Warm');
+      btn.classList.toggle('active', btn.dataset.temp === 'New');
     });
     loadSequenceOptions($('meSequence'), '');
     toggleMeFollowupMode('manual');
@@ -1809,7 +1845,7 @@ $('meSaveBtn').addEventListener('click', async () => {
     return;
   }
 
-  const temperature = document.querySelector('.temp-btn.active')?.dataset.temp || 'Warm';
+  const temperature = document.querySelector('.temp-btn.active')?.dataset.temp || 'New';
 
   showLoading();
   try {
@@ -1899,6 +1935,7 @@ $('meSaveBtn').addEventListener('click', async () => {
 });
 
 $('meCancelBtn').addEventListener('click', closeManualEntryModal);
+$('meCloseBtn').addEventListener('click', closeManualEntryModal);
 
 $('modalManualEntry').addEventListener('click', (e) => {
   if (e.target === $('modalManualEntry')) closeManualEntryModal();
@@ -1972,7 +2009,7 @@ async function renderTodayTasks() {
       overdueCount = resp.data.overdueCount;
     }
   } catch (e) {
-    console.warn('[TodayTasks] Failed to fetch:', e.message);
+    log('[TodayTasks] Failed to fetch:', e.message);
   }
 
   $('todayTasksTitle').textContent = `Today's Tasks (${candidates.length})`;
@@ -2150,7 +2187,7 @@ async function getHistoryByCandidate(candidateId) {
     const resp = await window.API.history.list({ candidateId });
     return resp.data?.items || [];
   } catch (e) {
-    console.warn('[getHistoryByCandidate] failed:', e);
+    log('[getHistoryByCandidate] failed:', e);
     return [];
   }
 }
@@ -2160,7 +2197,7 @@ async function renderHistoryContent(candidateId) {
   try {
     candidate = await window.API.candidates.get(candidateId);
   } catch (e) {
-    console.warn('[renderHistoryContent] get candidate failed:', e);
+    log('[renderHistoryContent] get candidate failed:', e);
     return;
   }
   if (!candidate) return;
@@ -2214,7 +2251,7 @@ async function renderHistory() {
       candidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[History] Failed to fetch candidates:', e.message);
+    log('[History] Failed to fetch candidates:', e.message);
   }
   const select = $('historyCandidateSelect');
   select.innerHTML = '<option value="">Select a candidate...</option>' +
@@ -2262,14 +2299,14 @@ async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
               target: { tabId }, files: ['content.js']
             }, () => {
               if (chrome.runtime.lastError) {
-                console.warn(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`, chrome.runtime.lastError.message);
+                log(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`, chrome.runtime.lastError.message);
                 reject(new Error('Unable to inject content script'));
                 return;
               }
               setTimeout(trySend, 500);
             });
           } else {
-            console.warn(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`);
+            log(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`);
             reject(new Error('Content script not responding'));
           }
         } else {
@@ -2292,7 +2329,7 @@ function escapeHtml(text) {
 
 
 // ========== Init Backend Data ==========
-const PIPELINE_CACHE_KEY = 'cachedPipelineStages';
+const PIPELINE_CACHE_KEY = 'cachedPipelineStagesV2';
 const PIPELINE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 async function loadPipelineStagesFromCache() {
@@ -2335,7 +2372,7 @@ async function initBackendData() {
       await setSetting(PIPELINE_CACHE_KEY, { stages: pipelineStages, ts: Date.now() });
     }
   } catch (e) {
-    console.warn('[Popup] Init backend data failed:', e.message);
+    log('[Popup] Init backend data failed:', e.message);
   }
 
   log(`[PLUGIN_INIT] initBackendData END 耗时=${(performance.now() - start).toFixed(1)}ms`);
@@ -2400,7 +2437,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       }
     } catch (e) {
-      console.warn('[PLUGIN_INIT] Failed to scrape linkedinId, fallback to no-candidate mode');
+      log('[PLUGIN_INIT] Failed to scrape linkedinId, fallback to no-candidate mode');
     }
 
     // Try facade overview API first (single request)
@@ -2413,7 +2450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         useOverview = true;
         log('[PLUGIN_INIT] overview API success');
       } catch (e) {
-        console.warn('[PLUGIN_INIT] overview API failed, fallback to legacy init:', e.message);
+        log('[PLUGIN_INIT] overview API failed, fallback to legacy init:', e.message);
       }
     }
 
@@ -2442,7 +2479,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       ]);
     }
   } catch (e) {
-    console.error('Init error:', e);
+    log('Init error:', e);
   } finally {
     log(`[PLUGIN_INIT] ===== 插件初始化完成 总耗时=${(performance.now() - totalStart).toFixed(1)}ms =====`);
     hideLoading();
@@ -2780,7 +2817,7 @@ async function doMarkFollowupDone(candidateId, onComplete) {
       try {
         await window.API.candidates.updateFollowup(candidateId, null, 'none', null);
       } catch (e) {
-        console.warn('[MarkDone] clear followup failed:', e);
+        log('[MarkDone] clear followup failed:', e);
       }
     }
 
@@ -2806,7 +2843,7 @@ async function doMarkFollowupDone(candidateId, onComplete) {
             currentCandidate.nextFollowupSource = source;
           }
         } catch (e) {
-          console.warn('[MarkDone] update followup failed:', e);
+          log('[MarkDone] update followup failed:', e);
         }
       }
     } else if (result && result.sequence_completed) {
@@ -2820,7 +2857,7 @@ async function doMarkFollowupDone(candidateId, onComplete) {
     }
     showToast('Marked as done');
   } catch (e) {
-    console.error('[MarkDone] error:', e);
+    log('[MarkDone] error:', e);
     showToast('Failed to mark done');
   } finally {
     hideLoading();
@@ -2913,7 +2950,7 @@ function toggleFollowupMode(mode) {
 
   async function copyEmailContent() {
     if (!currentUserUuid || !currentUserFeedbackEmail) return;
-    const text = `To: ${currentUserFeedbackEmail}\nSubject: [Feedback] User: ${currentUserUuid}\n\nHi team,\n\nMy feedback:\n[Please describe your idea or attach screenshots here]\n\n---\nUser ID: ${currentUserUuid}\nSent from LinkedIn SCRM Plugin`;
+    const text = `To: ${currentUserFeedbackEmail}\nSubject: [Feedback] User: ${currentUserUuid}\n\nHi team,\n\nMy feedback:\n[Please describe your idea or attach screenshots here]\n\n---\nUser ID: ${currentUserUuid}\nSent from TalentFlow SCRM for LinkedIn Plugin`;
     try {
       await navigator.clipboard.writeText(text);
       showToast('Email content copied! Paste into your email client.');
@@ -2949,6 +2986,7 @@ let currentUserEmail = null;
 let currentUserNeedBindEmail = false;
 let currentUserUuid = null;
 let currentUserIsPro = false;
+let currentUserPlanCode = null;
 let currentUserFeedbackEmail = null;
 
 async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
@@ -2965,13 +3003,16 @@ async function initBindEmailState(preloadedUser = null, preloadedSubscription = 
       currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
       currentUserUuid = user.uuid || null;
       currentUserIsPro = (preloadedSubscription ? preloadedSubscription.isPro : user.isPro) || false;
+      currentUserPlanCode = (preloadedSubscription
+        ? (preloadedSubscription.plan_code || preloadedSubscription.planCode || (preloadedSubscription.plan && preloadedSubscription.plan.planCode))
+        : (user.plan_code || user.planCode || (user.plan && user.plan.planCode))) || null;
       currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
       updateBindEmailButton();
       updateProBadge();
       renderEmailAlertCard();
     }
   } catch (e) {
-    console.error('[BindEmail] Failed to get user:', e);
+    log('[BindEmail] Failed to get user:', e);
   } finally {
     // Re-render empty state if on empty page (email may have loaded after first render)
     if ($('tab-overview') && $('tab-overview').classList.contains('empty-page')) {
@@ -3008,12 +3049,21 @@ function updateBindEmailButton() {
 
 function updateProBadge() {
   const proBadge = $('proBadge');
+  const proBadgeText = $('proBadgeText');
   const upgradeBadge = $('upgradeBadge');
   if (currentUserIsPro) {
     proBadge.classList.remove('hidden');
     upgradeBadge.classList.add('hidden');
+    if (currentUserPlanCode === 'pro_beta') {
+      proBadge.classList.add('pro-beta-badge');
+      if (proBadgeText) proBadgeText.textContent = 'PRO BETA';
+    } else {
+      proBadge.classList.remove('pro-beta-badge');
+      if (proBadgeText) proBadgeText.textContent = 'PRO';
+    }
   } else {
     proBadge.classList.add('hidden');
+    proBadge.classList.remove('pro-beta-badge');
     upgradeBadge.classList.remove('hidden');
   }
 }
@@ -3105,7 +3155,7 @@ function updateProBadge() {
       showToast('Verification code sent!');
       startSendCodeCountdown();
     } catch (e) {
-      console.error('[BindEmail] Failed to send code:', e);
+      log('[BindEmail] Failed to send code:', e);
       showToast(e.message || 'Failed to send verification code. Please try again.');
       bindSendCodeBtn.disabled = false;
     }
@@ -3141,7 +3191,7 @@ function updateProBadge() {
           modal.classList.remove('hidden');
           log('[BindEmail] mergeModal shown');
         } else {
-          console.error('[BindEmail] mergeModal not found');
+          log('[BindEmail] mergeModal not found');
         }
         closeBindModal();
       } else {
@@ -3151,7 +3201,7 @@ function updateProBadge() {
         closeBindModal();
       }
     } catch (e) {
-      console.error('[BindEmail] Failed to bind:', e);
+      log('[BindEmail] Failed to bind:', e);
       showToast(e.message || 'Failed to bind email. Please try again.');
     } finally {
       bindSubmitBtn.disabled = false;
@@ -3196,7 +3246,7 @@ function updateProBadge() {
             return;
           }
         } catch (e) {
-          console.error('[AI_GEN] Auto-save candidate failed:', e);
+          log('[AI_GEN] Auto-save candidate failed:', e);
           showToast('Failed to save candidate: ' + (e.message || 'Unknown error'));
           btn.disabled = false;
           loading.style.display = 'none';
@@ -3215,9 +3265,9 @@ function updateProBadge() {
       const data = await window.API.candidates.generateAiMessages(currentCandidate.id, request);
       renderAiResult(data);
     } catch (err) {
-      console.error('[AI_GEN] catch err:', err);
+      log('[AI_GEN] catch err:', err);
       const quotaHandled = await handleQuotaError(err);
-      console.error('[AI_GEN] quotaHandled:', quotaHandled);
+      log('[AI_GEN] quotaHandled:', quotaHandled);
       if (quotaHandled) {
         // 额度超限，已弹出升级框
       } else if (err.code === 4001) {
@@ -3225,7 +3275,7 @@ function updateProBadge() {
       } else {
         showToast('Failed to generate: ' + (err.message || 'Unknown error'));
       }
-      console.error('[SCRM_TEMPLATE] AI generation failed:', err);
+      log('[SCRM_TEMPLATE] AI generation failed:', err);
     } finally {
       btn.disabled = false;
       loading.style.display = 'none';
@@ -3274,7 +3324,7 @@ function updateProBadge() {
       try {
         document.execCommand('copy');
       } catch (e) {
-        console.error('Copy failed:', e);
+        log('Copy failed:', e);
       }
       document.body.removeChild(ta);
     }

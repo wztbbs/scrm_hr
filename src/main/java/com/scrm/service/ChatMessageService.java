@@ -110,9 +110,13 @@ public class ChatMessageService {
                 if (isInbound) {
                     newStage = PipelineStageEnum.TALKING.getValue();
                 }
-            } else if (PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)
-                    || PipelineStageEnum.NEW.getValue().equalsIgnoreCase(currentStage)) {
-                // 未认领 / new：Inbound → talking，Outbound → messaged
+            } else if (PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(currentStage)) {
+                // 未认领：作为系统后台暂存池，用户未回复前保持 unclaimed；用户回复(Outbound)后进入 messaged
+                if (!isInbound) {
+                    newStage = PipelineStageEnum.MESSAGED.getValue();
+                }
+            } else if (PipelineStageEnum.NEW.getValue().equalsIgnoreCase(currentStage)) {
+                // new：Inbound → talking，Outbound → messaged
                 newStage = isInbound ? PipelineStageEnum.TALKING.getValue() : PipelineStageEnum.MESSAGED.getValue();
             }
         }

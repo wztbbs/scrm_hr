@@ -51,7 +51,7 @@ public class CandidateController {
             @RequestParam(defaultValue = "desc") String sort_order,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Date sync_since) {
         if (pageSize > 100) pageSize = 100;
-        List<Candidate> items = candidateService.listCandidates(search, temperature, status, source,
+        List<CandidateWithBLOBs> items = candidateService.listCandidates(search, temperature, status, source,
                 sort_by, sort_order, sync_since, page, pageSize);
         long total = candidateService.countCandidates(search, temperature, status, source, sync_since);
         Map<String, Object> data = new HashMap<>();

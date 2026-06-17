@@ -7,7 +7,7 @@ const debug = DEBUG ? console.debug.bind(console) : () => {};
 
 importScripts('db.js');
 
-const DEFAULT_API_BASE = 'https://api.hrscrm.net';
+const DEFAULT_API_BASE = 'http://localhost:8080';
 
 async function getApiBase() {
     try {
@@ -96,13 +96,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 log(`[SCRM] Chat message API status: ${resp.status}`);
                 if (!resp.ok) {
                     const text = await resp.text();
-                    console.warn('[SCRM] Chat message API failed:', resp.status, text);
+                    log('[SCRM] Chat message API failed:', resp.status, text);
                     sendResponse({ success: false, error: `HTTP ${resp.status}: ${text}` });
                     return;
                 }
                 const json = await resp.json();
                 if (json.code !== 0) {
-                    console.warn('[SCRM] Chat message API error:', json.message);
+                    log('[SCRM] Chat message API error:', json.message);
                     sendResponse({ success: false, error: json.message });
                     return;
                 }
@@ -122,7 +122,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 } catch (e) { } // ignore
                 sendResponse({ success: true, data: json.data });
             } catch (err) {
-                console.warn('[SCRM] Failed to save chat message:', err);
+                log('[SCRM] Failed to save chat message:', err);
                 sendResponse({ success: false, error: err.message });
             }
         })();
@@ -153,20 +153,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 log(`[SCRM] Save candidate API status: ${resp.status}`);
                 if (!resp.ok) {
                     const text = await resp.text();
-                    console.warn('[SCRM] Save candidate API failed:', resp.status, text);
+                    log('[SCRM] Save candidate API failed:', resp.status, text);
                     sendResponse({ success: false, error: `HTTP ${resp.status}: ${text}` });
                     return;
                 }
                 const json = await resp.json();
                 if (json.code !== 0) {
-                    console.warn('[SCRM] Save candidate API error:', json.message);
+                    log('[SCRM] Save candidate API error:', json.message);
                     sendResponse({ success: false, error: json.message });
                     return;
                 }
                 log('[SCRM] Candidate saved:', json.data);
                 sendResponse({ success: true, data: json.data });
             } catch (err) {
-                console.warn('[SCRM] Failed to save candidate:', err);
+                log('[SCRM] Failed to save candidate:', err);
                 sendResponse({ success: false, error: err.message });
             }
         })();

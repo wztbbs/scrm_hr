@@ -1,9 +1,11 @@
 // content.js - 直接在 LinkedIn 页面执行
 
 // === 调试开关：提交前设为 false ===
-const DEBUG = false;
+const DEBUG = true;
 const log = DEBUG ? console.log.bind(console) : () => {};
 const debug = DEBUG ? console.debug.bind(console) : () => {};
+
+log('[SCRM_DEBUG] content.js loaded, DEBUG=', DEBUG, 'url=', location.href);
 
 const CACHE_TTL = 30 * 60 * 1000; // 30分钟缓存
 
@@ -66,11 +68,11 @@ const extractLinkedInId = () => {
     const match = url.match(/linkedin\.com\/in\/([^\/\?#]+)/);
     if (match) {
         const slug = decodeURIComponent(match[1]);
-        console.warn('[SCRM] extractLinkedInId: fallback to URL slug:', slug);
+        log('[SCRM] extractLinkedInId: fallback to URL slug:', slug);
         return slug;
     }
 
-    console.error('[SCRM] extractLinkedInId: failed to extract any LinkedIn ID');
+    log('[SCRM] extractLinkedInId: failed to extract any LinkedIn ID');
     return '';
 };
 
@@ -109,19 +111,61 @@ const extractBasicInfo = () => {
                 }
             }
 
-            let pCount = 0;
-            for (const el of relevantElements) {
-                if (el.tagName === 'P') {
-                    pCount++;
-                    const text = el.innerText?.trim() || '';
-                    if (!text) continue;
+            // 取名字下方、第一个 FIGURE（公司/学校 logo）之前的 <p>
+            // LinkedIn 新版：前面几个 <p> 常是 "· 1度" / "· 2度" 等连接度，要跳过这些无意义文本，取第一个真正的 headline
+            const firstFigureIndex = relevantElements.findIndex(el => el.tagName === 'FIGURE');
+            const headlineEndIndex = firstFigureIndex === -1 ? relevantElements.length : firstFigureIndex;
 
-                    if (pCount === 1) {
-                        headline = text;
-                    } else if (pCount === 3) {
-                        country = text;
+            const pTextsBeforeFigure = [];
+            for (let i = 0; i < headlineEndIndex; i++) {
+                const el = relevantElements[i];
+                if (el.tagName === 'P') {
+                    pTextsBeforeFigure.push({ index: pTextsBeforeFigure.length + 1, raw: el.innerText?.trim() || '', cleaned: cleanLinkedInDegree(el.innerText?.trim() || '') });
+                }
+            }
+            log('[SCRM_DEBUG] <p> elements before first figure:', pTextsBeforeFigure);
+
+            // 判断一段文本是否只是连接度/分隔符垃圾信息
+            const isMeaninglessText = (text) => {
+                if (!text) return true;
+                const stripped = text.replace(/[·•\s\-|]+/g, '');
+                return stripped.length === 0;
+            };
+
+            let meaningfulPCount = 0;
+            for (let i = 0; i < headlineEndIndex; i++) {
+                const el = relevantElements[i];
+                if (el.tagName !== 'P') continue;
+                const text = cleanLinkedInDegree(el.innerText?.trim() || '');
+                if (isMeaninglessText(text)) continue;
+
+                meaningfulPCount++;
+                if (meaningfulPCount === 1) {
+                    // headline 通常是 "Product Engineer | Specializing in ..."，取岗位部分
+                    headline = text.split('|')[0].trim();
+                    break;
+                } else if (meaningfulPCount === 3) {
+                    country = text;
+                }
+            }
+
+            // 兜底：如果没有找到有效 headline，尝试第一个非空 <p>
+            if (!headline) {
+                for (let i = 0; i < headlineEndIndex; i++) {
+                    const el = relevantElements[i];
+                    if (el.tagName !== 'P') continue;
+                    const text = cleanLinkedInDegree(el.innerText?.trim() || '');
+                    if (text) {
+                        headline = text.split('|')[0].trim();
+                        break;
                     }
-                } else if (el.tagName === 'FIGURE') {
+                }
+            }
+
+            log('[SCRM_DEBUG] final headline:', headline);
+
+            for (const el of relevantElements) {
+                if (el.tagName === 'FIGURE') {
                     const figIndex = relevantElements.indexOf(el);
                     for (let j = figIndex + 1; j < relevantElements.length; j++) {
                         if (relevantElements[j].tagName === 'P') {
@@ -333,22 +377,33 @@ function cleanLinkedInDegree(text) {
 }
 
 async function fetchAndCacheData(force = false) {
+    // DEBUG 模式下强制重新抓取，方便看日志
+    const effectiveForce = force || DEBUG;
+    log('[SCRM_DEBUG] fetchAndCacheData called, force=', force, 'effectiveForce=', effectiveForce);
     const linkedInId = extractLinkedInId();
+    log('[SCRM_DEBUG] extractLinkedInId result:', linkedInId);
     if (!linkedInId) return null;
 
     const cacheKey = `linkedin_cache_${linkedInId}`;
 
-    if (!force) {
+    if (!effectiveForce) {
         try {
             const cached = await chrome.storage.local.get([cacheKey]);
             if (cached[cacheKey] && (Date.now() - cached[cacheKey].cachedAt < CACHE_TTL)) {
+                log('[SCRM_DEBUG] cache hit, skip scraping');
                 return cached[cacheKey];
             }
+            log('[SCRM_DEBUG] cache miss or expired');
         } catch (e) {}
+    } else {
+        log('[SCRM_DEBUG] DEBUG mode: force scrape');
     }
 
+    log('[SCRM_DEBUG] start scrolling & scraping');
     await scrollUntilNoNewContent();
+    log('[SCRM_DEBUG] calling extractBasicInfo');
     const basic = extractBasicInfo();
+    log('[SCRM_DEBUG] extractBasicInfo result:', basic);
     const lazy = await extractLazyLoadedInfo();
 
     const data = {
@@ -385,11 +440,14 @@ function isCandidateProfilePage() {
 }
 
 async function autoScrollIfCandidatePage() {
+    log('[SCRM_DEBUG] autoScrollIfCandidatePage, isCandidateProfilePage=', isCandidateProfilePage());
     if (!isCandidateProfilePage()) return;
     await new Promise(r => setTimeout(r, 1000));
     try {
         await fetchAndCacheData(false);
-    } catch (err) {}
+    } catch (err) {
+        log('[SCRM_DEBUG] fetchAndCacheData error:', err);
+    }
 }
 autoScrollIfCandidatePage();
 
@@ -451,7 +509,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
                     log('[SCRM] SpeechRecognition not supported');
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not supported' });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not supported' });
                     sendResponse({ success: false, error: 'not supported' });
                     return;
                 }
@@ -472,7 +530,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                     log('[SCRM] Speech recognition result:', transcript);
                     // 实时发送给 popup，边说边显示
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingInterim', text: transcript });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingInterim', text: transcript });
                 };
                 contentRecognition.onerror = (event) => {
                     // aborted 是主动 stop() 导致的正常错误，不算真正的错误
@@ -482,14 +540,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     }
                     hasRealError = true;
                     log('[SCRM] Speech recognition error:', event.error);
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: event.error });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: event.error });
                     contentRecognition = null;
                 };
                 contentRecognition.onend = () => {
                     log('[SCRM] Speech recognition ended, transcript:', transcript, 'hasRealError:', hasRealError);
                     // 真正出错时 onerror 已经发送了消息，这里避免重复发送
                     if (!hasRealError) {
-                        chrome.runtime.sendMessage({ action: 'voiceRecordingResult', text: transcript });
+                        chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingResult', text: transcript });
                     }
                     contentRecognition = null;
                 };
@@ -506,9 +564,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } catch (err) {
                 log('[SCRM] Start recording error:', err);
                 if (err.name === 'NotAllowedError') {
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not-allowed' });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not-allowed' });
                 } else {
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: err.message || err.name || 'unknown' });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: err.message || err.name || 'unknown' });
                 }
                 sendResponse({ success: false, error: err.message });
             }
@@ -714,7 +772,7 @@ function extractChatCandidateInfo(container) {
     // 防御：排除无意义名字（如给自己发消息时标题可能是 "Me"）
     const INVALID_NAMES = ['me', 'you', '', 'null', 'undefined'];
     if (INVALID_NAMES.includes(fullName.toLowerCase())) {
-        console.warn('[SCRM] 聊天窗口标题提取到无效名字，跳过保存:', fullName);
+        log('[SCRM] 聊天窗口标题提取到无效名字，跳过保存:', fullName);
         return null;
     }
 
@@ -788,17 +846,22 @@ function syncScrapers() {
         log('[SCRM] 识别到新聊天窗口，准备保存候选人:', info);
         log('[SCRM] pendingIds 当前状态:', [...pendingIds]);
 
+        if (!chrome.runtime?.id) {
+            pendingIds.delete(info.linkedinId);
+            log('[SCRM] Extension context gone, skip save candidate');
+            return;
+        }
         chrome.runtime.sendMessage(
             { type: 'SAVE_CHAT_CANDIDATE', payload: info },
             (response) => {
                 pendingIds.delete(info.linkedinId);
                 log('[SCRM] SAVE_CHAT_CANDIDATE 回调执行, linkedinId=' + info.linkedinId);
                 if (chrome.runtime.lastError) {
-                    console.error('[SCRM] 保存候选人出错:', chrome.runtime.lastError);
+                    log('[SCRM] 保存候选人出错:', chrome.runtime.lastError);
                     return;
                 }
                 if (!response || !response.success) {
-                    console.error('[SCRM] 保存候选人失败:', response?.error);
+                    log('[SCRM] 保存候选人失败:', response?.error);
                     return;
                 }
                 const candidateId = response.data?.id;
@@ -807,7 +870,7 @@ function syncScrapers() {
                 const scraper = new LinkedInMessageScraper();
                 scraper.candidateId = candidateId ? String(candidateId) : null;
                 scraper.start(container, msg => {
-                    chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
                 });
                 scrapers.set(info.linkedinId, { scraper, container });
                 log('[SCRM] scraper 已启动并注册, linkedinId=' + info.linkedinId + ', scrapers.size=' + scrapers.size);
@@ -888,12 +951,11 @@ let preconnectInterval = null;
 function startPreconnect() {
     if (preconnectInterval) return;
     const doPing = () => {
-        try {
+        if (chrome.runtime?.id) {
             log('[SCRM] Preconnect ping → background');
             chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
-        } catch (e) {
-            // Extension context invalidated (e.g. extension reloaded or updated)
-            console.warn('[SCRM] Preconnect ping failed, extension context invalidated');
+        } else {
+            log('[SCRM] Extension context gone, stop preconnect');
             stopPreconnect();
         }
     };

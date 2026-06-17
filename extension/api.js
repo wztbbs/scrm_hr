@@ -1,7 +1,7 @@
-// api.js - Backend API client for LinkedIn SCRM
+// api.js - Backend API client for TalentFlow SCRM for LinkedIn
 // Maps frontend local data models to backend REST APIs
 
-const DEFAULT_API_BASE = 'https://api.hrscrm.net';
+const DEFAULT_API_BASE = 'http://localhost:8080';
 
 let _apiBase = null;
 
@@ -152,7 +152,7 @@ function candidateToBackend(frontendCandidate) {
     linkedinUrl: frontendCandidate.linkedInUrl || frontendCandidate.linkedinUrl || '',
     email: (frontendCandidate.emails && frontendCandidate.emails[0]) || frontendCandidate.email || '',
     phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || frontendCandidate.phone || '',
-    temperature: (frontendCandidate.temperature ? frontendCandidate.temperature.toLowerCase() : null) || 'cold',
+    temperature: (frontendCandidate.temperature ? frontendCandidate.temperature.toLowerCase() : null) || 'new',
     source: frontendCandidate.source || 'linkedin_profile',
     pipelineStage: frontendCandidate.pipelineStage || 'new',
     pipelinePosition: frontendCandidate.pipelinePosition || 0,
@@ -178,7 +178,7 @@ function candidateFromBackend(backend) {
   } catch (e) { /* ignore */ }
 
   const tempRaw = backend.temperature;
-  const tempConverted = (tempRaw ? tempRaw.charAt(0).toUpperCase() + tempRaw.slice(1).toLowerCase() : null) || 'Cold';
+  const tempConverted = (tempRaw ? tempRaw.charAt(0).toUpperCase() + tempRaw.slice(1).toLowerCase() : null) || 'New';
   log('[SCRM_BASE] api.js candidateFromBackend temperature conversion:', tempRaw, '->', tempConverted);
   const fc = {
     id: backend.id || '',
@@ -199,8 +199,8 @@ function candidateFromBackend(backend) {
     voiceMemo: extra.voiceMemo || '',
     contactMode: extra.contactMode || 'recruiting',
     skills: extra.skills || [],
-    workExperiences: extra.workExperiences || [],
-    educationExperiences: extra.educationExperiences || [],
+    workExperiences: backend.workExperiences || extra.workExperiences || [],
+    educationExperiences: backend.educationExperiences || extra.educationExperiences || [],
     websites: extra.websites || [],
     tags: backend.tags || '[]',
     nextFollowup: backend.nextFollowupAt ? toTimestamp(backend.nextFollowupAt) : null,
