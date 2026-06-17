@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 40px 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 24px;
+            color: #333;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        textarea:focus, input[type="text"]:focus {
+            border-color: #3B82F6;
+        }
+        input[type="text"] {
+            height: 44px;
+        }
+        textarea {
+            min-height: 300px;
+            resize: vertical;
+            background: #fafafa;
+        }
+        textarea[readonly] {
+            background: #f0f0f0;
+            color: #333;
+        }
+        button {
+            padding: 12px 32px;
+            background: #3B82F6;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #2563EB;
+        }
+        button:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 12px;
+            font-size: 13px;
+            color: #666;
+            min-height: 20px;
+        }
+        .status.error {
+            color: #EF4444;
+        }
+        .status.loading {
+            color: #3B82F6;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI 测试</h1>
+
+    <div class="section">
+        <label for="question">问题</label>
+        <input type="text" id="question" placeholder="输入你想问的问题...">
+    </div>
+
+    <div class="section">
+        <button id="submitBtn" onclick="askAi()">发送</button>
+        <div class="status" id="status"></div>
+    </div>
+
+    <div class="section">
+        <label for="answer">模型回答</label>
+        <textarea id="answer" readonly placeholder="模型回答将显示在这里..."></textarea>
+    </div>
+
+    <script>
+        async function askAi() {
+            const questionInput = document.getElementById('question');
+            const answerTextarea = document.getElementById('answer');
+            const submitBtn = document.getElementById('submitBtn');
+            const statusEl = document.getElementById('status');
+
+            const message = questionInput.value.trim();
+            if (!message) {
+                statusEl.textContent = '请输入问题';
+                statusEl.className = 'status error';
+                return;
+            }
+
+            submitBtn.disabled = true;
+            statusEl.textContent = '请求中，请耐心等待...';
+            statusEl.className = 'status loading';
+            answerTextarea.value = '';
+
+            // 设置 5 分钟超时，因为模型比较慢
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 300000);
+
+            try {
+                const response = await fetch('/api/v1/test-ai/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                // 尝试从 OpenAI 格式的响应中提取文本
+                let content = '';
+                if (result.data) {
+                    const data = result.data;
+                    if (data.choices && data.choices.length > 0) {
+                        const choice = data.choices[0];
+                        if (choice.message && choice.message.content) {
+                            content = choice.message.content;
+                        } else if (choice.text) {
+                            content = choice.text;
+                        }
+                    } else if (typeof data === 'string') {
+                        content = data;
+                    } else {
+                        content = JSON.stringify(data, null, 2);
+                    }
+                } else {
+                    content = JSON.stringify(result, null, 2);
+                }
+
+                answerTextarea.value = content;
+                statusEl.textContent = '完成';
+                statusEl.className = 'status';
+
+            } catch (err) {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    statusEl.textContent = '请求超时（超过 5 分钟）';
+                } else {
+                    statusEl.textContent = '请求失败: ' + err.message;
+                }
+                statusEl.className = 'status error';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // 支持回车发送
+        document.getElementById('question').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                askAi();
+            }
+        });
+    </script>
+</body>
+</html>
