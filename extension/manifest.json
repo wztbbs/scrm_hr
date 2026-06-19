@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TalentFlow SCRM for LinkedIn (Test)",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "The SCRM tool for LinkedIn recruiters. Track candidates, manage pipeline, and automate follow-ups directly on LinkedIn profiles.",
   "default_locale": "en",
   "permissions": [
