@@ -1,11 +1,79 @@
 // content.js - 直接在 LinkedIn 页面执行
 
+// === 调试开关：提交前设为 false ===
+const DEBUG = true;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const debug = DEBUG ? console.debug.bind(console) : () => {};
+
+log('[SCRM_DEBUG] content.js loaded, DEBUG=', DEBUG, 'url=', location.href);
+
 const CACHE_TTL = 30 * 60 * 1000; // 30分钟缓存
 
 const extractLinkedInId = () => {
+    // ==================== 第一梯队：从 DOM 提取真实 URN ID ====================
+
+    // 优先级 1：Messaging Compose 链接的 recipient 参数（最干净，无需 decode）
+    const msgLinks = document.querySelectorAll('a[href*="/messaging/compose/"]');
+    for (const link of msgLinks) {
+        const href = link.getAttribute('href') || '';
+        const recipientMatch = href.match(/recipient=([A-Za-z0-9_-]+)/);
+        if (recipientMatch) {
+            const id = recipientMatch[1];
+            if (id.startsWith('ACo')) {
+                log('[SCRM] extractLinkedInId: URN from messaging recipient:', id);
+                return id;
+            }
+        }
+        // 方式 B：从 profileUrn 提取（需要 decodeURIComponent）
+        const urnMatch = href.match(/profileUrn=urn%3Ali%3Afsd_profile%3A([^&]+)/);
+        if (urnMatch) {
+            const id = decodeURIComponent(urnMatch[1]);
+            if (id.startsWith('ACo')) {
+                log('[SCRM] extractLinkedInId: URN from messaging profileUrn:', id);
+                return id;
+            }
+        }
+    }
+
+    // 优先级 2：Connection Of 搜索链接
+    const connLinks = document.querySelectorAll('a[href*="connectionOf="]');
+    for (const link of connLinks) {
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/connectionOf=%5B%22([A-Za-z0-9_-]+)%22%5D/);
+        if (match) {
+            const id = match[1];
+            if (id.startsWith('ACo')) {
+                log('[SCRM] extractLinkedInId: URN from connectionOf:', id);
+                return id;
+            }
+        }
+    }
+
+    // 优先级 3：Component Key（React/Vue 组件 key）
+    const compEls = document.querySelectorAll('[componentkey*="refACo"]');
+    for (const el of compEls) {
+        const key = el.getAttribute('componentkey') || '';
+        const match = key.match(/ref([A-Za-z0-9_-]+)(?:Topcard|Activity|About|Skills|Experience)/);
+        if (match) {
+            const id = match[1];
+            if (id.startsWith('ACo')) {
+                log('[SCRM] extractLinkedInId: URN from componentkey:', id);
+                return id;
+            }
+        }
+    }
+
+    // ==================== 第二梯队：URL Slug 兜底 ====================
     const url = window.location.href;
     const match = url.match(/linkedin\.com\/in\/([^\/\?#]+)/);
-    return match ? match[1] : '';
+    if (match) {
+        const slug = decodeURIComponent(match[1]);
+        log('[SCRM] extractLinkedInId: fallback to URL slug:', slug);
+        return slug;
+    }
+
+    log('[SCRM] extractLinkedInId: failed to extract any LinkedIn ID');
+    return '';
 };
 
 // ========== 工具函数 ==========
@@ -43,19 +111,61 @@ const extractBasicInfo = () => {
                 }
             }
 
-            let pCount = 0;
-            for (const el of relevantElements) {
-                if (el.tagName === 'P') {
-                    pCount++;
-                    const text = el.innerText?.trim() || '';
-                    if (!text) continue;
+            // 取名字下方、第一个 FIGURE（公司/学校 logo）之前的 <p>
+            // LinkedIn 新版：前面几个 <p> 常是 "· 1度" / "· 2度" 等连接度，要跳过这些无意义文本，取第一个真正的 headline
+            const firstFigureIndex = relevantElements.findIndex(el => el.tagName === 'FIGURE');
+            const headlineEndIndex = firstFigureIndex === -1 ? relevantElements.length : firstFigureIndex;
 
-                    if (pCount === 1) {
-                        headline = text;
-                    } else if (pCount === 3) {
-                        country = text;
+            const pTextsBeforeFigure = [];
+            for (let i = 0; i < headlineEndIndex; i++) {
+                const el = relevantElements[i];
+                if (el.tagName === 'P') {
+                    pTextsBeforeFigure.push({ index: pTextsBeforeFigure.length + 1, raw: el.innerText?.trim() || '', cleaned: cleanLinkedInDegree(el.innerText?.trim() || '') });
+                }
+            }
+            log('[SCRM_DEBUG] <p> elements before first figure:', pTextsBeforeFigure);
+
+            // 判断一段文本是否只是连接度/分隔符垃圾信息
+            const isMeaninglessText = (text) => {
+                if (!text) return true;
+                const stripped = text.replace(/[·•\s\-|]+/g, '');
+                return stripped.length === 0;
+            };
+
+            let meaningfulPCount = 0;
+            for (let i = 0; i < headlineEndIndex; i++) {
+                const el = relevantElements[i];
+                if (el.tagName !== 'P') continue;
+                const text = cleanLinkedInDegree(el.innerText?.trim() || '');
+                if (isMeaninglessText(text)) continue;
+
+                meaningfulPCount++;
+                if (meaningfulPCount === 1) {
+                    // headline 通常是 "Product Engineer | Specializing in ..."，取岗位部分
+                    headline = text.split('|')[0].trim();
+                    break;
+                } else if (meaningfulPCount === 3) {
+                    country = text;
+                }
+            }
+
+            // 兜底：如果没有找到有效 headline，尝试第一个非空 <p>
+            if (!headline) {
+                for (let i = 0; i < headlineEndIndex; i++) {
+                    const el = relevantElements[i];
+                    if (el.tagName !== 'P') continue;
+                    const text = cleanLinkedInDegree(el.innerText?.trim() || '');
+                    if (text) {
+                        headline = text.split('|')[0].trim();
+                        break;
                     }
-                } else if (el.tagName === 'FIGURE') {
+                }
+            }
+
+            log('[SCRM_DEBUG] final headline:', headline);
+
+            for (const el of relevantElements) {
+                if (el.tagName === 'FIGURE') {
                     const figIndex = relevantElements.indexOf(el);
                     for (let j = figIndex + 1; j < relevantElements.length; j++) {
                         if (relevantElements[j].tagName === 'P') {
@@ -267,22 +377,33 @@ function cleanLinkedInDegree(text) {
 }
 
 async function fetchAndCacheData(force = false) {
+    // DEBUG 模式下强制重新抓取，方便看日志
+    const effectiveForce = force || DEBUG;
+    log('[SCRM_DEBUG] fetchAndCacheData called, force=', force, 'effectiveForce=', effectiveForce);
     const linkedInId = extractLinkedInId();
+    log('[SCRM_DEBUG] extractLinkedInId result:', linkedInId);
     if (!linkedInId) return null;
 
     const cacheKey = `linkedin_cache_${linkedInId}`;
 
-    if (!force) {
+    if (!effectiveForce) {
         try {
             const cached = await chrome.storage.local.get([cacheKey]);
             if (cached[cacheKey] && (Date.now() - cached[cacheKey].cachedAt < CACHE_TTL)) {
+                log('[SCRM_DEBUG] cache hit, skip scraping');
                 return cached[cacheKey];
             }
+            log('[SCRM_DEBUG] cache miss or expired');
         } catch (e) {}
+    } else {
+        log('[SCRM_DEBUG] DEBUG mode: force scrape');
     }
 
+    log('[SCRM_DEBUG] start scrolling & scraping');
     await scrollUntilNoNewContent();
+    log('[SCRM_DEBUG] calling extractBasicInfo');
     const basic = extractBasicInfo();
+    log('[SCRM_DEBUG] extractBasicInfo result:', basic);
     const lazy = await extractLazyLoadedInfo();
 
     const data = {
@@ -307,6 +428,7 @@ async function fetchAndCacheData(force = false) {
         linkedInId: linkedInId,
         cachedAt: Date.now()
     };
+    log('[SCRM_BASE] content.js scraped data:', JSON.stringify(data));
 
     await chrome.storage.local.set({ [cacheKey]: data });
     return data;
@@ -318,11 +440,14 @@ function isCandidateProfilePage() {
 }
 
 async function autoScrollIfCandidatePage() {
+    log('[SCRM_DEBUG] autoScrollIfCandidatePage, isCandidateProfilePage=', isCandidateProfilePage());
     if (!isCandidateProfilePage()) return;
     await new Promise(r => setTimeout(r, 1000));
     try {
         await fetchAndCacheData(false);
-    } catch (err) {}
+    } catch (err) {
+        log('[SCRM_DEBUG] fetchAndCacheData error:', err);
+    }
 }
 autoScrollIfCandidatePage();
 
@@ -376,15 +501,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         (async () => {
             try {
                 // 显式请求麦克风权限 - 浏览器会弹出原生权限框
-                console.log('[SCRM] Requesting microphone permission...');
+                log('[SCRM] Requesting microphone permission...');
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach(track => track.stop());
-                console.log('[SCRM] Microphone permission granted');
+                log('[SCRM] Microphone permission granted');
 
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
-                    console.log('[SCRM] SpeechRecognition not supported');
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not supported' });
+                    log('[SCRM] SpeechRecognition not supported');
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not supported' });
                     sendResponse({ success: false, error: 'not supported' });
                     return;
                 }
@@ -403,45 +528,45 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     for (let i = 0; i < event.results.length; i++) {
                         transcript += event.results[i][0].transcript;
                     }
-                    console.log('[SCRM] Speech recognition result:', transcript);
+                    log('[SCRM] Speech recognition result:', transcript);
                     // 实时发送给 popup，边说边显示
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingInterim', text: transcript });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingInterim', text: transcript });
                 };
                 contentRecognition.onerror = (event) => {
                     // aborted 是主动 stop() 导致的正常错误，不算真正的错误
                     if (event.error === 'aborted') {
-                        console.log('[SCRM] Speech recognition aborted (normal stop)');
+                        log('[SCRM] Speech recognition aborted (normal stop)');
                         return;
                     }
                     hasRealError = true;
-                    console.log('[SCRM] Speech recognition error:', event.error);
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: event.error });
+                    log('[SCRM] Speech recognition error:', event.error);
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: event.error });
                     contentRecognition = null;
                 };
                 contentRecognition.onend = () => {
-                    console.log('[SCRM] Speech recognition ended, transcript:', transcript, 'hasRealError:', hasRealError);
+                    log('[SCRM] Speech recognition ended, transcript:', transcript, 'hasRealError:', hasRealError);
                     // 真正出错时 onerror 已经发送了消息，这里避免重复发送
                     if (!hasRealError) {
-                        chrome.runtime.sendMessage({ action: 'voiceRecordingResult', text: transcript });
+                        chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingResult', text: transcript });
                     }
                     contentRecognition = null;
                 };
                 contentRecognition.start();
-                console.log('[SCRM] Speech recognition started');
+                log('[SCRM] Speech recognition started');
                 sendResponse({ success: true });
 
                 // 如果 start 之前收到了 stop 请求，立即 stop
                 if (pendingStop) {
                     pendingStop = false;
-                    console.log('[SCRM] Pending stop detected, stopping immediately');
+                    log('[SCRM] Pending stop detected, stopping immediately');
                     try { contentRecognition.stop(); } catch (e) {}
                 }
             } catch (err) {
-                console.log('[SCRM] Start recording error:', err);
+                log('[SCRM] Start recording error:', err);
                 if (err.name === 'NotAllowedError') {
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not-allowed' });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: 'not-allowed' });
                 } else {
-                    chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: err.message || err.name || 'unknown' });
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ action: 'voiceRecordingError', error: err.message || err.name || 'unknown' });
                 }
                 sendResponse({ success: false, error: err.message });
             }
@@ -450,13 +575,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'stopVoiceRecording') {
-        console.log('[SCRM] Stop voice recording requested');
+        log('[SCRM] Stop voice recording requested');
         if (contentRecognition) {
             try { contentRecognition.stop(); } catch (e) {}
         } else {
             // 如果 recognition 还没创建，设置 pending stop，等 start 后立即 stop
             pendingStop = true;
-            console.log('[SCRM] No active recognition, setting pending stop');
+            log('[SCRM] No active recognition, setting pending stop');
         }
         sendResponse({ success: true });
         return false;
@@ -492,141 +617,49 @@ function deepQuerySelectorAll(selector, root = document) {
 // ========== LinkedIn Message Scraper ==========
 
 class LinkedInMessageScraper {
-    // 备选选择器列表（按优先级）
-    static CONTAINER_SELECTORS = [
-        // === 浮动聊天窗口（右下角气泡）===
-        '.msg-overlay-bubble .msg-s-message-list',                   // 浮动窗口内的消息列表
-        '.msg-overlay-bubble .msg-s-message-list-content',
-        '.msg-overlay-bubble',                                       // 浮动聊天窗口整体
-        '.msg-overlay-conversation-bubble .msg-s-message-list',      // 旧版 class
-        '.msg-overlay-conversation-bubble',
-        '[data-test-conversation-bubble] .msg-s-message-list',
-        // === 全屏 messaging 页面 ===
-        '.msg-s-message-list',           // 首选：滚动区域
-        '.msg-s-message-list-content',     // 备选：ul 列表本身
-        '.msg-s-message-list-container',   // 兜底：外层容器
-        '[class*="msg-s-message-list"]',   // 终极兜底：属性包含匹配
-        // === 新版 LinkedIn UI 宽泛兜底 ===
-        '[class*="overlay-bubble"]',     // 匹配 msg-overlay-bubble / msg-overlay-conversation-bubble
-        '[class*="message-list"]'
-    ];
-
-    static MESSAGE_ITEM_SELECTORS = [
-        '.msg-s-event-listitem',           // 单条消息
-        '[data-event-urn]'                 // 终极兜底：有消息 ID 属性的元素
-    ];
-
     static TEXT_SELECTORS = [
-        '.msg-s-event-listitem__body',     // 消息文本
-        '.msg-s-event__content p'          // 备选
+        '.msg-s-event-listitem__body',
+        '.msg-s-event__content p'
     ];
 
     constructor() {
         this.seen = new Set();
         this.observer = null;
-        this.conversationId = null;
+        this.container = null;
         this.onMessage = null;
         this._stopped = false;
+        this.candidateId = null;
     }
 
-    // 找一个存在的容器（支持 Shadow DOM）
-    async findContainer() {
-        console.log('[SCRM] ===== 开始查找消息容器 =====');
-        for (const selector of LinkedInMessageScraper.CONTAINER_SELECTORS) {
-            // 先尝试普通查询
-            const els = document.querySelectorAll(selector);
-            console.log(`[SCRM] 容器选择器 "${selector}" (document) 匹配到 ${els.length} 个元素`);
-            if (els.length > 0) {
-                console.log('[SCRM] 使用容器:', selector);
-                return els[0];
-            }
-            // 再尝试穿透 Shadow DOM
-            const deepEl = deepQuerySelector(selector);
-            if (deepEl) {
-                console.log(`[SCRM] 使用容器 (Shadow DOM): ${selector}`);
-                return deepEl;
-            }
-        }
-        console.warn('[SCRM] 未找到消息容器');
-        return null;
-    }
-
-    extractConversationId() {
-        const url = window.location.href;
-        const match = url.match(/\/messaging\/thread\/([^\/?#]+)/);
-        this.conversationId = match ? match[1] : '';
-    }
-
-    findBubble(el) {
-        // 从消息元素向上找所在的聊天窗口
-        return el.closest('.msg-overlay-conversation-bubble, .msg-overlay-bubble, [class*="msg-overlay-conversation-bubble"]');
-    }
-
-    extractOtherLinkedInId(el) {
-        const bubble = this.findBubble(el);
-        if (bubble) {
-            // 优先从聊天窗口 header 标题中找
-            const headerLink = bubble.querySelector('.msg-overlay-bubble-header__title a[href*="/in/"]');
-            if (headerLink) {
-                const href = headerLink.getAttribute('href') || '';
-                const m = href.match(/\/in\/([^\/?#]+)/);
-                if (m) return m[1];
-            }
-            // 备选：从聊天窗口内的 profile card 找
-            const profileLink = bubble.querySelector('.msg-s-profile-card a[href*="/in/"], .msg-s-profile-card a[href*="/in/ACo"]');
-            if (profileLink) {
-                const href = profileLink.getAttribute('href') || '';
-                const m = href.match(/\/in\/([^\/?#]+)/);
-                if (m) return m[1];
-            }
-        }
-        // 兜底：从消息元素内的发送者链接找
-        const senderLink = el.querySelector('a[href*="/in/"]');
-        if (senderLink) {
-            const href = senderLink.getAttribute('href') || '';
-            const m = href.match(/\/in\/([^\/?#]+)/);
-            if (m) return m[1];
-        }
+    extractOtherName() {
+        if (!this.container) return '';
+        const titleEl = this.container.querySelector('.msg-overlay-bubble-header__title');
+        if (titleEl) return titleEl.innerText?.trim() || '';
         return '';
     }
 
-    extractOtherName(el) {
-        const bubble = this.findBubble(el);
-        if (bubble) {
-            // 优先从聊天窗口 header 标题中找
-            const titleEl = bubble.querySelector('.msg-overlay-bubble-header__title');
-            if (titleEl) {
-                const text = titleEl.innerText?.trim() || '';
-                if (text) return text;
-            }
-            // 备选：从 profile card 找
-            const nameEl = bubble.querySelector('.msg-s-profile-card .artdeco-entity-lockup__title a span, .msg-s-profile-card a[href*="/in/"] span');
-            if (nameEl) {
-                return nameEl.innerText?.trim() || '';
-            }
+    extractLinkedInInfo() {
+        if (!this.container) return { linkedinId: '', linkedinUrl: '' };
+        const titleEl = this.container.querySelector('.msg-overlay-bubble-header__title');
+        if (!titleEl) return { linkedinId: '', linkedinUrl: '' };
+        const link = titleEl.querySelector('a');
+        if (!link) return { linkedinId: '', linkedinUrl: '' };
+        const href = link.getAttribute('href') || '';
+        const match = href.match(/\/in\/([^/]+)\/?/);
+        if (match && match[1]) {
+            const linkedinId = match[1];
+            return { linkedinId, linkedinUrl: `https://www.linkedin.com/in/${linkedinId}` };
         }
-        // 兜底：从消息内的发送者名字找
-        const senderEl = el.querySelector('.msg-s-message-group__name');
-        if (senderEl) {
-            return senderEl.innerText?.trim() || '';
-        }
-        return '';
+        return { linkedinId: '', linkedinUrl: '' };
     }
 
-    start(callback) {
+    start(container, callback) {
+        this.container = container;
         this.onMessage = callback;
         this._stopped = false;
-        console.log('[SCRM] ===== MessageScraper 启动 =====');
-
-        this.findContainer().then(container => {
-            if (this._stopped) return;
-            this.extractConversationId();
-            console.log(`[SCRM] 当前会话 ID: ${this.conversationId || '(未提取到)'}`);
-            this.watch(container);
-            this.scan(container);
-        }).catch(err => {
-            console.error('[SCRM] Failed to find chat container:', err);
-        });
+        log('[SCRM] ===== MessageScraper 启动 =====');
+        this.watch();
+        this.scan();
     }
 
     stop() {
@@ -636,265 +669,307 @@ class LinkedInMessageScraper {
             this.observer = null;
         }
         this.seen.clear();
+        this.container = null;
     }
 
-    watch(container) {
-        // 观察目标：如果容器在 Shadow DOM 内，直接观察容器；否则观察 body 捕获 Shadow Host 变化
-        const observeTarget = container || document.body;
+    watch() {
+        if (!this.container || this._stopped) return;
         this.observer = new MutationObserver(muts => {
             if (this._stopped) return;
             let newMsgCount = 0;
             const hasNew = muts.some(m => [...m.addedNodes].some(n => {
                 if (n.nodeType !== 1) return false;
-                // 检查新增节点是否是消息项，或包含消息项
                 const isMsg = n.matches?.('.msg-s-event-listitem') ||
-                    n.querySelector?.('.msg-s-event-listitem') ||
-                    n.classList?.contains('msg-s-message-list__event'); // li 的 class
+                    n.querySelector?.('.msg-s-event-listitem');
                 if (isMsg) newMsgCount++;
                 return isMsg;
             }));
 
             if (hasNew) {
-                console.log(`[SCRM] MutationObserver 检测到 ${newMsgCount} 个新增消息相关节点，触发扫描`);
-                setTimeout(() => this.scan(container), 100);
+                log(`[SCRM] MutationObserver 检测到 ${newMsgCount} 个新增消息相关节点，触发扫描`);
+                setTimeout(() => this.scan(), 100);
             }
         });
 
-        this.observer.observe(observeTarget, { childList: true, subtree: true });
-        console.log('[SCRM] MutationObserver 已开始监听变化');
+        this.observer.observe(this.container, { childList: true, subtree: true });
+        log('[SCRM] MutationObserver 已开始监听变化');
     }
 
-    scan(container) {
-        if (this._stopped) return;
-        console.log('[SCRM] ===== 开始扫描消息 =====');
+    scan() {
+        if (this._stopped || !this.container) return;
+        log('[SCRM] ===== 开始扫描消息 =====');
 
-        let items = [];
-
-        // 第1步：尝试在容器内搜索（普通 DOM）
-        if (container) {
-            items = [...container.querySelectorAll('.msg-s-event-listitem')];
-            console.log(`[SCRM] 容器内 ".msg-s-event-listitem" 匹配到 ${items.length} 个元素`);
-        }
-
-        // 第2步：如果容器内没找到，穿透 Shadow DOM 搜索
-        if (items.length === 0) {
-            items = deepQuerySelectorAll('.msg-s-event-listitem');
-            console.log(`[SCRM] Shadow DOM 穿透 ".msg-s-event-listitem" 匹配到 ${items.length} 个元素`);
-        }
-
-        // 第3步：备选 data-event-urn
-        if (items.length === 0) {
-            items = deepQuerySelectorAll('[data-event-urn]');
-            console.log(`[SCRM] Shadow DOM 穿透 "[data-event-urn]" 匹配到 ${items.length} 个元素`);
-        }
+        const items = [...this.container.querySelectorAll('.msg-s-event-listitem')];
+        log(`[SCRM] 容器内 ".msg-s-event-listitem" 匹配到 ${items.length} 个元素`);
 
         let parsedCount = 0;
         items.forEach(el => {
             const wasParsed = this.parse(el);
             if (wasParsed) parsedCount++;
         });
-        console.log(`[SCRM] 扫描完成: 共 ${items.length} 条消息元素，新解析 ${parsedCount} 条，已缓存 ${this.seen.size} 条`);
+        log(`[SCRM] 扫描完成: 共 ${items.length} 条消息元素，新解析 ${parsedCount} 条，已缓存 ${this.seen.size} 条`);
     }
 
     parse(el) {
-        const id = el.getAttribute('data-event-urn') || this.hash(el);
-        if (this.seen.has(id)) return false;
+        const id = el.getAttribute('data-event-urn');
+        if (!id || this.seen.has(id)) return false;
 
-        console.log('[SCRM] --- 解析消息元素 ---');
-
-        // 打印元素 class，用于调试 isInbound 判断
-        const classList = Array.from(el.classList || []).join(', ');
-        console.log(`[SCRM] 元素 classList: [${classList}]`);
-        const hasOtherClass = el.classList.contains('msg-s-event-listitem--other');
-        console.log(`[SCRM] 是否包含 'msg-s-event-listitem--other': ${hasOtherClass}`);
-
-        // 多备选找文本
         let text = '';
-        let matchedSelector = '';
         for (const sel of LinkedInMessageScraper.TEXT_SELECTORS) {
             const found = el.querySelector(sel);
-            console.log(`[SCRM] 文本选择器 "${sel}" 匹配: ${found ? '✓' : '✗'}`);
-            if (found) { text = found.innerText?.trim(); matchedSelector = sel; break; }
+            if (found) { text = found.innerText?.trim(); break; }
         }
-
-        if (!text) {
-            console.log('[SCRM] 未提取到文本，跳过此元素');
-            return false;
-        }
-        console.log(`[SCRM] 文本提取成功 (选择器: ${matchedSelector}): "${text.slice(0, 80)}${text.length > 80 ? '...' : ''}"`);
+        if (!text) return false;
 
         const isInbound = el.classList.contains('msg-s-event-listitem--other');
-        const sender = el.querySelector('.msg-s-message-group__name')?.innerText?.trim() || (isInbound ? 'Them' : 'Me');
-        const time = this.parseTime(el);
-        const otherLinkedInId = this.extractOtherLinkedInId(el);
-        const otherName = this.extractOtherName(el);
+        const sender = isInbound
+            ? (el.querySelector('.msg-s-message-group__name')?.innerText?.trim() || 'Them')
+            : 'Me';
+        const otherName = this.extractOtherName();
+        const { linkedinId, linkedinUrl } = this.extractLinkedInInfo();
 
-        const linkedInUrl = otherLinkedInId ? `https://www.linkedin.com/in/${otherLinkedInId}/` : '';
         const msg = {
-            id,
-            conversationId: this.conversationId,
+            messageId: id,
             text,
             isInbound,
-            sender,
-            timestamp: time,
-            linkedInId: otherLinkedInId,
-            linkedInUrl,
-            senderName: otherName || sender
+            senderName: sender,
+            otherName,
+            candidateId: this.candidateId,
+            linkedinId,
+            linkedinUrl,
+            timestamp: new Date().toISOString(),
+            conversationId: ''
         };
 
-        // 在 console 中打印出来，方便调试
         const directionLabel = isInbound ? '收到' : '发送';
         const targetName = otherName || sender;
-        console.log(`[SCRM] ${directionLabel}消息 | ${targetName}: "${text}"`);
-        console.log('[SCRM] Chat message full data:', msg);
+        log(`[SCRM] ${directionLabel}消息 | ${targetName}: "${text}"`);
+        log('[SCRM] Chat message full data:', msg);
 
         this.onMessage?.(msg);
-
         this.seen.add(id);
         return true;
     }
-
-    parseTime(el) {
-        const timeEl = el.querySelector('.msg-s-message-group__timestamp');
-        const timeText = timeEl?.innerText || '';
-
-        // 找最近的日期分组标题（如 "4月17日"、"今天"）
-        let dateText = '';
-        let prev = el.previousElementSibling;
-        while (prev) {
-            const heading = prev.querySelector?.('.msg-s-message-list__time-heading');
-            if (heading) { dateText = heading.innerText.trim(); break; }
-            prev = prev.previousElementSibling;
-        }
-
-        return this.toISO(dateText, timeText);
-    }
-
-    toISO(dateStr, timeStr) {
-        const now = new Date();
-        let y = now.getFullYear(), m, d;
-
-        if (dateStr.includes('今天')) {
-            m = now.getMonth() + 1; d = now.getDate();
-        } else if (dateStr.includes('昨天')) {
-            const yest = new Date(now - 864e5);
-            m = yest.getMonth() + 1; d = yest.getDate();
-        } else {
-            const match = dateStr.match(/(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日/);
-            if (match) { y = match[1] || y; m = +match[2]; d = +match[3]; }
-        }
-
-        const [hh, mm] = (timeStr || '00:00').split(':').map(Number);
-        return new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).toISOString();
-    }
-
-    hash(el) {
-        const text = el.innerText?.trim()?.slice(0, 50);
-        let h = 0;
-        for (const c of (text + '')) h = ((h << 5) - h) + c.charCodeAt(0);
-        return 'msg_' + Math.abs(h).toString(36);
-    }
 }
 
-// ===== 使用 =====
-let messageScraper = null;
+// ===== 多窗口 Scraper 管理 =====
+// 用 linkedinId 做 key，避免 DOM 引用因重渲染而失效导致重复识别
+const scrapers = new Map(); // linkedinId -> { scraper, container }
+const pendingIds = new Set(); // 正在保存候选人的 linkedinId
+
+function extractChatCandidateInfo(container) {
+    if (!container) return null;
+    const titleEl = container.querySelector('.msg-overlay-bubble-header__title');
+    if (!titleEl) return null;
+    const fullName = titleEl.innerText?.trim() || '';
+    const link = titleEl.querySelector('a');
+    if (!link) return null;
+    const href = link.getAttribute('href') || '';
+    const match = href.match(/\/in\/([^/]+)\/?/);
+    if (!match || !match[1]) return null;
+    const linkedinId = match[1];
+
+    // 防御：排除无意义名字（如给自己发消息时标题可能是 "Me"）
+    const INVALID_NAMES = ['me', 'you', '', 'null', 'undefined'];
+    if (INVALID_NAMES.includes(fullName.toLowerCase())) {
+        log('[SCRM] 聊天窗口标题提取到无效名字，跳过保存:', fullName);
+        return null;
+    }
+
+    return {
+        linkedinId,
+        linkedinUrl: `https://www.linkedin.com/in/${linkedinId}`,
+        fullName,
+        source: 'linkedin_chat'
+    };
+}
 
 function isLinkedInPage() {
     const url = window.location.href;
     return url.includes('linkedin.com');
 }
 
-function hasChatContainer() {
-    console.log('[SCRM] ===== 检查聊天容器 =====');
-    // 先尝试找容器（普通 DOM）
-    for (const selector of LinkedInMessageScraper.CONTAINER_SELECTORS) {
-        const els = document.querySelectorAll(selector);
-        if (els.length > 0) {
-            console.log(`[SCRM] 聊天容器命中: "${selector}" → ${els.length} 个元素`);
-            return true;
+function findAllChatContainers() {
+    const containers = [];
+    const seen = new Set();
+
+    for (const selector of ['.msg-overlay-conversation-bubble', '.msg-overlay-bubble']) {
+        document.querySelectorAll(selector).forEach(el => {
+            if (seen.has(el)) return;
+            if (el.querySelector('.msg-s-message-list') || el.querySelector('.msg-s-event-listitem')) {
+                seen.add(el);
+                containers.push(el);
+            }
+        });
+        deepQuerySelectorAll(selector).forEach(el => {
+            if (seen.has(el)) return;
+            if (el.querySelector('.msg-s-message-list') || el.querySelector('.msg-s-event-listitem')) {
+                seen.add(el);
+                containers.push(el);
+            }
+        });
+    }
+
+    deepQuerySelectorAll('[class*="overlay-bubble"]').forEach(el => {
+        if (seen.has(el)) return;
+        if (el.querySelector('.msg-s-message-list') || el.querySelector('.msg-s-event-listitem')) {
+            seen.add(el);
+            containers.push(el);
         }
-    }
-    // 再尝试穿透 Shadow DOM 找容器
-    for (const selector of LinkedInMessageScraper.CONTAINER_SELECTORS) {
-        const el = deepQuerySelector(selector);
-        if (el) {
-            console.log(`[SCRM] 聊天容器命中 (Shadow DOM): "${selector}"`);
-            return true;
+    });
+
+    return containers;
+}
+
+function syncScrapers() {
+    if (!isLinkedInPage()) return;
+    const containers = findAllChatContainers();
+    log(`[SCRM] syncScrapers: 发现 ${containers.length} 个聊天窗口`);
+
+    // 收集当前所有窗口的 linkedinId
+    const activeIds = new Set();
+
+    containers.forEach(container => {
+        const info = extractChatCandidateInfo(container);
+        if (!info || !info.linkedinId) {
+            log('[SCRM] 该窗口无法提取候选人标识，跳过');
+            return;
         }
-    }
-    // 备选：直接找消息元素（穿透 Shadow DOM）
-    const msgItems = deepQuerySelectorAll('.msg-s-event-listitem, [data-event-urn]');
-    if (msgItems.length > 0) {
-        console.log(`[SCRM] 未找到容器，但 Shadow DOM 内检测到 ${msgItems.length} 条消息元素，视为聊天已打开`);
-        return true;
-    }
-    console.log('[SCRM] 所有聊天容器选择器均未命中（含 Shadow DOM），也未找到消息元素');
-    return false;
+        activeIds.add(info.linkedinId);
+
+        if (scrapers.has(info.linkedinId) || pendingIds.has(info.linkedinId)) {
+            log(`[SCRM] linkedinId=${info.linkedinId} 已在监听或保存中，跳过`);
+            return;
+        }
+
+        pendingIds.add(info.linkedinId);
+        log('[SCRM] 识别到新聊天窗口，准备保存候选人:', info);
+        log('[SCRM] pendingIds 当前状态:', [...pendingIds]);
+
+        if (!chrome.runtime?.id) {
+            pendingIds.delete(info.linkedinId);
+            log('[SCRM] Extension context gone, skip save candidate');
+            return;
+        }
+        chrome.runtime.sendMessage(
+            { type: 'SAVE_CHAT_CANDIDATE', payload: info },
+            (response) => {
+                pendingIds.delete(info.linkedinId);
+                log('[SCRM] SAVE_CHAT_CANDIDATE 回调执行, linkedinId=' + info.linkedinId);
+                if (chrome.runtime.lastError) {
+                    log('[SCRM] 保存候选人出错:', chrome.runtime.lastError);
+                    return;
+                }
+                if (!response || !response.success) {
+                    log('[SCRM] 保存候选人失败:', response?.error);
+                    return;
+                }
+                const candidateId = response.data?.id;
+                log('[SCRM] 候选人已保存/确认，candidateId=' + candidateId);
+
+                const scraper = new LinkedInMessageScraper();
+                scraper.candidateId = candidateId ? String(candidateId) : null;
+                scraper.start(container, msg => {
+                    chrome.runtime?.id && chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
+                });
+                scrapers.set(info.linkedinId, { scraper, container });
+                log('[SCRM] scraper 已启动并注册, linkedinId=' + info.linkedinId + ', scrapers.size=' + scrapers.size);
+            }
+        );
+    });
+
+    // 清理已关闭窗口的 scraper
+    scrapers.forEach((entry, linkedinId) => {
+        if (!activeIds.has(linkedinId)) {
+            log('[SCRM] 窗口已关闭，停止 scraper, linkedinId=' + linkedinId);
+            entry.scraper.stop();
+            scrapers.delete(linkedinId);
+        }
+    });
+}
+
+function stopAllScrapers() {
+    scrapers.forEach(entry => entry.scraper.stop());
+    scrapers.clear();
+}
+
+function stopMessageScraper() {
+    stopAllScrapers();
 }
 
 function startMessageScraper() {
     if (!isLinkedInPage()) {
-        console.log('[SCRM] 当前不是 LinkedIn 页面，跳过启动');
+        log('[SCRM] 当前不是 LinkedIn 页面，跳过启动');
         return;
     }
-    if (!hasChatContainer()) {
-        console.log('[SCRM] LinkedIn 页面未检测到聊天容器，暂不启动 scraper（等待用户打开聊天窗口）');
-        return;
-    }
-    if (messageScraper && !messageScraper._stopped) {
-        console.log('[SCRM] scraper 已在运行中，跳过重复启动');
-        return;
-    }
-    console.log('[SCRM] startMessageScraper() 被调用');
-    if (messageScraper) {
-        console.log('[SCRM] 停止旧的 scraper');
-        messageScraper.stop();
-    }
-    messageScraper = new LinkedInMessageScraper();
-    messageScraper.start(msg => {
-        chrome.runtime.sendMessage({ type: 'CHAT_MESSAGE', payload: msg });
-    });
-}
-
-function stopMessageScraper() {
-    if (messageScraper) {
-        console.log('[SCRM] stopMessageScraper() 被调用');
-        messageScraper.stop();
-        messageScraper = null;
-    }
+    syncScrapers();
 }
 
 // 页面加载时检查
 if (isLinkedInPage()) {
-    console.log('[SCRM] 当前是 LinkedIn 页面，1.5秒后检查聊天容器');
+    log('[SCRM] 当前是 LinkedIn 页面，1.5秒后检查聊天容器');
     setTimeout(startMessageScraper, 1500);
 } else {
-    console.log('[SCRM] 当前不是 LinkedIn 页面，不启动消息监听');
+    log('[SCRM] 当前不是 LinkedIn 页面，不启动消息监听');
 }
 
-// 监听 DOM 变化：当聊天窗口出现/消失时自动启停 scraper
+// 监听 DOM 变化 + 轮询：当聊天窗口出现/消失时自动启停 scraper
 let chatObserver = null;
+let chatPollInterval = null;
 function startChatPresenceObserver() {
     if (chatObserver) return;
-    let hadContainer = hasChatContainer();
-    console.log(`[SCRM] 启动聊天容器监听，当前状态: ${hadContainer ? '有容器' : '无容器'}`);
+    log('[SCRM] 启动聊天容器监听（轮询 + DOM 辅助）');
+
+    chatPollInterval = setInterval(() => {
+        syncScrapers();
+    }, 3000);
 
     chatObserver = new MutationObserver(() => {
-        const hasNow = hasChatContainer();
-        if (hasNow && !hadContainer) {
-            console.log('[SCRM] 检测到聊天容器出现，启动 scraper');
-            setTimeout(startMessageScraper, 500);
-        } else if (!hasNow && hadContainer) {
-            console.log('[SCRM] 检测到聊天容器消失，停止 scraper');
-            stopMessageScraper();
-        }
-        hadContainer = hasNow;
+        syncScrapers();
     });
     chatObserver.observe(document.body, { childList: true, subtree: true });
 }
 
+function stopChatPresenceObserver() {
+    if (chatPollInterval) {
+        clearInterval(chatPollInterval);
+        chatPollInterval = null;
+    }
+    if (chatObserver) {
+        chatObserver.disconnect();
+        chatObserver = null;
+    }
+}
+
 if (isLinkedInPage()) {
     startChatPresenceObserver();
+}
+
+// ========== Preconnect: keep background SW alive & connection warm ==========
+let preconnectInterval = null;
+
+function startPreconnect() {
+    if (preconnectInterval) return;
+    const doPing = () => {
+        if (chrome.runtime?.id) {
+            log('[SCRM] Preconnect ping → background');
+            chrome.runtime.sendMessage({ type: 'PRECONNECT' }).catch(() => {});
+        } else {
+            log('[SCRM] Extension context gone, stop preconnect');
+            stopPreconnect();
+        }
+    };
+    doPing(); // 立即执行一次
+    preconnectInterval = setInterval(doPing, 25000);
+    log('[SCRM] Preconnect started, interval=25s');
+}
+
+function stopPreconnect() {
+    if (preconnectInterval) {
+        clearInterval(preconnectInterval);
+        preconnectInterval = null;
+        log('[SCRM] Preconnect stopped');
+    }
 }
 
 // SPA 路由变化监听（离开 LinkedIn 时停止一切）
@@ -902,21 +977,33 @@ let lastUrl = location.href;
 new MutationObserver(() => {
     const url = location.href;
     if (url !== lastUrl) {
-        console.log(`[SCRM] 路由变化: ${lastUrl} → ${url}`);
+        log(`[SCRM] 路由变化: ${lastUrl} → ${url}`);
         lastUrl = url;
         if (!isLinkedInPage()) {
-            console.log('[SCRM] 已离开 LinkedIn，停止所有监听');
+            log('[SCRM] 已离开 LinkedIn，停止所有监听');
             stopMessageScraper();
-            if (chatObserver) {
-                chatObserver.disconnect();
-                chatObserver = null;
-            }
+            stopPreconnect();
+            stopChatPresenceObserver();
         } else if (!chatObserver) {
-            console.log('[SCRM] 进入 LinkedIn，重新启动容器监听');
+            log('[SCRM] 进入 LinkedIn，重新启动容器监听');
             startChatPresenceObserver();
             setTimeout(startMessageScraper, 1500);
+        }
+        // 在 LinkedIn 任何页面保持预连接
+        if (isLinkedInPage()) {
+            startPreconnect();
+        } else {
+            stopPreconnect();
         }
     }
 }).observe(document, { subtree: true, childList: true });
 
-window.addEventListener('beforeunload', () => stopMessageScraper());
+// 初始检查
+if (isLinkedInPage()) {
+    startPreconnect();
+}
+
+window.addEventListener('beforeunload', () => {
+    stopMessageScraper();
+    stopPreconnect();
+});

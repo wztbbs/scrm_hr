@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TalentFlow SCRM - Interactive Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tf: {
+              primary: '#6366f1',
+              dark: '#4f46e5',
+              light: '#818cf8',
+              bg: '#f8fafc',
+              sidebar: '#ffffff',
+              border: '#e2e8f0',
+              success: '#22c55e',
+              warning: '#f59e0b',
+              danger: '#ef4444',
+              hot: '#ef4444',
+              warm: '#f59e0b',
+              cold: '#94a3b8'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .sidebar-tab { transition: all 0.2s; }
+    .sidebar-tab.active { color: #6366f1; border-bottom: 2px solid #6366f1; }
+    .sidebar-tab:hover:not(.active) { color: #4f46e5; background: #f1f5f9; }
+    .pipeline-col { min-width: 200px; max-width: 240px; }
+    .candidate-card { transition: all 0.2s; cursor: pointer; }
+    .candidate-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity:0; transform: translateY(5px);} to { opacity:1; transform: translateY(0);} }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .mock-linkedin { background: #f3f2ef; }
+    .stage-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .stage-sourced { background: #dbeafe; color: #1e40af; }
+    .stage-contacted { background: #fef3c7; color: #92400e; }
+    .stage-replied { background: #d1fae5; color: #065f46; }
+    .stage-screened { background: #e0e7ff; color: #3730a3; }
+    .stage-submitted { background: #fce7f3; color: #9d174d; }
+    .stage-interview { background: #c7d2fe; color: #312e81; }
+    .nav-item:hover { background: #f1f5f9; }
+    .nav-item.active { background: #eef2ff; color: #6366f1; border-right: 3px solid #6366f1; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+
+<!-- ==================== SIDEBAR MODE (LinkedIn + Plugin) ==================== -->
+<div id="sidebar-mode" class="h-full flex">
+  <!-- Mock LinkedIn Profile Page -->
+  <div class="flex-1 mock-linkedin overflow-y-auto">
+    <!-- LinkedIn Header -->
+    <div class="bg-white border-b sticky top-0 z-10">
+      <div class="max-w-4xl mx-auto flex items-center gap-6 px-4 h-14">
+        <div class="text-blue-700 text-2xl"><i class="fab fa-linkedin"></i></div>
+        <div class="bg-slate-100 rounded-md flex-1 max-w-xs px-3 py-1.5 text-sm text-slate-500">
+          <i class="fas fa-search mr-2"></i>Search
+        </div>
+        <div class="flex gap-6 text-slate-500 text-sm">
+          <span class="text-slate-800 font-medium"><i class="fas fa-home block text-center text-lg"></i>Home</span>
+          <span><i class="fas fa-user-friends block text-center text-lg"></i>My Network</span>
+          <span><i class="fas fa-briefcase block text-center text-lg"></i>Jobs</span>
+          <span><i class="fas fa-comment-dots block text-center text-lg"></i>Messaging</span>
+          <span><i class="fas fa-bell block text-center text-lg"></i>Notifications</span>
+        </div>
+      </div>
+    </div>
+    <!-- Profile Content -->
+    <div class="max-w-4xl mx-auto px-4 py-6">
+      <!-- Cover + Profile -->
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-4">
+        <div class="h-48 bg-gradient-to-r from-slate-300 to-slate-400"></div>
+        <div class="px-6 pb-6 relative">
+          <div class="absolute -top-16 left-6">
+            <div class="w-32 h-32 rounded-full border-4 border-white bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-3xl font-bold shadow-md">
+              RW
+            </div>
+          </div>
+          <div class="ml-40">
+            <h1 class="text-2xl font-bold text-slate-900">Richard Wang <span class="text-slate-400 text-lg">- 1st</span></h1>
+            <p class="text-slate-600 mt-1">Senior Software Engineer at Meituan</p>
+            <p class="text-slate-500 text-sm mt-1">Beijing, China - <a href="#" class="text-blue-600 font-medium">Contact info</a></p>
+            <div class="flex gap-2 mt-4">
+              <button class="bg-blue-600 text-white px-5 py-1.5 rounded-full font-medium text-sm hover:bg-blue-700"><i class="fas fa-paper-plane mr-1"></i>Message</button>
+              <button class="border border-slate-300 text-slate-600 px-4 py-1.5 rounded-full font-medium text-sm hover:bg-slate-50"><i class="fas fa-ellipsis-h"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- About -->
+      <div class="bg-white rounded-xl shadow-sm p-6 mb-4">
+        <h2 class="text-lg font-bold text-slate-900 mb-3">About</h2>
+        <p class="text-slate-700 text-sm leading-relaxed">After graduating, I have been working in software development in China. I have worked at Alibaba, Meituan and Alipay, among others. Passionate about building scalable systems and mentoring junior engineers.</p>
+        <div class="mt-4 flex items-center gap-2">
+          <i class="fas fa-gem text-slate-400"></i>
+          <span class="text-sm font-medium text-slate-700">Top skills: Java - Software Infrastructure - Software Design - Web Engineering</span>
+          <i class="fas fa-arrow-right text-slate-400 text-xs"></i>
+        </div>
+      </div>
+      <!-- Open to Work -->
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <p class="text-blue-800 font-medium">Open to work</p>
+        <p class="text-blue-600 text-sm">Software Engineer roles</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TALENTFLOW SIDEBAR ==================== -->
+  <div class="w-[380px] bg-tf-sidebar shadow-xl flex flex-col h-full border-l">
+    <!-- Header -->
+    <div class="px-4 py-3 border-b flex items-center justify-between bg-gradient-to-r from-indigo-600 to-indigo-500">
+      <div class="flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white text-xs font-bold">TF</div>
+        <span class="text-white font-bold text-sm">TalentFlow</span>
+        <span class="text-[10px] bg-white/20 text-white px-1.5 py-0.5 rounded-full">PRO BETA</span>
+      </div>
+      <div class="flex gap-1.5">
+        <button onclick="switchToDashboard()" class="text-white/80 hover:text-white text-xs bg-white/10 px-2 py-1 rounded hover:bg-white/20 transition">
+          <i class="fas fa-external-link-alt mr-1"></i>Dashboard
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex border-b bg-white">
+      <button onclick="showTab('action')" id="tab-action" class="sidebar-tab active flex-1 py-2.5 text-xs font-semibold text-center"><i class="fas fa-bolt mr-1"></i>Action</button>
+      <button onclick="showTab('profile')" id="tab-profile" class="sidebar-tab flex-1 py-2.5 text-xs font-semibold text-center text-slate-500"><i class="fas fa-user mr-1"></i>Profile</button>
+      <button onclick="showTab('engage')" id="tab-engage" class="sidebar-tab flex-1 py-2.5 text-xs font-semibold text-center text-slate-500"><i class="fas fa-comment mr-1"></i>Engage</button>
+      <button onclick="showTab('notes')" id="tab-notes" class="sidebar-tab flex-1 py-2.5 text-xs font-semibold text-center text-slate-500"><i class="fas fa-sticky-note mr-1"></i>Notes</button>
+    </div>
+
+    <!-- Tab Content Area -->
+    <div class="flex-1 overflow-y-auto p-3" id="tab-content">
+
+      <!-- ===== ACTION TAB ===== -->
+      <div id="content-action" class="fade-in">
+        <!-- Today Section -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Today</span>
+              <span class="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold" id="today-count">3</span>
+            </div>
+            <button onclick="switchToDashboard()" class="text-[10px] text-indigo-500 hover:text-indigo-700 font-medium">View All <i class="fas fa-arrow-right"></i></button>
+          </div>
+          <!-- Task Cards -->
+          <div class="space-y-2" id="today-tasks">
+            <div class="bg-white border border-red-200 rounded-lg p-3 shadow-sm">
+              <div class="flex items-start gap-2">
+                <div class="w-2 h-2 rounded-full bg-red-500 mt-1.5 pulse-dot"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold text-slate-800">Follow-up Day 2 - Richard Wang</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">Connection accepted, no reply yet</p>
+                  <div class="flex gap-1.5 mt-2">
+                    <button onclick="completeTask(this)" class="bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] px-2.5 py-1 rounded font-medium transition"><i class="fas fa-check mr-1"></i>Mark Done</button>
+                    <button class="border border-slate-200 text-slate-500 text-[10px] px-2 py-1 rounded hover:bg-slate-50 transition">Snooze</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-white border border-amber-200 rounded-lg p-3 shadow-sm">
+              <div class="flex items-start gap-2">
+                <div class="w-2 h-2 rounded-full bg-amber-500 mt-1.5"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold text-slate-800">Phone Screen - Sarah Chen</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">Scheduled for 3:00 PM today</p>
+                  <div class="flex gap-1.5 mt-2">
+                    <button onclick="completeTask(this)" class="bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] px-2.5 py-1 rounded font-medium transition"><i class="fas fa-check mr-1"></i>Mark Done</button>
+                    <button onclick="showTab('notes')" class="border border-slate-200 text-slate-500 text-[10px] px-2 py-1 rounded hover:bg-slate-50 transition"><i class="fas fa-microphone mr-1"></i>Log Call</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-white border border-green-200 rounded-lg p-3 shadow-sm">
+              <div class="flex items-start gap-2">
+                <div class="w-2 h-2 rounded-full bg-green-500 mt-1.5"></div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold text-slate-800">Send interview prep - Mike Liu</p>
+                  <p class="text-[10px] text-slate-500 mt-0.5">Client interview tomorrow</p>
+                  <div class="flex gap-1.5 mt-2">
+                    <button onclick="completeTask(this); generateInterviewPrep();" class="bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] px-2.5 py-1 rounded font-medium transition"><i class="fas fa-magic mr-1"></i>Generate Prep</button>
+                    <button class="border border-slate-200 text-slate-500 text-[10px] px-2 py-1 rounded hover:bg-slate-50 transition">Snooze</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- This Week -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">This Week (5)</span>
+            <button onclick="switchToDashboard()" class="text-[10px] text-slate-400 hover:text-indigo-500"><i class="fas fa-arrow-right"></i></button>
+          </div>
+          <div class="bg-slate-50 rounded-lg p-2 space-y-1">
+            <div class="flex items-center gap-2 p-1.5 rounded hover:bg-white transition cursor-pointer">
+              <div class="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
+              <span class="text-[11px] text-slate-600 flex-1">Follow-up Day 3 - Emily Zhang</span>
+              <span class="text-[10px] text-slate-400">Wed</span>
+            </div>
+            <div class="flex items-center gap-2 p-1.5 rounded hover:bg-white transition cursor-pointer">
+              <div class="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
+              <span class="text-[11px] text-slate-600 flex-1">Submit candidate - David Park</span>
+              <span class="text-[10px] text-slate-400">Thu</span>
+            </div>
+            <div class="flex items-center gap-2 p-1.5 rounded hover:bg-white transition cursor-pointer">
+              <div class="w-1.5 h-1.5 rounded-full bg-indigo-400"></div>
+              <span class="text-[11px] text-slate-600 flex-1">Initial outreach - 3 new leads</span>
+              <span class="text-[10px] text-slate-400">Fri</span>
+            </div>
+          </div>
+        </div>
+        <!-- Quick Actions -->
+        <div class="bg-indigo-50 rounded-lg p-3">
+          <p class="text-[10px] font-semibold text-indigo-600 uppercase tracking-wider mb-2">Quick Actions</p>
+          <div class="flex gap-2">
+            <button class="flex-1 bg-white border border-indigo-200 text-indigo-600 text-[11px] py-2 rounded font-medium hover:bg-indigo-100 transition"><i class="fas fa-plus mr-1"></i>Add Candidate</button>
+            <button class="flex-1 bg-white border border-indigo-200 text-indigo-600 text-[11px] py-2 rounded font-medium hover:bg-indigo-100 transition"><i class="fas fa-pen mr-1"></i>Quick Note</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PROFILE TAB ===== -->
+      <div id="content-profile" class="hidden fade-in">
+        <!-- Candidate Header -->
+        <div class="flex items-center gap-3 mb-3 pb-3 border-b">
+          <div class="w-11 h-11 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center text-white text-sm font-bold">RW</div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-bold text-slate-800">Richard Wang</p>
+            <p class="text-[11px] text-slate-500">Senior Engineer @ Meituan</p>
+            <p class="text-[10px] text-slate-400"><i class="fas fa-map-marker-alt mr-1"></i>Beijing - Open to work</p>
+          </div>
+        </div>
+        <!-- Temperature -->
+        <div class="mb-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="text-[11px] text-slate-500">Temperature</span>
+              <span class="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 rounded font-medium"><i class="fas fa-sparkles mr-0.5"></i>AI</span>
+            </div>
+            <select class="text-xs border rounded px-2 py-0.5 bg-white text-amber-500 font-semibold" onchange="this.className='text-xs border rounded px-2 py-0.5 bg-white font-semibold '+this.value">
+              <option value="text-amber-500" selected>Warm</option>
+              <option value="text-red-500">Hot</option>
+              <option value="text-slate-400">Cold</option>
+            </select>
+          </div>
+        </div>
+        <!-- Pipeline Status -->
+        <div class="bg-white border rounded-lg p-3 mb-3">
+          <p class="text-[10px] font-semibold text-slate-400 uppercase mb-2">Pipeline Status</p>
+          <div class="flex items-center gap-2">
+            <select class="text-xs border rounded px-2 py-1 bg-white font-medium" id="status-select" onchange="updateStageContext()">
+              <option value="sourced">Sourced</option>
+              <option value="contacted" selected>Contacted</option>
+              <option value="replied">Replied</option>
+              <option value="screened">Screened</option>
+              <option value="submitted">Submitted</option>
+              <option value="interview">Interview</option>
+            </select>
+            <i class="fas fa-arrow-right text-slate-300 text-xs"></i>
+            <button onclick="advanceStage()" class="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium bg-indigo-50 px-2 py-1 rounded">Move to Replied</button>
+          </div>
+          <p class="text-[10px] text-slate-400 mt-2">Active: <span class="font-medium text-indigo-600">Standard Outreach Sequence</span></p>
+          <p class="text-[10px] text-slate-400">Step 2/4: Follow-up A (due tomorrow)</p>
+        </div>
+        <!-- Key Memory -->
+        <div class="bg-amber-50 border border-amber-100 rounded-lg p-3 mb-3">
+          <div class="flex items-center gap-1.5 mb-2">
+            <i class="fas fa-lightbulb text-amber-500 text-xs"></i>
+            <span class="text-[10px] font-bold text-amber-700 uppercase">Key Memory</span>
+            <span class="text-[9px] bg-amber-200 text-amber-700 px-1 rounded">AI</span>
+          </div>
+          <ul class="space-y-1" id="key-memory-list">
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><i class="fas fa-check text-amber-400 mt-0.5 text-[8px]"></i>8 yrs backend, ex-Meituan & early-stage SaaS</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><i class="fas fa-check text-amber-400 mt-0.5 text-[8px]"></i>Salary range: $120-140k, remote-first preferred</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><i class="fas fa-check text-amber-400 mt-0.5 text-[8px]"></i>Interested in ML infra roles at Series B+ startups</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><i class="fas fa-check text-amber-400 mt-0.5 text-[8px]"></i>Available: January 2026</li>
+          </ul>
+          <div class="flex gap-2 mt-2">
+            <button class="text-[10px] text-amber-600 hover:text-amber-800"><i class="fas fa-pen mr-1"></i>Edit</button>
+            <button class="text-[10px] text-amber-600 hover:text-amber-800"><i class="fas fa-sync mr-1"></i>Refresh AI</button>
+          </div>
+        </div>
+        <!-- Tags -->
+        <div class="flex flex-wrap gap-1.5">
+          <span class="bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded-full font-medium">Backend</span>
+          <span class="bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded-full font-medium">Senior</span>
+          <span class="bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded-full font-medium">Remote</span>
+          <button class="border border-dashed border-slate-300 text-slate-400 text-[10px] px-2 py-0.5 rounded-full hover:border-indigo-400 hover:text-indigo-500"><i class="fas fa-plus mr-1"></i>Add</button>
+        </div>
+        <!-- Context-Aware Suggestion -->
+        <div id="stage-context" class="mt-3 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+          <p class="text-[10px] text-indigo-600 font-semibold"><i class="fas fa-magic mr-1"></i>AI Suggestion</p>
+          <p class="text-[11px] text-indigo-700 mt-1">Candidate hasn't replied in 2 days. Try a value-based follow-up sharing ML engineer salary trends.</p>
+          <button onclick="showTab('engage')" class="mt-2 bg-indigo-500 text-white text-[10px] px-3 py-1.5 rounded font-medium hover:bg-indigo-600"><i class="fas fa-paper-plane mr-1"></i>Generate Follow-up</button>
+        </div>
+      </div>
+
+      <!-- ===== ENGAGE TAB ===== -->
+      <div id="content-engage" class="hidden fade-in">
+        <!-- Message Generator -->
+        <div class="bg-white border rounded-lg p-3 mb-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex gap-2">
+              <select class="text-[11px] border rounded px-2 py-1 bg-white" id="msg-type">
+                <option value="followup" selected>Follow-up</option>
+                <option value="outreach">Outreach</option>
+                <option value="breakup">Break-up</option>
+              </select>
+              <select class="text-[11px] border rounded px-2 py-1 bg-white" id="msg-tone">
+                <option value="value" selected>Value-based</option>
+                <option value="timeline">Timeline</option>
+                <option value="social">Social Proof</option>
+              </select>
+            </div>
+          </div>
+          <textarea id="ai-message" class="w-full h-28 text-xs border rounded-lg p-2.5 resize-none bg-slate-50 leading-relaxed" placeholder="Click Generate to create a message...">Hi Richard,
+
+I noticed Meituan's recent expansion into on-demand grocery delivery in Tier-2 cities stands out. The scale of real-time logistics coordination there feels like a rare testbed for infrastructure engineers.
+
+I came across some interesting data on ML engineer compensation trends in Beijing -- thought you might find it relevant given your background.
+
+Would love to share more about the ML infra role we're building.
+
+Best,
+[Your name]</textarea>
+          <div class="flex gap-2 mt-2">
+            <button onclick="regenerateMessage()" class="flex-1 border border-slate-200 text-slate-600 text-[11px] py-1.5 rounded hover:bg-slate-50"><i class="fas fa-sync mr-1"></i>Regenerate</button>
+            <button onclick="copyMessage()" class="flex-1 bg-indigo-500 text-white text-[11px] py-1.5 rounded hover:bg-indigo-600"><i class="fas fa-copy mr-1"></i>Copy</button>
+          </div>
+        </div>
+        <!-- Conversation History -->
+        <div class="bg-white border rounded-lg p-3 mb-3">
+          <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Conversation</p>
+          <div class="space-y-2">
+            <div class="flex items-start gap-2">
+              <div class="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] text-indigo-600">You</div>
+              <div>
+                <p class="text-[11px] text-slate-600">Connection request sent</p>
+                <p class="text-[9px] text-slate-400">3 days ago</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <div class="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[8px] text-green-600"><i class="fas fa-check"></i></div>
+              <div>
+                <p class="text-[11px] text-slate-600">Connection accepted</p>
+                <p class="text-[9px] text-slate-400">2 days ago</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <div class="w-5 h-5 rounded-full bg-indigo-100 flex items-center justify-center text-[8px] text-indigo-600">You</div>
+              <div>
+                <p class="text-[11px] text-slate-600">Initial outreach message</p>
+                <p class="text-[9px] text-slate-400">2 days ago</p>
+              </div>
+            </div>
+            <div class="flex items-start gap-2">
+              <div class="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[8px] text-amber-600"><i class="fas fa-eye"></i></div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2">
+                  <p class="text-[11px] text-amber-700 font-medium">Seen, no reply</p>
+                  <span class="bg-amber-100 text-amber-700 text-[9px] px-1 rounded">48h</span>
+                </div>
+                <p class="text-[9px] text-slate-400">1 day ago</p>
+                <button onclick="showTab('action')" class="mt-1 text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-0.5 rounded">Create Follow-up Task</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Follow-up Schedule -->
+        <div class="bg-white border rounded-lg p-3">
+          <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Follow-up Schedule</p>
+          <div class="space-y-1.5">
+            <div class="flex items-center gap-2 text-[11px]">
+              <i class="fas fa-check-circle text-green-500 text-xs"></i>
+              <span class="text-slate-500 line-through flex-1">Connection Request</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <div class="w-3.5 h-3.5 rounded-full border-2 border-indigo-500 flex items-center justify-center"><div class="w-1.5 h-1.5 rounded-full bg-indigo-500"></div></div>
+              <span class="text-indigo-700 font-medium flex-1">Follow-up A (Value)</span>
+              <span class="text-[9px] text-indigo-500">tomorrow</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <div class="w-3.5 h-3.5 rounded-full border-2 border-slate-300"></div>
+              <span class="text-slate-400 flex-1">Follow-up B (Timeline)</span>
+              <span class="text-[9px] text-slate-400">+3 days</span>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <div class="w-3.5 h-3.5 rounded-full border-2 border-slate-300"></div>
+              <span class="text-slate-400 flex-1">Break-up Message</span>
+              <span class="text-[9px] text-slate-400">+7 days</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== NOTES TAB ===== -->
+      <div id="content-notes" class="hidden fade-in">
+        <!-- Voice Memo -->
+        <div class="bg-white border rounded-lg p-3 mb-3">
+          <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Voice Memo</p>
+          <button id="record-btn" onclick="toggleRecord()" class="w-full py-6 border-2 border-dashed border-slate-300 rounded-lg text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition flex flex-col items-center gap-1">
+            <i class="fas fa-microphone text-xl"></i>
+            <span class="text-[11px]">Hold to Record</span>
+          </button>
+          <div id="recording-ui" class="hidden text-center py-4">
+            <div class="flex items-center justify-center gap-2 mb-2">
+              <div class="w-3 h-3 rounded-full bg-red-500 pulse-dot"></div>
+              <span class="text-sm font-bold text-slate-700">Recording...</span>
+              <span id="record-timer" class="text-sm text-slate-500 font-mono">00:32</span>
+            </div>
+            <button onclick="stopRecord()" class="bg-red-500 text-white text-xs px-4 py-1.5 rounded-full hover:bg-red-600"><i class="fas fa-stop mr-1"></i>Stop & Transcribe</button>
+          </div>
+        </div>
+        <!-- AI Summary -->
+        <div id="ai-summary" class="hidden bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-lg p-3 mb-3">
+          <div class="flex items-center gap-1.5 mb-2">
+            <i class="fas fa-sparkles text-emerald-500 text-xs"></i>
+            <span class="text-[10px] font-bold text-emerald-700 uppercase">AI Summary</span>
+            <span class="text-[9px] text-emerald-500">from call</span>
+          </div>
+          <ul class="space-y-1.5" id="summary-list">
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><span class="text-emerald-400 mt-1">-</span> Interested but needs to check with spouse about relocation</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><span class="text-emerald-400 mt-1">-</span> Current TC: $165k, wants $185k+</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><span class="text-emerald-400 mt-1">-</span> Available for onsite Jan 8-10</li>
+            <li class="text-[11px] text-slate-700 flex items-start gap-1.5"><span class="text-emerald-400 mt-1">-</span> Concerned about team size (wants 5+ engineers)</li>
+          </ul>
+          <div class="flex gap-2 mt-2">
+            <button class="text-[10px] text-emerald-600 hover:text-emerald-800"><i class="fas fa-pen mr-1"></i>Edit</button>
+            <button onclick="saveToKeyMemory()" class="text-[10px] text-emerald-600 hover:text-emerald-800"><i class="fas fa-save mr-1"></i>Save to Key Memory</button>
+          </div>
+          <div class="mt-2 p-2 bg-white/50 rounded text-[10px] text-slate-500 cursor-pointer hover:bg-white/80 transition" onclick="this.classList.toggle('line-clamp-3')">
+            <i class="fas fa-file-alt mr-1"></i><span class="font-medium">Full transcript:</span> Hey, thanks for reaching out. Yeah, I've been thinking about new opportunities actually. My current role is fine but I want something more challenging in the ML space. I've been at Meituan for 3 years now and I think it's time. About compensation, I'm currently at around $165k total and I'd be looking for at least $185k to make a move worthwhile. My wife and I are considering relocation so I need to discuss that with her first. For team culture, I really care about working with a solid engineering team, at least 5 people on the ML side. I could potentially start fresh from January 8th onwards...
+          </div>
+        </div>
+        <!-- Manual Note -->
+        <div class="bg-white border rounded-lg p-3">
+          <p class="text-[10px] font-bold text-slate-400 uppercase mb-2">Quick Note</p>
+          <textarea class="w-full h-20 text-xs border rounded-lg p-2 resize-none" placeholder="Type a quick note about this candidate..."></textarea>
+          <button class="mt-2 bg-indigo-500 text-white text-[11px] px-3 py-1.5 rounded hover:bg-indigo-600"><i class="fas fa-save mr-1"></i>Save Note</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="border-t px-3 py-2 flex items-center justify-between bg-white">
+      <button class="text-[10px] text-slate-400 hover:text-indigo-500"><i class="fas fa-comment-alt mr-1"></i>Feedback</button>
+      <button class="text-[10px] text-slate-400 hover:text-indigo-500"><i class="fas fa-cog mr-1"></i>Settings</button>
+      <button class="text-[10px] text-slate-400 hover:text-indigo-500"><i class="fas fa-envelope mr-1"></i>Bind Email</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== DASHBOARD MODE (Full Page) ==================== -->
+<div id="dashboard-mode" class="hidden h-full flex">
+  <!-- Left Nav -->
+  <div class="w-52 bg-white border-r flex flex-col">
+    <div class="p-4 flex items-center gap-2">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">TF</div>
+      <div>
+        <p class="text-sm font-bold text-slate-800">TalentFlow</p>
+        <p class="text-[9px] text-slate-400">SCRM for Recruiters</p>
+      </div>
+    </div>
+    <nav class="flex-1 px-2 space-y-0.5">
+      <button onclick="showDashPage('dash-home')" id="nav-dash-home" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition">
+        <i class="fas fa-chart-pie w-5 text-center"></i>Dashboard
+      </button>
+      <button onclick="showDashPage('dash-candidates')" id="nav-dash-candidates" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition">
+        <i class="fas fa-users w-5 text-center"></i>Candidates
+      </button>
+      <button onclick="showDashPage('dash-pipeline')" id="nav-dash-pipeline" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition">
+        <i class="fas fa-columns w-5 text-center"></i>Pipeline
+      </button>
+      <button onclick="showDashPage('dash-actions')" id="nav-dash-actions" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition">
+        <i class="fas fa-bolt w-5 text-center"></i>Actions
+      </button>
+      <button onclick="showDashPage('dash-sequences')" id="nav-dash-sequences" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition">
+        <i class="fas fa-envelope-open-text w-5 text-center"></i>Sequences
+      </button>
+      <button onclick="showDashPage('dash-analytics')" id="nav-dash-analytics" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 transition">
+        <i class="fas fa-chart-line w-5 text-center"></i>Analytics
+      </button>
+    </nav>
+    <div class="p-3 border-t">
+      <button onclick="switchToSidebar()" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-500 hover:bg-slate-50 transition">
+        <i class="fab fa-chrome text-lg"></i>Back to LinkedIn
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="flex-1 overflow-y-auto bg-slate-50">
+
+    <!-- DASHBOARD HOME -->
+    <div id="dash-home" class="fade-in p-6 max-w-6xl">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-bold text-slate-900">Dashboard</h1>
+        <select class="text-xs border rounded-lg px-3 py-1.5 bg-white">
+          <option>This Week</option>
+          <option>This Month</option>
+          <option>Last 30 Days</option>
+        </select>
+      </div>
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-4 shadow-sm border">
+          <p class="text-[11px] text-slate-500 font-medium">Outreaches</p>
+          <p class="text-2xl font-bold text-slate-800 mt-1">47</p>
+          <p class="text-[11px] text-green-500 font-medium mt-1"><i class="fas fa-arrow-up mr-0.5"></i>23% vs last week</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border">
+          <p class="text-[11px] text-slate-500 font-medium">Replies</p>
+          <p class="text-2xl font-bold text-slate-800 mt-1">12</p>
+          <p class="text-[11px] text-green-500 font-medium mt-1"><i class="fas fa-arrow-up mr-0.5"></i>8% vs last week</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border">
+          <p class="text-[11px] text-slate-500 font-medium">Meetings</p>
+          <p class="text-2xl font-bold text-slate-800 mt-1">5</p>
+          <p class="text-[11px] text-green-500 font-medium mt-1"><i class="fas fa-arrow-up mr-0.5"></i>+2 vs last week</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border">
+          <p class="text-[11px] text-slate-500 font-medium">Reply Rate</p>
+          <p class="text-2xl font-bold text-slate-800 mt-1">26%</p>
+          <p class="text-[11px] text-green-500 font-medium mt-1"><i class="fas fa-arrow-up mr-0.5"></i>3% vs last week</p>
+        </div>
+      </div>
+      <!-- Conversion Funnel -->
+      <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="bg-white rounded-xl p-5 shadow-sm border">
+          <p class="text-sm font-bold text-slate-700 mb-4">Conversion Funnel</p>
+          <div class="space-y-2.5">
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Sourced</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:100%"><span class="text-[10px] text-white font-bold">120</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Contacted</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:74%"><span class="text-[10px] text-white font-bold">89</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Replied</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:28%"><span class="text-[10px] text-white font-bold">34</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Screened</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:18%"><span class="text-[10px] text-white font-bold">21</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Submitted</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:13%"><span class="text-[10px] text-white font-bold">15</span></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-[11px] text-slate-500 w-20 text-right">Interview</span>
+              <div class="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full flex items-center justify-end pr-2" style="width:7%"><span class="text-[10px] text-white font-bold">8</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Today's Actions -->
+        <div class="bg-white rounded-xl p-5 shadow-sm border">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-sm font-bold text-slate-700">Today's Actions</p>
+            <span class="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full font-bold">5 tasks</span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 p-2 bg-red-50 rounded-lg border border-red-100">
+              <div class="w-2 h-2 rounded-full bg-red-500"></div>
+              <span class="text-[11px] text-slate-700 flex-1">Follow-up Day 2 - Richard Wang</span>
+              <button onclick="switchToSidebar(); showTab('action');" class="text-[10px] text-indigo-500 font-medium">Go</button>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100">
+              <div class="w-2 h-2 rounded-full bg-amber-500"></div>
+              <span class="text-[11px] text-slate-700 flex-1">Phone Screen - Sarah Chen</span>
+              <button onclick="switchToSidebar(); showTab('action');" class="text-[10px] text-indigo-500 font-medium">Go</button>
+            </div>
+            <div class="flex items-center gap-2 p-2 bg-green-50 rounded-lg border border-green-100">
+              <div class="w-2 h-2 rounded-full bg-green-500"></div>
+              <span class="text-[11px] text-slate-700 flex-1">Send prep package - Mike Liu</span>
+              <button onclick="switchToSidebar(); showTab('action');" class="text-[10px] text-indigo-500 font-medium">Go</button>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50">
+              <div class="w-2 h-2 rounded-full bg-indigo-400"></div>
+              <span class="text-[11px] text-slate-600 flex-1">Follow-up Day 3 - Emily Zhang</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50">
+              <div class="w-2 h-2 rounded-full bg-indigo-400"></div>
+              <span class="text-[11px] text-slate-600 flex-1">Submit candidate - David Park</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Pipeline Health -->
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-xl p-5 shadow-sm border">
+          <p class="text-sm font-bold text-slate-700 mb-3">Pipeline Health</p>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <i class="fas fa-exclamation-triangle text-amber-500"></i>
+              <div class="flex-1">
+                <p class="text-[11px] text-slate-700 font-medium">23 candidates in "Contacted" with no reply for 7+ days</p>
+                <button onclick="showDashPage('dash-pipeline')" class="text-[10px] text-indigo-500 font-medium mt-1">Start Re-engagement</button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-100">
+              <i class="fas fa-fire text-red-500"></i>
+              <div class="flex-1">
+                <p class="text-[11px] text-slate-700 font-medium">3 Hot candidates need follow-up today</p>
+                <button onclick="showDashPage('dash-actions')" class="text-[10px] text-indigo-500 font-medium mt-1">View Tasks</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-5 border border-indigo-100">
+          <p class="text-sm font-bold text-indigo-800 mb-2"><i class="fas fa-trophy mr-1"></i>This Week's Wins</p>
+          <div class="space-y-2">
+            <p class="text-[11px] text-indigo-700"><i class="fas fa-check text-green-500 mr-1"></i>47 outreaches sent - your best week!</p>
+            <p class="text-[11px] text-indigo-700"><i class="fas fa-check text-green-500 mr-1"></i>5-day action streak - keep it going!</p>
+            <p class="text-[11px] text-indigo-700"><i class="fas fa-check text-green-500 mr-1"></i>Reply rate up 7% vs last month</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CANDIDATES PAGE -->
+    <div id="dash-candidates" class="hidden fade-in p-6 max-w-6xl">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-bold text-slate-900">Candidates</h1>
+        <div class="flex gap-2">
+          <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            <input type="text" placeholder="Search candidates..." class="pl-8 pr-4 py-2 text-xs border rounded-lg w-64">
+          </div>
+          <button class="bg-indigo-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-600"><i class="fas fa-plus mr-1"></i>Add</button>
+        </div>
+      </div>
+      <!-- Filters -->
+      <div class="flex gap-2 mb-4">
+        <select class="text-xs border rounded-lg px-3 py-1.5 bg-white"><option>All Roles</option><option>Software Engineer</option><option>Product Manager</option></select>
+        <select class="text-xs border rounded-lg px-3 py-1.5 bg-white"><option>All Status</option><option>Sourced</option><option>Contacted</option><option>Replied</option><option>Screened</option><option>Submitted</option><option>Interview</option></select>
+        <select class="text-xs border rounded-lg px-3 py-1.5 bg-white"><option>All Temps</option><option>Hot</option><option>Warm</option><option>Cold</option></select>
+      </div>
+      <!-- Table -->
+      <div class="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <table class="w-full">
+          <thead class="bg-slate-50 border-b">
+            <tr>
+              <th class="p-3"><input type="checkbox" class="rounded"></th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Name</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Role</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Company</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Status</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Temp</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Next Action</th>
+              <th class="text-left text-[11px] font-semibold text-slate-500 uppercase p-3">Last Activity</th>
+            </tr>
+          </thead>
+          <tbody class="text-[11px]">
+            <tr class="border-b hover:bg-slate-50 cursor-pointer" onclick="switchToSidebar(); showTab('profile');">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-blue-500 flex items-center justify-center text-white text-[10px] font-bold">RW</div><span class="font-medium text-slate-800">Richard Wang</span></div></td>
+              <td class="p-3 text-slate-600">Sr. Engineer</td>
+              <td class="p-3 text-slate-600">Meituan</td>
+              <td class="p-3"><span class="stage-badge stage-contacted">Contacted</span></td>
+              <td class="p-3"><span class="text-amber-500"><i class="fas fa-thermometer-half mr-1"></i>Warm</span></td>
+              <td class="p-3 text-red-500 font-medium">Follow-up Day 2</td>
+              <td class="p-3 text-slate-400">2 days ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">SC</div><span class="font-medium text-slate-800">Sarah Chen</span></div></td>
+              <td class="p-3 text-slate-600">Product Manager</td>
+              <td class="p-3 text-slate-600">Stripe</td>
+              <td class="p-3"><span class="stage-badge stage-replied">Replied</span></td>
+              <td class="p-3"><span class="text-red-500"><i class="fas fa-thermometer-full mr-1"></i>Hot</span></td>
+              <td class="p-3 text-amber-600 font-medium">Phone Screen</td>
+              <td class="p-3 text-slate-400">1 day ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center text-white text-[10px] font-bold">ML</div><span class="font-medium text-slate-800">Mike Liu</span></div></td>
+              <td class="p-3 text-slate-600">Data Scientist</td>
+              <td class="p-3 text-slate-600">Airbnb</td>
+              <td class="p-3"><span class="stage-badge stage-screened">Screened</span></td>
+              <td class="p-3"><span class="text-red-500"><i class="fas fa-thermometer-full mr-1"></i>Hot</span></td>
+              <td class="p-3 text-indigo-600 font-medium">Interview Prep</td>
+              <td class="p-3 text-slate-400">3 days ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">EZ</div><span class="font-medium text-slate-800">Emily Zhang</span></div></td>
+              <td class="p-3 text-slate-600">UX Designer</td>
+              <td class="p-3 text-slate-600">Figma</td>
+              <td class="p-3"><span class="stage-badge stage-contacted">Contacted</span></td>
+              <td class="p-3"><span class="text-amber-500"><i class="fas fa-thermometer-half mr-1"></i>Warm</span></td>
+              <td class="p-3 text-slate-400">Follow-up Day 3</td>
+              <td class="p-3 text-slate-400">5 days ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">DP</div><span class="font-medium text-slate-800">David Park</span></div></td>
+              <td class="p-3 text-slate-600">DevOps Lead</td>
+              <td class="p-3 text-slate-600">Netflix</td>
+              <td class="p-3"><span class="stage-badge stage-submitted">Submitted</span></td>
+              <td class="p-3"><span class="text-red-500"><i class="fas fa-thermometer-full mr-1"></i>Hot</span></td>
+              <td class="p-3 text-indigo-600 font-medium">Client Feedback</td>
+              <td class="p-3 text-slate-400">1 week ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-rose-500 flex items-center justify-center text-white text-[10px] font-bold">LJ</div><span class="font-medium text-slate-800">Lisa Johnson</span></div></td>
+              <td class="p-3 text-slate-600">Engineering Mgr</td>
+              <td class="p-3 text-slate-600">Spotify</td>
+              <td class="p-3"><span class="stage-badge stage-sourced">Sourced</span></td>
+              <td class="p-3"><span class="text-slate-400"><i class="fas fa-thermometer-empty mr-1"></i>Cold</span></td>
+              <td class="p-3 text-slate-400">Initial Outreach</td>
+              <td class="p-3 text-slate-400">2 weeks ago</td>
+            </tr>
+            <tr class="border-b hover:bg-slate-50">
+              <td class="p-3"><input type="checkbox" class="rounded"></td>
+              <td class="p-3"><div class="flex items-center gap-2"><div class="w-7 h-7 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">JK</div><span class="font-medium text-slate-800">James Kim</span></div></td>
+              <td class="p-3 text-slate-600">ML Engineer</td>
+              <td class="p-3 text-slate-600">OpenAI</td>
+              <td class="p-3"><span class="stage-badge stage-interview">Interview</span></td>
+              <td class="p-3"><span class="text-red-500"><i class="fas fa-thermometer-full mr-1"></i>Hot</span></td>
+              <td class="p-3 text-green-600 font-medium">Final Round</td>
+              <td class="p-3 text-slate-400">Yesterday</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="p-3 border-t flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" class="rounded mr-1">
+            <select class="text-[11px] border rounded px-2 py-1 bg-white"><option>Bulk: Change Status</option></select>
+            <select class="text-[11px] border rounded px-2 py-1 bg-white"><option>Assign Sequence</option></select>
+          </div>
+          <div class="flex gap-1 text-[11px]">
+            <button class="px-2 py-1 border rounded hover:bg-slate-50"><i class="fas fa-chevron-left"></i></button>
+            <button class="px-2 py-1 bg-indigo-500 text-white rounded">1</button>
+            <button class="px-2 py-1 border rounded hover:bg-slate-50">2</button>
+            <button class="px-2 py-1 border rounded hover:bg-slate-50">3</button>
+            <button class="px-2 py-1 border rounded hover:bg-slate-50"><i class="fas fa-chevron-right"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIPELINE BOARD PAGE -->
+    <div id="dash-pipeline" class="hidden fade-in p-6 h-full">
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="text-xl font-bold text-slate-900">Pipeline Board</h1>
+        <div class="flex gap-2">
+          <select class="text-xs border rounded-lg px-3 py-1.5 bg-white"><option>All Roles</option></select>
+          <button class="bg-indigo-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-600"><i class="fas fa-plus mr-1"></i>Add Stage</button>
+        </div>
+      </div>
+      <!-- Kanban Board -->
+      <div class="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-140px)]">
+        <!-- Sourced -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">SOURCED</span>
+            <span class="bg-slate-200 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full font-bold">23</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-rose-500 flex items-center justify-center text-white text-[10px] font-bold">LJ</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Lisa Johnson</p><p class="text-[10px] text-slate-500">Eng Mgr @ Spotify</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-slate-400 text-[10px]"><i class="fas fa-thermometer-empty mr-1"></i>Cold</span><span class="text-slate-400 text-[9px]">2w ago</span></div>
+            </div>
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-slate-400 flex items-center justify-center text-white text-[10px] font-bold">TW</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Tom Wilson</p><p class="text-[10px] text-slate-500">Backend @ Uber</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-slate-400 text-[10px]"><i class="fas fa-thermometer-empty mr-1"></i>Cold</span><span class="text-slate-400 text-[9px]">3d ago</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Contacted -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">CONTACTED</span>
+            <span class="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">18</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border border-amber-200">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-[10px] font-bold">RW</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Richard Wang</p><p class="text-[10px] text-slate-500">Sr Eng @ Meituan</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-amber-500 text-[10px]"><i class="fas fa-thermometer-half mr-1"></i>Warm</span><span class="text-red-500 text-[9px] font-medium">5d <i class="fas fa-clock ml-0.5"></i></span></div>
+              <div class="mt-2 p-1.5 bg-amber-50 rounded text-[9px] text-amber-700"><i class="fas fa-reply mr-1"></i>Seen, no reply</div>
+            </div>
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-bold">EZ</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Emily Zhang</p><p class="text-[10px] text-slate-500">UX @ Figma</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-amber-500 text-[10px]"><i class="fas fa-thermometer-half mr-1"></i>Warm</span><span class="text-slate-400 text-[9px]">1w ago</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Replied -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">REPLIED</span>
+            <span class="bg-green-100 text-green-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">12</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border border-green-200">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-[10px] font-bold">SC</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Sarah Chen</p><p class="text-[10px] text-slate-500">PM @ Stripe</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-red-500 text-[10px]"><i class="fas fa-thermometer-full mr-1"></i>Hot</span><span class="text-green-500 text-[9px]">1d ago</span></div>
+              <div class="mt-2 p-1.5 bg-green-50 rounded text-[9px] text-green-700"><i class="fas fa-check mr-1"></i>"Interested, let's talk"</div>
+            </div>
+          </div>
+        </div>
+        <!-- Screened -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">SCREENED</span>
+            <span class="bg-indigo-100 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">8</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border border-indigo-200">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white text-[10px] font-bold">ML</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">Mike Liu</p><p class="text-[10px] text-slate-500">Data Sci @ Airbnb</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-red-500 text-[10px]"><i class="fas fa-thermometer-full mr-1"></i>Hot</span><span class="text-slate-400 text-[9px]">3d ago</span></div>
+              <div class="mt-2 flex gap-1">
+                <span class="bg-indigo-50 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded">$165k TC</span>
+                <span class="bg-indigo-50 text-indigo-600 text-[8px] px-1.5 py-0.5 rounded">Remote OK</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Submitted -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">SUBMITTED</span>
+            <span class="bg-pink-100 text-pink-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">5</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center text-white text-[10px] font-bold">DP</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">David Park</p><p class="text-[10px] text-slate-500">DevOps @ Netflix</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-red-500 text-[10px]"><i class="fas fa-thermometer-full mr-1"></i>Hot</span><span class="text-slate-400 text-[9px]">1w ago</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Interview -->
+        <div class="pipeline-col flex-shrink-0">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs font-bold text-slate-600">INTERVIEW</span>
+            <span class="bg-blue-100 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full font-bold">3</span>
+          </div>
+          <div class="space-y-2">
+            <div class="candidate-card bg-white rounded-lg p-3 shadow-sm border border-blue-200">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-[10px] font-bold">JK</div>
+                <div><p class="text-[11px] font-semibold text-slate-800">James Kim</p><p class="text-[10px] text-slate-500">ML @ OpenAI</p></div>
+              </div>
+              <div class="flex items-center justify-between"><span class="text-red-500 text-[10px]"><i class="fas fa-thermometer-full mr-1"></i>Hot</span><span class="text-green-500 text-[9px]">Yesterday</span></div>
+              <div class="mt-2 p-1.5 bg-blue-50 rounded text-[9px] text-blue-700"><i class="fas fa-calendar mr-1"></i>Final round: Mon 3pm</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIONS PAGE -->
+    <div id="dash-actions" class="hidden fade-in p-6 max-w-4xl">
+      <h1 class="text-xl font-bold text-slate-900 mb-4">Actions</h1>
+      <div class="flex gap-2 mb-4">
+        <button class="text-xs font-semibold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg">Today</button>
+        <button class="text-xs text-slate-500 hover:bg-slate-100 px-3 py-1.5 rounded-lg">This Week</button>
+        <button class="text-xs text-slate-500 hover:bg-slate-100 px-3 py-1.5 rounded-lg">Overdue</button>
+        <button class="text-xs text-slate-500 hover:bg-slate-100 px-3 py-1.5 rounded-lg">Waiting For</button>
+      </div>
+      <div class="space-y-2">
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p class="text-xs font-bold text-red-600 mb-2"><i class="fas fa-exclamation-circle mr-1"></i>OVERDUE (2)</p>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3 p-2 bg-white rounded">
+              <input type="checkbox" class="rounded">
+              <span class="text-xs text-slate-700 flex-1">Follow-up Day 3 - Richard Wang</span>
+              <span class="text-[10px] text-red-500 font-medium">3 days overdue</span>
+              <button class="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded">Do It</button>
+            </div>
+            <div class="flex items-center gap-3 p-2 bg-white rounded">
+              <input type="checkbox" class="rounded">
+              <span class="text-xs text-slate-700 flex-1">Phone screen - Lisa Johnson</span>
+              <span class="text-[10px] text-red-500 font-medium">1 day overdue</span>
+              <button class="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded">Do It</button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white border rounded-lg p-4">
+          <p class="text-xs font-bold text-slate-600 mb-2"><i class="fas fa-calendar-day mr-1 text-indigo-500"></i>TODAY (3)</p>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3 p-2 bg-slate-50 rounded">
+              <input type="checkbox" class="rounded">
+              <span class="text-xs text-slate-700 flex-1">Phone Screen - Sarah Chen @ 3:00 PM</span>
+              <button class="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded">Do It</button>
+            </div>
+            <div class="flex items-center gap-3 p-2 bg-slate-50 rounded">
+              <input type="checkbox" class="rounded">
+              <span class="text-xs text-slate-700 flex-1">Send interview prep - Mike Liu</span>
+              <button class="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded">Do It</button>
+            </div>
+            <div class="flex items-center gap-3 p-2 bg-slate-50 rounded">
+              <input type="checkbox" class="rounded">
+              <span class="text-xs text-slate-700 flex-1">Follow-up Day 2 - Emily Zhang</span>
+              <button class="text-[10px] text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded">Do It</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SEQUENCES PAGE -->
+    <div id="dash-sequences" class="hidden fade-in p-6 max-w-4xl">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-bold text-slate-900">Sequences</h1>
+        <button class="bg-indigo-500 text-white text-xs px-4 py-2 rounded-lg hover:bg-indigo-600"><i class="fas fa-plus mr-1"></i>New Sequence</button>
+      </div>
+      <div class="space-y-3">
+        <div class="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md transition cursor-pointer">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600"><i class="fas fa-envelope"></i></div>
+              <div>
+                <p class="text-sm font-bold text-slate-800">Standard Outreach</p>
+                <p class="text-[11px] text-slate-500">4 steps - Used 23 times - <span class="text-green-500 font-medium">28% reply rate</span></p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button class="text-xs text-slate-500 hover:text-indigo-500 px-3 py-1.5 border rounded-lg"><i class="fas fa-play mr-1"></i>Preview</button>
+              <button class="text-xs text-indigo-500 hover:text-indigo-700 px-3 py-1.5 border border-indigo-200 rounded-lg"><i class="fas fa-pen mr-1"></i>Edit</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 ml-13">
+            <div class="flex items-center gap-1 text-[10px]"><span class="bg-green-100 text-green-700 px-2 py-0.5 rounded">1. Connection</span><i class="fas fa-arrow-right text-slate-300"></i><span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">2. Follow-up A</span><i class="fas fa-arrow-right text-slate-300"></i><span class="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded">3. Follow-up B</span><i class="fas fa-arrow-right text-slate-300"></i><span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded">4. Break-up</span></div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md transition cursor-pointer">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600"><i class="fas fa-user-check"></i></div>
+              <div>
+                <p class="text-sm font-bold text-slate-800">Passive Candidate</p>
+                <p class="text-[11px] text-slate-500">3 steps - Used 12 times - <span class="text-green-500 font-medium">22% reply rate</span></p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button class="text-xs text-slate-500 hover:text-indigo-500 px-3 py-1.5 border rounded-lg"><i class="fas fa-play mr-1"></i>Preview</button>
+              <button class="text-xs text-indigo-500 hover:text-indigo-700 px-3 py-1.5 border border-indigo-200 rounded-lg"><i class="fas fa-pen mr-1"></i>Edit</button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border hover:shadow-md transition cursor-pointer">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600"><i class="fas fa-redo"></i></div>
+              <div>
+                <p class="text-sm font-bold text-slate-800">Re-engagement</p>
+                <p class="text-[11px] text-slate-500">2 steps - Used 8 times - <span class="text-green-500 font-medium">35% reply rate</span></p>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button class="text-xs text-slate-500 hover:text-indigo-500 px-3 py-1.5 border rounded-lg"><i class="fas fa-play mr-1"></i>Preview</button>
+              <button class="text-xs text-indigo-500 hover:text-indigo-700 px-3 py-1.5 border border-indigo-200 rounded-lg"><i class="fas fa-pen mr-1"></i>Edit</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ANALYTICS PAGE -->
+    <div id="dash-analytics" class="hidden fade-in p-6 max-w-4xl">
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-bold text-slate-900">Analytics</h1>
+        <select class="text-xs border rounded-lg px-3 py-1.5 bg-white"><option>This Week</option><option>This Month</option></select>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-xl p-5 shadow-sm border">
+          <p class="text-sm font-bold text-slate-700 mb-4">Follow-up Effectiveness</p>
+          <div class="space-y-3">
+            <div>
+              <div class="flex justify-between text-[11px] mb-1"><span>Value-based</span><span class="font-bold">28%</span></div>
+              <div class="h-4 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-400 rounded-full" style="width:56%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1"><span>Social Proof</span><span class="font-bold">22%</span></div>
+              <div class="h-4 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-400 rounded-full" style="width:44%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1"><span>Timeline</span><span class="font-bold">18%</span></div>
+              <div class="h-4 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-300 rounded-full" style="width:36%"></div></div>
+            </div>
+            <div>
+              <div class="flex justify-between text-[11px] mb-1"><span>Break-up</span><span class="font-bold">12%</span></div>
+              <div class="h-4 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-200 rounded-full" style="width:24%"></div></div>
+            </div>
+          </div>
+          <div class="mt-4 p-3 bg-indigo-50 rounded-lg">
+            <p class="text-[10px] text-indigo-600"><i class="fas fa-lightbulb mr-1"></i><strong>Tip:</strong> Your break-up messages outperform team avg by 15%. Keep using them!</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl p-5 shadow-sm border">
+          <p class="text-sm font-bold text-slate-700 mb-4">Best Time to Reach</p>
+          <div class="space-y-2">
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-16">Tue 9am</span><div class="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div class="h-full bg-emerald-400 rounded flex items-center justify-end pr-2" style="width:80%"><span class="text-[10px] text-white font-bold">32%</span></div></div></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-16">Wed 2pm</span><div class="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div class="h-full bg-emerald-400 rounded flex items-center justify-end pr-2" style="width:62%"><span class="text-[10px] text-white font-bold">25%</span></div></div></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-16">Thu 10am</span><div class="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div class="h-full bg-emerald-300 rounded flex items-center justify-end pr-2" style="width:55%"><span class="text-[10px] text-white font-bold">22%</span></div></div></div>
+            <div class="flex items-center gap-3"><span class="text-[11px] text-slate-500 w-16">Mon 11am</span><div class="flex-1 h-5 bg-slate-100 rounded overflow-hidden"><div class="h-full bg-emerald-300 rounded flex items-center justify-end pr-2" style="width:45%"><span class="text-[10px] text-white font-bold">18%</span></div></div></div>
+          </div>
+          <div class="mt-4 p-3 bg-emerald-50 rounded-lg">
+            <p class="text-[10px] text-emerald-700"><i class="fas fa-clock mr-1"></i><strong>Try Tuesday morning</strong> for your next batch of outreach</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+function showTab(tab) {
+  document.querySelectorAll('.sidebar-tab').forEach(t => {
+    t.classList.remove('active');
+    t.classList.add('text-slate-500');
+  });
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('tab-' + tab).classList.remove('text-slate-500');
+
+  ['action', 'profile', 'engage', 'notes'].forEach(t => {
+    document.getElementById('content-' + t).classList.add('hidden');
+  });
+  document.getElementById('content-' + tab).classList.remove('hidden');
+}
+
+// Dashboard page switching
+function showDashPage(page) {
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.remove('active');
+    n.classList.add('text-slate-600');
+  });
+  document.getElementById('nav-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.remove('text-slate-600');
+
+  ['dash-home', 'dash-candidates', 'dash-pipeline', 'dash-actions', 'dash-sequences', 'dash-analytics'].forEach(p => {
+    document.getElementById(p).classList.add('hidden');
+  });
+  document.getElementById(page).classList.remove('hidden');
+}
+
+// Switch between Sidebar and Dashboard modes
+function switchToDashboard() {
+  document.getElementById('sidebar-mode').classList.add('hidden');
+  document.getElementById('dashboard-mode').classList.remove('hidden');
+  showDashPage('dash-home');
+}
+
+function switchToSidebar() {
+  document.getElementById('dashboard-mode').classList.add('hidden');
+  document.getElementById('sidebar-mode').classList.remove('hidden');
+}
+
+// Task completion
+function completeTask(btn) {
+  const card = btn.closest('.bg-white, .bg-red-50, .bg-amber-50, .bg-green-50');
+  card.style.opacity = '0.5';
+  card.style.transition = 'all 0.5s';
+  setTimeout(() => {
+    card.style.transform = 'translateX(100%)';
+    setTimeout(() => card.remove(), 300);
+  }, 200);
+
+  const count = document.getElementById('today-count');
+  const newCount = parseInt(count.textContent) - 1;
+  count.textContent = newCount;
+  if (newCount === 0) count.style.display = 'none';
+}
+
+// Message generation
+const messages = {
+  followup: {
+    value: `Hi Richard,
+
+I noticed Meituan's recent expansion into on-demand grocery delivery in Tier-2 cities stands out. The scale of real-time logistics coordination there feels like a rare testbed for infrastructure engineers.
+
+I came across some interesting data on ML engineer compensation trends in Beijing -- thought you might find it relevant given your background.
+
+Would love to share more about the ML infra role we're building.
+
+Best,\n[Your name]`,
+    timeline: `Hi Richard,
+
+Just a quick heads up -- the ML infra role we've been discussing is moving quickly. We're expecting to finalize interviews by end of next week.
+
+Given your background at Meituan with large-scale systems, I think you'd be a strong fit. Happy to share more details whenever you're ready.
+
+No pressure, just wanted to keep you in the loop.
+
+Best,\n[Your name]`,
+    social: `Hi Richard,
+
+Quick update -- your former colleague from Meituan, Sarah Chen, just joined us as Tech Lead. She's been building out the ML infra team and mentioned your work on the grocery delivery logistics system was impressive.
+
+We're still looking for senior engineers for the team. Interested in learning more?
+
+Best,\n[Your name]`
+  },
+  breakup: `Hi Richard,
+
+I don't want to be a pest -- I know you're busy and the timing might not be right.
+
+I'll step back for now, but if you ever want to chat about ML infra opportunities (at our company or elsewhere), I'm always happy to help.
+
+No need to reply unless you're interested. Good luck with everything at Meituan!
+
+Best,\n[Your name]`
+};
+
+function regenerateMessage() {
+  const type = document.getElementById('msg-type').value;
+  const tone = document.getElementById('msg-tone').value;
+  const textarea = document.getElementById('ai-message');
+
+  textarea.style.opacity = '0.3';
+  setTimeout(() => {
+    if (type === 'breakup') {
+      textarea.value = messages.breakup;
+    } else {
+      textarea.value = messages[type]?.[tone] || messages.followup.value;
+    }
+    textarea.style.opacity = '1';
+  }, 300);
+}
+
+function copyMessage() {
+  const msg = document.getElementById('ai-message').value;
+  navigator.clipboard.writeText(msg);
+  const btn = event.target.closest('button');
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="fas fa-check mr-1"></i>Copied!';
+  btn.classList.remove('bg-indigo-500');
+  btn.classList.add('bg-green-500');
+  setTimeout(() => {
+    btn.innerHTML = orig;
+    btn.classList.add('bg-indigo-500');
+    btn.classList.remove('bg-green-500');
+  }, 1500);
+}
+
+// Message type/tone listeners
+document.getElementById('msg-type').addEventListener('change', regenerateMessage);
+document.getElementById('msg-tone').addEventListener('change', regenerateMessage);
+
+// Recording
+let recordTimer;
+function toggleRecord() {
+  document.getElementById('record-btn').classList.add('hidden');
+  document.getElementById('recording-ui').classList.remove('hidden');
+  let sec = 0;
+  recordTimer = setInterval(() => {
+    sec++;
+    const m = String(Math.floor(sec/60)).padStart(2,'0');
+    const s = String(sec%60).padStart(2,'0');
+    document.getElementById('record-timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+
+function stopRecord() {
+  clearInterval(recordTimer);
+  document.getElementById('recording-ui').classList.add('hidden');
+  document.getElementById('record-btn').classList.remove('hidden');
+  document.getElementById('ai-summary').classList.remove('hidden');
+}
+
+function saveToKeyMemory() {
+  const summary = document.getElementById('summary-list');
+  const keyList = document.getElementById('key-memory-list');
+  const newItems = summary.querySelectorAll('li');
+  newItems.forEach(item => {
+    const clone = item.cloneNode(true);
+    clone.querySelector('span').className = '';
+    clone.querySelector('span').textContent = '';
+    clone.querySelector('i').className = 'fas fa-check text-amber-400 mt-0.5 text-[8px]';
+    keyList.appendChild(clone);
+  });
+  alert('Saved to Key Memory!');
+}
+
+// Interview prep generator
+function generateInterviewPrep() {
+  const prep = `INTERVIEW PREP: Mike Liu
+===============================
+ROLE: Senior ML Engineer
+COMPANY: Target (Series B AI Startup)
+
+CANDIDATE SUMMARY:
+- Currently Data Scientist @ Airbnb (3 yrs)
+- PhD in CS from CMU, focused on NLP
+- Previously ML Engineer @ Pinterest (2 yrs)
+- TC: $165k, expecting $185k+
+- Prefers remote, open to hybrid
+- Available: Jan 8, 2026
+
+KEY TALKING POINTS:
+1. Ask about his recommendation system work at Airbnb
+2. Discuss his published paper on embedding optimization
+3. Our team size (6 ML engineers) matches his preference
+4. Our compensation range ($180-220k) aligns with his expectation
+
+SUGGESTED QUESTIONS:
+- "Walk me through how you designed the real-time recommendation pipeline at Airbnb"
+- "Your paper on embedding optimization -- how would you apply that to our use case?"
+- "What team structure have you found most effective for ML projects?"
+
+RED FLAGS TO CHECK:
+- Has he managed engineers before? (We're looking for senior IC, not manager)
+- Why leaving Airbnb after only 3 years?`;
+
+  alert(prep);
+}
+
+// Pipeline stage advancement
+function advanceStage() {
+  const select = document.getElementById('status-select');
+  const options = Array.from(select.options);
+  const currentIndex = select.selectedIndex;
+  if (currentIndex < options.length - 1) {
+    select.selectedIndex = currentIndex + 1;
+    updateStageContext();
+  }
+}
+
+function updateStageContext() {
+  const stage = document.getElementById('status-select').value;
+  const ctx = document.getElementById('stage-context');
+  const suggestions = {
+    sourced: { text: 'New candidate! Generate a personalized outreach message to start the conversation.', btn: 'Generate Outreach', action: () => { showTab('engage'); } },
+    contacted: { text: 'Candidate hasn\'t replied in 2 days. Try a value-based follow-up sharing ML engineer salary trends.', btn: 'Generate Follow-up', action: () => { showTab('engage'); } },
+    replied: { text: 'Great! Candidate is interested. Schedule a phone screen or send prep materials.', btn: 'Schedule Call', action: () => {} },
+    screened: { text: 'Screening complete. Prepare candidate submission package for the client.', btn: 'Generate Submission', action: () => {} },
+    submitted: { text: 'Candidate submitted to client. Follow up with client for feedback within 48 hours.', btn: 'Set Client Reminder', action: () => {} },
+    interview: { text: 'Interview stage! Generate an interview prep package for the candidate.', btn: 'Generate Prep', action: () => generateInterviewPrep() }
+  };
+  const s = suggestions[stage];
+  if (s) {
+    ctx.querySelector('p:nth-child(2)').textContent = s.text;
+    const btn = ctx.querySelector('button');
+    btn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>' + s.btn;
+    btn.onclick = s.action;
+  }
+}
+
+// Initialize
+updateStageContext();
+</script>
+</body>
+</html>

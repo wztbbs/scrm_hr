@@ -1,5 +1,9 @@
 package com.scrm.service;
 
+import com.resend.Resend;
+import com.resend.core.exception.ResendException;
+import com.resend.services.emails.model.CreateEmailOptions;
+import com.resend.services.emails.model.CreateEmailResponse;
 import com.scrm.common.RequestContext;
 import com.scrm.dao.sub.SubEmailVerificationMapper;
 import com.scrm.entity.EmailVerification;
@@ -7,12 +11,9 @@ import com.scrm.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StreamUtils;
 
-import jakarta.mail.internet.MimeMessage;
 import java.nio.charset.StandardCharsets;
 import java.util.Calendar;
 import java.util.Date;
@@ -25,15 +26,13 @@ public class EmailVerificationService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
     private static final int CODE_LENGTH = 5;
     private static final int EXPIRE_MINUTES = 10;
+    private static final String FROM_EMAIL = "support@hrscrm.net";
 
-    @Autowired
-    private JavaMailSender mailSender;
+    @Value("${resend.api-key}")
+    private String resendApiKey;
 
     @Autowired
     private SubEmailVerificationMapper emailVerificationMapper;
-
-    @Value("${feedback.to-email}")
-    private String fromEmail;
 
     public void sendVerificationCode(String email) {
         if (email == null || email.trim().isEmpty()) {
@@ -115,16 +114,21 @@ public class EmailVerificationService {
             String htmlBody = StreamUtils.copyToString(resource.getInputStream(), StandardCharsets.UTF_8);
             htmlBody = htmlBody.replace("{{CODE}}", code);
 
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-            helper.setFrom(fromEmail);
-            helper.setTo(toEmail);
-            helper.setSubject("Your RecruitFlow Verification Code");
-
             String textBody = "Your verification code is: " + code + ". Expires in " + EXPIRE_MINUTES + " minutes.";
-            helper.setText(textBody, htmlBody);
 
-            mailSender.send(message);
+            Resend resend = new Resend(resendApiKey);
+
+            CreateEmailOptions params = CreateEmailOptions.builder()
+                    .from(FROM_EMAIL)
+                    .to(toEmail)
+                    .subject("Your RecruitFlow Verification Code")
+                    .text(textBody)
+                    .html(htmlBody)
+                    .build();
+
+            CreateEmailResponse data = resend.emails().send(params);
+        } catch (ResendException e) {
+            throw new BusinessException("Failed to send email: " + e.getMessage());
         } catch (Exception e) {
             throw new BusinessException("Failed to send email: " + e.getMessage());
         }

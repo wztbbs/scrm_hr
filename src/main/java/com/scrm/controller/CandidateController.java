@@ -27,10 +27,15 @@ public class CandidateController {
     }
 
     @GetMapping("/tasks")
-    public ApiResponse<Map<String, Object>> listTasks() {
-        List<Candidate> items = candidateService.listTodayTasks();
+    public ApiResponse<Map<String, Object>> listTasks(@RequestHeader(value = "X-Client-Time", required = false) Long clientTimeMs) {
+        if (clientTimeMs == null) {
+            clientTimeMs = System.currentTimeMillis();
+        }
+        List<Candidate> items = candidateService.listTodayTasks(clientTimeMs);
+        long overdueCount = candidateService.countOverdueTasks(clientTimeMs);
         Map<String, Object> data = new HashMap<>();
         data.put("items", items);
+        data.put("overdueCount", overdueCount);
         return ApiResponse.success(data);
     }
 
@@ -46,7 +51,7 @@ public class CandidateController {
             @RequestParam(defaultValue = "desc") String sort_order,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Date sync_since) {
         if (pageSize > 100) pageSize = 100;
-        List<Candidate> items = candidateService.listCandidates(search, temperature, status, source,
+        List<CandidateWithBLOBs> items = candidateService.listCandidates(search, temperature, status, source,
                 sort_by, sort_order, sync_since, page, pageSize);
         long total = candidateService.countCandidates(search, temperature, status, source, sync_since);
         Map<String, Object> data = new HashMap<>();
@@ -84,11 +89,14 @@ public class CandidateController {
         return ApiResponse.success(result);
     }
 
-    @PostMapping("/batch")
-    public ApiResponse<Map<String, Object>> batch(@RequestBody Map<String, Object> body) {
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> items = (List<Map<String, Object>>) body.get("items");
-        return ApiResponse.success(candidateService.batchCandidates(items));
+    @PutMapping("/{id}/pipeline-stage")
+    public ApiResponse<Map<String, Object>> updatePipelineStage(@PathVariable String id,
+                                                                 @RequestBody Map<String, Object> body) {
+        String stage = (String) body.get("pipeline_stage");
+        candidateService.updatePipelineStage(id, stage);
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", true);
+        return ApiResponse.success(result);
     }
 
     @PutMapping("/{id}/follow-up")

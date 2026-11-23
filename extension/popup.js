@@ -1,5 +1,10 @@
 // popup.js - Main popup logic
 
+// === 调试开关：提交前设为 false ===
+const DEBUG = false;
+const log = DEBUG ? console.log.bind(console) : () => {};
+const debug = DEBUG ? console.debug.bind(console) : () => {};
+
 let currentCandidate = null;
 let currentTab = 'overview';
 let currentSequenceSubTab = 'templates';
@@ -7,6 +12,7 @@ let currentFilter = 'All Roles';
 let manualEntryCandidateId = null;
 let isDraggingCard = false;
 let pipelineStages = [];
+let pipelineShowDone = false;
 let isSavingCandidate = false;
 let hasSyncedData = false;
 
@@ -85,11 +91,12 @@ async function trackEvent(eventName, eventData = {}) {
 // ========== Utility ==========
 function $(id) { return document.getElementById(id); }
 
-function showToast(message) {
+function showToast(message, type) {
   const toast = $('toast');
   toast.textContent = message;
+  toast.className = 'toast' + (type ? ' ' + type : '');
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2000);
+  setTimeout(() => toast.classList.remove('show'), type === 'warning' ? 4000 : 3000);
 }
 
 function showLoading() { $('loadingOverlay').classList.add('active'); }
@@ -131,6 +138,32 @@ function formatTime(timestamp) {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatPipelineTemp(temp) {
+  const map = {
+    'Hot':  '🔥 Hot',
+    'Warm': '🌤 Warm',
+    'Cold': '🧊 Cold',
+    'New':  '🆕 New',
+    'Dead': '⚰️ Dead'
+  };
+  return map[temp] || (temp ? temp : '');
+}
+
+function formatShortFollowup(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function getTaskStatusConfig(taskStatus) {
+  const map = {
+    'OVERDUE':  { label: 'Follow up now — overdue',      color: '#ef4444', borderClass: 'task-border-overdue',  bgClass: 'task-border-overdue' },
+    'DUE_SOON': { label: 'Due soon — ready to contact',   color: '#f97316', borderClass: 'task-border-due-soon', bgClass: 'task-border-due-soon' },
+    'UPCOMING': { label: 'Follow-up scheduled',           color: '#3b82f6', borderClass: 'task-border-upcoming', bgClass: 'task-border-upcoming' }
+  };
+  return map[taskStatus] || map['UPCOMING'];
+}
+
 // ========== Tab Switching ==========
 document.querySelectorAll('.nav-tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -166,20 +199,27 @@ document.querySelectorAll('.sub-tab').forEach(tab => {
 });
 
 // ========== Overview: Load Candidate from LinkedIn ==========
-async function loadCurrentCandidate() {
+async function loadCurrentCandidate(preloadedBackendCandidate = null) {
+  log('[PLUGIN_INIT] loadCurrentCandidate START');
+  const start = performance.now();
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab || !tab.url || !tab.url.includes('linkedin.com/in/')) {
-      $('ovName').textContent = 'No LinkedIn Profile';
-      $('ovTitle').textContent = 'Open a candidate profile to get started';
+      currentCandidate = null;
+      $('tab-overview').classList.add('empty-page');
+      renderEmptyState();
       return;
     }
+    $('tab-overview').classList.remove('empty-page');
+    if ($('ovEmptyState')) $('ovEmptyState').classList.add('hidden');
+    if ($('ovProfileHeader')) $('ovProfileHeader').classList.remove('hidden');
 
     // Try to get cached data from content script
     const response = await sendMessageToContentScript(tab.id, { action: 'scrape' });
     const tabUrl = tab.url || '';
     if (response && response.success && response.data) {
       const data = response.data;
+      log('[SCRM_BASE] popup.js received data from content:', JSON.stringify(data));
       // Build candidate immediately from scraped data for instant render
       currentCandidate = {
         linkedInId: data.linkedInId,
@@ -195,7 +235,7 @@ async function loadCurrentCandidate() {
         websites: data.websites || [],
         emails: [],
         phones: [],
-        temperature: 'Cold',
+        temperature: 'New',
         contactMode: 'recruiting',
         keyMemory: '',
         nextFollowup: '',
@@ -203,12 +243,28 @@ async function loadCurrentCandidate() {
       };
       renderOverview();
 
-      // Fetch backend details asynchronously (non-blocking)
-      if (typeof window !== 'undefined' && window.API) {
-        try {
-          const backendCandidate = await window.API.candidates.getByLinkedInId(data.linkedInId);
+      // Merge preloaded backend candidate if available
+      if (preloadedBackendCandidate) {
+        log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(preloadedBackendCandidate));
+        log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
+        Object.assign(currentCandidate, preloadedBackendCandidate, {
+          linkedInUrl: tabUrl || preloadedBackendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
+          name: data.name || preloadedBackendCandidate.name || currentCandidate.name,
+          headline: data.headline || preloadedBackendCandidate.headline || currentCandidate.headline,
+          company: data.company || preloadedBackendCandidate.company || currentCandidate.company,
+          skills: data.skills?.length ? data.skills : (preloadedBackendCandidate.skills || currentCandidate.skills),
+          workExperiences: data.workExperiences?.length ? data.workExperiences : (preloadedBackendCandidate.workExperiences || currentCandidate.workExperiences),
+          educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (preloadedBackendCandidate.educationExperiences || currentCandidate.educationExperiences),
+          websites: data.websites?.length ? data.websites : (preloadedBackendCandidate.websites || currentCandidate.websites),
+        });
+        log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
+        renderOverview();
+      } else if (typeof window !== 'undefined' && window.API) {
+        // Fallback: fetch backend details asynchronously
+        window.API.candidates.getByLinkedInId(data.linkedInId).then(backendCandidate => {
           if (backendCandidate) {
-            // Merge backend data into currentCandidate
+            log('[SCRM_TEMPLATE] popup.js backendCandidate before merge:', JSON.stringify(backendCandidate));
+            log('[SCRM_TEMPLATE] popup.js currentCandidate before merge:', JSON.stringify(currentCandidate));
             Object.assign(currentCandidate, backendCandidate, {
               linkedInUrl: tabUrl || backendCandidate.linkedInUrl || currentCandidate.linkedInUrl,
               name: data.name || backendCandidate.name || currentCandidate.name,
@@ -219,40 +275,87 @@ async function loadCurrentCandidate() {
               educationExperiences: data.educationExperiences?.length ? data.educationExperiences : (backendCandidate.educationExperiences || currentCandidate.educationExperiences),
               websites: data.websites?.length ? data.websites : (backendCandidate.websites || currentCandidate.websites),
             });
+            log('[SCRM_TEMPLATE] popup.js currentCandidate after merge:', JSON.stringify(currentCandidate));
             renderOverview();
           }
-        } catch (e) {
-          console.warn('[Popup] Backend candidate fetch failed:', e.message);
-        }
+        }).catch(e => {
+          log('[Popup] Backend candidate fetch failed:', e.message);
+        });
       }
     } else {
       $('ovName').textContent = 'Unable to load';
       $('ovTitle').textContent = 'Try refreshing the page or click Save & Track';
     }
   } catch (e) {
-    console.log('Load candidate error:', e);
+    log('Load candidate error:', e);
     $('ovName').textContent = 'Error';
     $('ovTitle').textContent = e.message || 'Please open a LinkedIn profile';
+  } finally {
+    log(`[PLUGIN_INIT] loadCurrentCandidate END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
+}
+
+function renderEmptyState() {
+  const container = $('ovEmptyState');
+  const profileHeader = $('ovProfileHeader');
+  if (!container) return;
+
+  container.innerHTML = `
+    <h2 class="welcome-title"><span class="title-icon">🎯</span>Welcome to TalentFlow SCRM for LinkedIn</h2>
+    <div class="step-card active">
+      <h3>👋 Get Started</h3>
+      <p>Open a LinkedIn profile to start tracking candidates.</p>
+      <button class="btn-primary" id="esOpenProfileBtn">
+        Try on My Profile
+      </button>
+      <div class="divider">or</div>
+      <button class="btn-text" id="esManualAddBtn">
+        + Add candidate manually
+      </button>
+    </div>
+  `;
+  container.querySelector('#esOpenProfileBtn').addEventListener('click', () => {
+    window.open('https://www.linkedin.com/in/', '_blank');
+  });
+  container.querySelector('#esManualAddBtn').addEventListener('click', () => openManualEntryModal());
+
+  container.classList.remove('hidden');
+  if (profileHeader) profileHeader.classList.add('hidden');
 }
 
 function renderOverview() {
   if (!currentCandidate) return;
+  log('[SCRM_TEMPLATE] popup.js renderOverview currentCandidate:', JSON.stringify(currentCandidate));
   // Apply draft if exists (before rendering)
+  log('[SCRM_TEMPLATE] popup.js renderOverview before applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
   applyDraft(currentCandidate);
+  log('[SCRM_TEMPLATE] popup.js renderOverview after applyDraft - keyMemory:', currentCandidate.keyMemory, 'voiceMemo:', currentCandidate.voiceMemo);
 
   $('ovAvatar').textContent = getInitials(currentCandidate.name);
   $('ovAvatar').style.background = getAvatarColor(currentCandidate.name);
   $('ovName').textContent = currentCandidate.name || 'Unknown';
   $('ovTitle').textContent = currentCandidate.company || '-';
 
-  $('ovTemperature').value = currentCandidate.temperature || 'Cold';
+  const ovTempEl = $('ovTemperature');
+  log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature options:', Array.from(ovTempEl.options).map(o => o.value));
+  log('[SCRM_TEMPLATE] popup.js renderOverview setting ovTemperature.value to:', currentCandidate.temperature || 'New');
+  ovTempEl.value = currentCandidate.temperature || 'New';
+  log('[SCRM_TEMPLATE] popup.js renderOverview ovTemperature.value after set:', ovTempEl.value, 'selectedIndex:', ovTempEl.selectedIndex);
 
   const isRecruiting = currentCandidate.contactMode === 'recruiting';
   $('ovModeRecruiting').classList.toggle('active', isRecruiting);
   $('ovModeNurture').classList.toggle('active', !isRecruiting);
 
   $('ovKeyMemory').value = currentCandidate.keyMemory || '';
+
+  // Reset AI message area only if NOT currently generating
+  // (prevents re-enabling the button while a request is in flight)
+  if ($('ovAiLoading').style.display !== 'block') {
+    $('ovAiGenerateBtn').style.display = 'block';
+    $('ovAiGenerateBtn').disabled = false;
+    $('ovAiLoading').style.display = 'none';
+    $('ovAiResult').style.display = 'none';
+  }
 
   renderOverviewActiveSequence();
   renderOverviewNextFollowup();
@@ -267,12 +370,11 @@ async function renderOverviewActiveSequence() {
   }
 
   const sequences = await getAllSequences();
-  const selectHtml = '<option value="">None (manual follow-up only)</option>' +
-    sequences.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
-
   const boundSeqId = currentCandidate.sequenceId;
+  const selectHtml = '<option value="0">None (manual follow-up only)</option>' +
+    sequences.map(s => `<option value="${s.id}" ${s.id == boundSeqId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 
-  if (!boundSeqId) {
+  if (!boundSeqId || boundSeqId == 0) {
     // Not bound
     $('ovActiveSequence').innerHTML = `
       <div id="ovSeqUnbound">
@@ -325,99 +427,142 @@ async function renderOverviewActiveSequence() {
   if (select) {
     select.addEventListener('change', async () => {
       const seqId = select.value;
-      await bindCandidateToSequence(currentCandidate.id, seqId);
-      showToast(seqId ? 'Sequence bound!' : 'Sequence unbound');
+      currentCandidate.sequenceId = seqId || null;
+
+      if (seqId && seqId != 0) {
+        // 绑定 Sequence → 自动切 Sequence 模式
+        currentCandidate.nextFollowupSource = 'sequence';
+        const seq = await getSequenceById(seqId);
+        if (seq && seq.steps && seq.steps.length >= 2) {
+          const nextStep = seq.steps[1];
+          currentCandidate.nextFollowup = Date.now() + nextStep.delayDays * 86400000;
+          currentCandidate.nextFollowupSequenceStepId = nextStep.id || null;
+        }
+      } else {
+        // 解绑 Sequence → 切 Manual 模式，保留当前日期
+        currentCandidate.nextFollowupSource = 'manual';
+        currentCandidate.nextFollowupSequenceStepId = null;
+      }
+      saveDraft(currentCandidate);
       renderOverviewActiveSequence();
       renderOverviewNextFollowup();
+      showToast(seqId && seqId != 0 ? 'Sequence selected' : 'Sequence unselected');
     });
   }
 }
 
 async function renderOverviewNextFollowup() {
+  const toggleGroup = $('ovFollowupToggleGroup');
+  const toggleSeq = $('ovToggleSequence');
+  const toggleManual = $('ovToggleManual');
+  const seqModeEl = $('ovFollowupSequenceMode');
+  const manualModeEl = $('ovFollowupManualMode');
   const input = $('ovNextFollowupInput');
-  const statusBar = $('ovFollowupStatusBar');
   const sourceTag = $('ovFollowupSourceTag');
-  const suggestionEl = $('ovSequenceSuggestion');
-  const suggestionText = $('ovSequenceSuggestionText');
+  const sourceHint = $('ovFollowupSourceHint');
   const markDoneRow = $('ovMarkDoneRow');
 
   if (!currentCandidate) {
     input.value = '';
-    statusBar.textContent = '⚪ Set reminder';
-    statusBar.className = 'followup-status-bar status-none';
     sourceTag.textContent = '';
-    suggestionEl.style.display = 'none';
     markDoneRow.style.display = 'none';
+    seqModeEl.classList.add('hidden');
+    manualModeEl.classList.remove('hidden');
+    toggleSeq.classList.remove('active');
+    toggleManual.classList.remove('active');
     return;
   }
+
+  // Determine mode
+  const source = currentCandidate.nextFollowupSource || 'none';
+  const isSequenceMode = source === 'sequence' && currentCandidate.sequenceId;
+
+  // Update toggle buttons
+  toggleSeq.classList.toggle('active', isSequenceMode);
+  toggleManual.classList.toggle('active', !isSequenceMode);
 
   let followupTime = null;
-
-  // Use nextFollowup (from backend/manual) as primary source
   if (currentCandidate.nextFollowup) {
     followupTime = new Date(currentCandidate.nextFollowup).getTime();
-    input.value = fmtDateTimeInput(new Date(currentCandidate.nextFollowup));
   }
 
-  // Show source tag
-  const source = currentCandidate.nextFollowupSource || 'none';
-  if (source === 'manual') {
-    sourceTag.textContent = 'Manual · Set by you';
-  } else if (source === 'sequence') {
-    sourceTag.textContent = 'From Sequence';
-  } else {
-    sourceTag.textContent = '';
-  }
+  if (isSequenceMode) {
+    seqModeEl.classList.remove('hidden');
+    manualModeEl.classList.add('hidden');
 
-  // If no primary follow-up, calculate sequence suggestion from bound sequence steps
-  let sequenceSuggestTime = null;
-  if (currentCandidate.sequenceId && !followupTime) {
+    let seqDate = followupTime;
+    if (!seqDate && currentCandidate.sequenceId) {
+      const seq = await getSequenceById(currentCandidate.sequenceId);
+      if (seq && seq.steps && seq.steps.length >= 2) {
+        const nextStep = seq.steps[1];
+        seqDate = Date.now() + nextStep.delayDays * 86400000;
+        currentCandidate.nextFollowup = seqDate;
+      }
+    }
+
+    const statusBar = $('ovFollowupStatusBar');
+    if (!seqDate) {
+      statusBar.textContent = '⚪ Set reminder';
+      statusBar.className = 'followup-status-bar status-none';
+      sourceHint.textContent = '';
+      markDoneRow.style.display = 'none';
+      return;
+    }
+
     const seq = await getSequenceById(currentCandidate.sequenceId);
     if (seq && seq.steps && seq.steps.length >= 2) {
-      const nextStep = seq.steps[1]; // step 2
-      sequenceSuggestTime = Date.now() + nextStep.delayDays * 86400000;
-      followupTime = sequenceSuggestTime;
-      input.value = fmtDateTimeInput(new Date(sequenceSuggestTime));
-      sourceTag.textContent = 'From Sequence';
+      const nextStep = seq.steps[1];
+      sourceHint.textContent = `From "${escapeHtml(seq.name)}" — Step 2 (${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)`;
+    } else {
+      sourceHint.textContent = 'From Sequence';
     }
-  }
 
-  if (!followupTime) {
-    input.value = '';
-    statusBar.textContent = '⚪ Set reminder';
-    statusBar.className = 'followup-status-bar status-none';
-    suggestionEl.style.display = 'none';
-    markDoneRow.style.display = 'none';
-    return;
-  }
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-  const now = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  if (followupTime < now) {
-    const days = Math.ceil((now - followupTime) / 86400000);
-    statusBar.textContent = `📅 Follow up now — ${days} day${days > 1 ? 's' : ''} overdue`;
-    statusBar.className = 'followup-status-bar status-overdue';
-    markDoneRow.style.display = 'block';
-  } else if (followupTime <= todayEnd.getTime()) {
-    statusBar.textContent = '📅 Follow up today';
-    statusBar.className = 'followup-status-bar status-today';
-    markDoneRow.style.display = 'block';
+    if (seqDate < now) {
+      const days = Math.ceil((now - seqDate) / 86400000);
+      statusBar.textContent = `📅 Follow up now — ${days} day${days > 1 ? 's' : ''} overdue`;
+      statusBar.className = 'followup-status-bar status-overdue';
+      markDoneRow.style.display = 'block';
+    } else if (seqDate <= todayEnd.getTime()) {
+      statusBar.textContent = '📅 Follow up today';
+      statusBar.className = 'followup-status-bar status-today';
+      markDoneRow.style.display = 'block';
+    } else {
+      const dateStr = new Date(seqDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      statusBar.textContent = `📅 Follow up on ${dateStr}`;
+      statusBar.className = 'followup-status-bar status-future';
+      markDoneRow.style.display = 'none';
+    }
   } else {
-    const dateStr = new Date(followupTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    statusBar.textContent = `📅 Follow up on ${dateStr}`;
-    statusBar.className = 'followup-status-bar status-future';
-    markDoneRow.style.display = 'none';
-  }
+    seqModeEl.classList.add('hidden');
+    manualModeEl.classList.remove('hidden');
 
-  // Show sequence suggestion layer when source=manual but sequence has a suggestion
-  if (source === 'manual' && sequenceSuggestTime) {
-    const dateStr = new Date(sequenceSuggestTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    suggestionText.textContent = `Sequence suggests: ${dateStr}`;
-    suggestionEl.style.display = 'block';
-  } else {
-    suggestionEl.style.display = 'none';
+    if (followupTime) {
+      input.value = fmtDateTimeInput(new Date(currentCandidate.nextFollowup));
+    } else {
+      input.value = '';
+    }
+    sourceTag.textContent = source === 'manual' ? 'Manual · Set by you' : '';
+
+    if (!followupTime) {
+      markDoneRow.style.display = 'none';
+      return;
+    }
+
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    if (followupTime < now) {
+      markDoneRow.style.display = 'block';
+    } else if (followupTime <= todayEnd.getTime()) {
+      markDoneRow.style.display = 'block';
+    } else {
+      markDoneRow.style.display = 'none';
+    }
   }
 }
 
@@ -429,60 +574,89 @@ function renderOverviewVoiceMemo() {
   }
 }
 
-async function renderOverviewTodayTasks() {
-  let candidates = [];
-  // Try backend API first; fallback to IndexedDB if offline
-  if (typeof window !== 'undefined' && window.API) {
+async function renderOverviewTodayTasks(preloadedTasks = null, preloadedOverdueCount = null) {
+  log('[PLUGIN_INIT] renderOverviewTodayTasks START');
+  const start = performance.now();
+  let candidates = preloadedTasks;
+  let overdueCount = preloadedOverdueCount;
+
+  if (candidates === null && typeof window !== 'undefined' && window.API) {
     try {
       const resp = await window.API.candidates.tasks();
       if (resp.data && resp.data.items) {
         candidates = resp.data.items;
       }
+      if (resp.data && typeof resp.data.overdueCount === 'number') {
+        overdueCount = resp.data.overdueCount;
+      }
     } catch (e) {
-      console.warn('[Popup] Backend tasks fetch failed:', e.message);
+      log('[Popup] Backend tasks fetch failed:', e.message);
       candidates = [];
+      overdueCount = 0;
     }
-  } else {
-    candidates = [];
   }
+  if (!candidates) candidates = [];
+  if (typeof overdueCount !== 'number') overdueCount = 0;
 
   const countEl = $('ovTodayCount');
   const listEl = $('ovTodayTaskList');
+  const content = $('ovTodayContent');
+  const banner = $('ovOverdueBanner');
 
-  countEl.textContent = `${candidates.length} task${candidates.length !== 1 ? 's' : ''} ▼`;
+  // Default expand/collapse based on task count
+  if (candidates.length > 0) {
+    content.classList.remove('hidden');
+    countEl.textContent = `${candidates.length} task${candidates.length !== 1 ? 's' : ''} ▲`;
+  } else {
+    content.classList.add('hidden');
+    countEl.textContent = 'No tasks yet ▼';
+  }
+
+  // Overdue banner
+  if (overdueCount > 0) {
+    banner.classList.remove('hidden');
+    $('ovOverdueCount').textContent = overdueCount;
+    $('ovOverduePlural').textContent = overdueCount > 1 ? 's' : '';
+  } else {
+    banner.classList.add('hidden');
+  }
 
   if (candidates.length === 0) {
     listEl.innerHTML = '<div class="text-gray text-sm text-center" style="padding:12px;">No tasks for today</div>';
-    return;
-  }
+  } else {
+    listEl.innerHTML = candidates.map(candidate => {
+      const status = getTaskStatusConfig(candidate.taskStatus);
+      const timeStr = candidate.nextFollowup
+        ? new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      const showMarkDone = candidate.taskStatus === 'OVERDUE' || candidate.taskStatus === 'DUE_SOON';
 
-  const now = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
-  listEl.innerHTML = candidates.map(candidate => {
-    const followupTime = new Date(candidate.nextFollowup).getTime();
-    const isOverdue = followupTime < now;
-    const isToday = !isOverdue && followupTime <= todayEnd.getTime();
-
-    let statusLabel = isOverdue ? `${Math.ceil((now - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
-    let statusClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
-    let borderClass = isOverdue ? 'overdue' : isToday ? 'today' : 'tomorrow';
-
-    const timeStr = new Date(candidate.nextFollowup).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <div class="today-task-item">
-        <div class="today-task-border ${borderClass}"></div>
-        <div class="today-task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
-        <div class="today-task-info">
-          <div class="today-task-name">${escapeHtml(candidate.name)}</div>
-          <div class="today-task-desc">Follow-up · ${timeStr}</div>
+      return `
+        <div class="today-task-item ${status.borderClass}">
+          <div class="today-task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
+          <div class="today-task-info">
+            <div class="today-task-name">${escapeHtml(candidate.name)}</div>
+            <div class="today-task-desc" style="color:${status.color};font-weight:500;">${status.label}</div>
+            <div class="today-task-desc">Follow-up · ${timeStr}</div>
+          </div>
+          <div class="today-task-right">
+            <span class="today-task-status" style="color:${status.color};">${status.label}</span>
+            <button class="btn-sm task-mark-done-btn" data-id="${candidate.id}" style="display:${showMarkDone ? 'inline-block' : 'none'};width:auto;padding:4px 10px;font-size:12px;background:#10b981;">✓ Mark Done</button>
+          </div>
         </div>
-        <span class="today-task-status ${statusClass}">${statusLabel}</span>
-      </div>
-    `;
-  }).join('');
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.task-mark-done-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const candidateId = parseInt(btn.dataset.id);
+        await doMarkFollowupDone(candidateId, () => {
+          renderOverviewTodayTasks();
+        });
+      });
+    });
+  }
+  log(`[PLUGIN_INIT] renderOverviewTodayTasks END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // Overview events
@@ -492,6 +666,16 @@ $('ovTodayHeader').addEventListener('click', () => {
   content.classList.toggle('hidden');
   const countEl = $('ovTodayCount');
   countEl.textContent = countEl.textContent.replace(isExpanded ? '▲' : '▼', isExpanded ? '▼' : '▲');
+});
+
+$('ovOverdueBanner').addEventListener('click', () => {
+  const content = $('ovTodayContent');
+  content.classList.remove('hidden');
+  const countEl = $('ovTodayCount');
+  if (countEl.textContent.includes('▼')) {
+    countEl.textContent = countEl.textContent.replace('▼', '▲');
+  }
+  $('ovTodayCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 $('ovTodayViewAll').addEventListener('click', (e) => {
@@ -560,32 +744,39 @@ $('ovSaveBtn').addEventListener('click', async () => {
   if (!canSave) return;
   isSavingCandidate = true;
   showLoading();
+  const savePerfStart = performance.now();
+  const perfLabel = '[SCRM_SAVE_PERF]';
+  log(`${perfLabel} SAVE_START id=${currentCandidate.id || 'new'} mode=${currentCandidate.id ? 'UPDATE' : 'CREATE'}`);
   try {
-    const body = window.API.utils.candidateToBackend(currentCandidate);
     let saved;
     if (currentCandidate.id) {
-      saved = await window.API.candidates.update(currentCandidate.id, body);
+      log(`${perfLabel} UPDATE_API_START id=${currentCandidate.id}`);
+      const updateStart = performance.now();
+      saved = await window.API.candidates.update(currentCandidate.id, currentCandidate);
+      log(`${perfLabel} UPDATE_API_END duration=${(performance.now() - updateStart).toFixed(1)}ms`);
     } else {
-      body.source = 'linkedin_profile';
-      saved = await window.API.candidates.create(body);
+      log(`${perfLabel} CREATE_API_START`);
+      const createStart = performance.now();
+      currentCandidate.source = 'linkedin_profile';
+      saved = await window.API.candidates.create(currentCandidate);
+      log(`${perfLabel} CREATE_API_END duration=${(performance.now() - createStart).toFixed(1)}ms`);
       if (saved) {
         currentCandidate.id = saved.id;
-      }
-    }
-    // Sync sequence binding if needed (backend auto-records history)
-    if (currentCandidate.sequenceId && currentCandidate.id) {
-      try {
-        await bindCandidateToSequence(currentCandidate.id, currentCandidate.sequenceId);
-      } catch (e) {
-        console.warn('[Save] Sequence binding failed:', e.message);
       }
     }
     clearDraft(currentCandidate);
     showToast('Saved & tracked!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'overview' });
+
+    log(`${perfLabel} RENDER_OVERVIEW_START`);
+    const renderOvStart = performance.now();
     await renderOverviewNextFollowup();
     await renderOverviewActiveSequence();
+    log(`${perfLabel} RENDER_OVERVIEW_END duration=${(performance.now() - renderOvStart).toFixed(1)}ms`);
+
     // Switch to pipeline tab after saving
+    log(`${perfLabel} SWITCH_TAB_START`);
+    const tabStart = performance.now();
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelector('.nav-tab[data-tab="pipeline"]').classList.add('active');
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -596,12 +787,15 @@ $('ovSaveBtn').addEventListener('click', async () => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     document.body.scrollTop = 0;
     document.documentElement.scrollTop = 0;
+    log(`${perfLabel} SWITCH_TAB_END duration=${(performance.now() - tabStart).toFixed(1)}ms`);
   } catch (e) {
+    log(`${perfLabel} SAVE_FAILED`, e);
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
   } finally {
     isSavingCandidate = false;
     hideLoading();
+    log(`${perfLabel} SAVE_TOTAL duration=${(performance.now() - savePerfStart).toFixed(1)}ms`);
   }
   trackEvent('plugin_opened', { category: 'engagement' });
 });
@@ -613,9 +807,9 @@ let recordingTimeout = null;
 let preRecordText = ''; // 录音前 textarea 的内容快照
 
 const toggleRecording = async () => {
-  console.log('[SCRM Popup] Toggle clicked, current state:', recordingState);
+  log('[SCRM Popup] Toggle clicked, current state:', recordingState);
   if (recordingState === 'starting' || recordingState === 'stopping') {
-    console.log('[SCRM Popup] Ignoring click, still processing');
+    log('[SCRM Popup] Ignoring click, still processing');
     return;
   }
   if (recordingState === 'recording') {
@@ -633,14 +827,14 @@ const startRecording = async () => {
   }
 
   recordingState = 'starting';
-  console.log('[SCRM Popup] Starting recording...');
+  log('[SCRM Popup] Starting recording...');
 
   // 2. 通过内容脚本请求麦克风权限并录音（浏览器会在页面弹出原生权限框）
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       await chrome.tabs.sendMessage(tab.id, { action: 'startVoiceRecording' });
-      console.log('[SCRM Popup] Content script acknowledged start');
+      log('[SCRM Popup] Content script acknowledged start');
       // 成功确认后才进入 recording 状态并更新 UI
       recordingState = 'recording';
       preRecordText = $('ovVoiceMemoTextarea').value;
@@ -653,14 +847,14 @@ const startRecording = async () => {
       if (recordingTimeout) clearTimeout(recordingTimeout);
       recordingTimeout = setTimeout(() => {
         if (recordingState === 'recording') {
-          console.log('[SCRM Popup] Auto-stop after 60s');
+          log('[SCRM Popup] Auto-stop after 60s');
           stopRecording();
         }
       }, 60000);
       return;
     }
   } catch (e) {
-    console.log('[SCRM Popup] Start recording via content script error', e);
+    log('[SCRM Popup] Start recording via content script error', e);
   }
 
   // 3. Fallback: 尝试在 popup 中直接录音
@@ -675,11 +869,11 @@ const startRecording = async () => {
 
 const stopRecording = async () => {
   if (recordingState !== 'recording') {
-    console.log('[SCRM Popup] Cannot stop, not recording. State:', recordingState);
+    log('[SCRM Popup] Cannot stop, not recording. State:', recordingState);
     return;
   }
   recordingState = 'stopping';
-  console.log('[SCRM Popup] Stopping recording...');
+  log('[SCRM Popup] Stopping recording...');
   if (recordingTimeout) {
     clearTimeout(recordingTimeout);
     recordingTimeout = null;
@@ -693,11 +887,11 @@ const stopRecording = async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab && tab.id) {
       await chrome.tabs.sendMessage(tab.id, { action: 'stopVoiceRecording' });
-      console.log('[SCRM Popup] Content script acknowledged stop');
+      log('[SCRM Popup] Content script acknowledged stop');
       return;
     }
   } catch (e) {
-    console.log('[SCRM Popup] Stop recording via content script error', e);
+    log('[SCRM Popup] Stop recording via content script error', e);
   }
 
   // fallback
@@ -724,7 +918,7 @@ function initSpeechRecognition() {
     showToast('Voice memo saved');
   };
   rec.onerror = (event) => {
-    console.log('[SCRM Popup] Fallback speech recognition error:', event.error);
+    log('[SCRM Popup] Fallback speech recognition error:', event.error);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -766,7 +960,7 @@ function startRecordingInPopup() {
   try {
     recognition.start();
   } catch (e) {
-    console.log('[SCRM Popup] Recognition start error', e);
+    log('[SCRM Popup] Recognition start error', e);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -789,7 +983,7 @@ chrome.runtime.onMessage.addListener((request) => {
     }
   }
   if (request.action === 'voiceRecordingResult') {
-    console.log('[SCRM Popup] Received voiceRecordingResult:', request.text);
+    log('[SCRM Popup] Received voiceRecordingResult:', request.text);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -807,7 +1001,7 @@ chrome.runtime.onMessage.addListener((request) => {
     }
   }
   if (request.action === 'voiceRecordingError') {
-    console.log('[SCRM Popup] Received voiceRecordingError:', request.error);
+    log('[SCRM Popup] Received voiceRecordingError:', request.error);
     recordingState = 'idle';
     if (recordingTimeout) { clearTimeout(recordingTimeout); recordingTimeout = null; }
     $('ovVoiceMemoBtn').classList.remove('recording');
@@ -838,7 +1032,11 @@ async function renderPipeline() {
   }
 
   // Rebuild board columns dynamically based on backend stages
-  boardEl.innerHTML = pipelineStages.map(stage => `
+  // By default hide the Done column; user can expand via the footer link
+  const visibleStages = pipelineShowDone
+    ? pipelineStages
+    : pipelineStages.filter(stage => stage.id !== 'done');
+  boardEl.innerHTML = visibleStages.map(stage => `
     <div class="board-column" data-status="${escapeHtml(stage.id)}" id="column-${stage.id}">
       <div class="board-column-header">${escapeHtml(stage.name)} (<span class="col-count">0</span>)</div>
       <div class="col-cards" id="col-${stage.id}"></div>
@@ -849,96 +1047,101 @@ async function renderPipeline() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      allCandidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      allCandidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[Pipeline] Failed to fetch candidates:', e.message);
+    log('[Pipeline] Failed to fetch candidates:', e.message);
   }
   if (currentFilter !== 'All Roles') {
-    allCandidates = allCandidates.filter(c => c.headline === currentFilter);
+    allCandidates = allCandidates.filter(c => c.workExperiences?.[0]?.title === currentFilter);
   }
-
-  const THIRTY_DAYS = 30 * 86400000;
-  const now = Date.now();
 
   for (const stage of pipelineStages) {
     const col = $(`col-${stage.id}`);
     if (!col) continue;
 
-    let stageCandidates = allCandidates.filter(c => {
+    const stageCandidates = allCandidates.filter(c => {
       const ps = c.pipelineStage || 'new';
       return ps === stage.id;
     });
-
-    // For unclaimed stage, only show candidates updated within 30 days
-    let hiddenCount = 0;
-    if (stage.id === 'unclaimed') {
-      const visible = stageCandidates.filter(c => {
-        const updated = c.updatedAt || c.createdAt || 0;
-        return (now - updated) <= THIRTY_DAYS;
-      });
-      hiddenCount = stageCandidates.length - visible.length;
-      stageCandidates = visible;
-    }
 
     const count = stageCandidates.length;
     const colEl = col.closest('.board-column');
     if (colEl) colEl.querySelector('.col-count').textContent = count;
 
-    // Hide unclaimed column if empty
-    if (stage.id === 'unclaimed' && count === 0) {
-      if (colEl) colEl.style.display = 'none';
-      continue;
-    }
-
-    let cardsHtml = stageCandidates.map(c => renderPipelineCard(c)).join('');
-
-    // Show auto-delete hint at top of unclaimed column
-    if (stage.id === 'unclaimed' && count > 0) {
-      cardsHtml = `
-        <div class="unclaimed-hint">
-          Auto-delete after 30 days
-        </div>
-      ` + cardsHtml;
-    }
-
-    // Show hint for hidden unclaimed candidates
-    if (stage.id === 'unclaimed' && hiddenCount > 0) {
-      cardsHtml += `
-        <div style="padding:8px 12px;font-size:12px;color:#9ca3af;text-align:center;border-top:1px dashed #e5e7eb;margin-top:4px;">
-          ${hiddenCount} candidate${hiddenCount > 1 ? 's' : ''} hidden (older than 30 days)
-        </div>
-      `;
-    }
-
+    const cardsHtml = stageCandidates.map(c => renderPipelineCard(c)).join('');
     col.innerHTML = cardsHtml;
   }
+
+  // Show / hide Done column toggle
+  const doneStage = pipelineStages.find(s => s.id === 'done');
+  const footerEl = $('pipelineShowDone');
+  if (footerEl && doneStage) {
+    const doneCount = allCandidates.filter(c => (c.pipelineStage || 'new') === 'done').length;
+    footerEl.innerHTML = pipelineShowDone
+      ? '<span id="pipelineToggleDone">📁 Hide Completed</span>'
+      : `<span id="pipelineToggleDone">📁 Completed (${doneCount}) →</span>`;
+    footerEl.style.display = 'block';
+    $('pipelineToggleDone').addEventListener('click', () => {
+      pipelineShowDone = !pipelineShowDone;
+      renderPipeline();
+    });
+  } else if (footerEl) {
+    footerEl.style.display = 'none';
+  }
+
   bindPipelineDragEvents();
   bindPipelineCardClickEvents();
   bindPipelineDeleteEvents();
-  bindPipelineSaveToNewEvents();
+  bindPipelineActionEvents();
 }
 
 function renderPipelineCard(candidate) {
+  log('[SCRM_DEBUG] renderPipelineCard', candidate.name, 'workExperiences:', candidate.workExperiences, 'jobTitle:', candidate.jobTitle, 'headline:', candidate.headline, 'company:', candidate.company);
   const color = getAvatarColor(candidate.name);
-  const linkedInLink = candidate.linkedInUrl ? `<a href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" style="margin-left:4px;color:#0077b5;text-decoration:none;font-size:12px;" title="Open LinkedIn">&#128279;</a>` : '';
-  const saveToNewBtn = (candidate.pipelineStage || 'new') === 'unclaimed'
-    ? `<button class="board-card-save-to-new" data-id="${candidate.id}">Save → New</button>`
+  const linkedInLink = candidate.linkedInUrl
+    ? `<a href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" class="board-card-link" title="Open LinkedIn">↗</a>`
     : '';
+  const latestTitle = candidate.workExperiences?.[0]?.title || candidate.jobTitle || candidate.headline || '';
+  const latestCompany = candidate.workExperiences?.[0]?.company || candidate.company || '';
+  const metaText = latestTitle && latestCompany
+    ? `${latestTitle} @ ${latestCompany}`
+    : (latestTitle || latestCompany || '');
+  log('[SCRM_DEBUG] metaText', candidate.name, '=>', metaText, '(latestTitle:', latestTitle, ', latestCompany:', latestCompany, ')');
+  const tempLabel = formatPipelineTemp(candidate.temperature);
+  const followupLabel = candidate.nextFollowup
+    ? `· 📅 ${formatShortFollowup(candidate.nextFollowup)}`
+    : '';
+  const statusRow = tempLabel
+    ? `<div class="board-card-status-row"><span>${tempLabel}</span><span>${followupLabel}</span></div>`
+    : '';
+
+  const actionRows = [];
+  if (candidate.linkedInUrl) {
+    actionRows.push(`<a class="board-card-action" href="${escapeHtml(candidate.linkedInUrl)}" target="_blank" data-action="open" data-id="${candidate.id}"><span class="board-card-action-icon">↗</span><span>Open Profile</span></a>`);
+  }
+  actionRows.push(`<div class="board-card-action" data-action="edit" data-id="${candidate.id}"><span class="board-card-action-icon">✏️</span><span>See & Edit</span></div>`);
+  actionRows.push(`<div class="board-card-action" data-action="move-done" data-id="${candidate.id}"><span class="board-card-action-icon">✅</span><span>to Completed</span></div>`);
+  const actionsOverlay = `<div class="board-card-actions">${actionRows.join('')}</div>`;
+
   return `
     <div class="board-card" draggable="true" data-id="${candidate.id}" data-pipeline-stage="${candidate.pipelineStage || 'new'}">
+      <button class="board-card-delete" data-id="${candidate.id}" title="Delete">×</button>
       <div class="board-card-header">
         <div class="board-card-avatar" style="background:${color}">
           ${getInitials(candidate.name)}
-          <button class="board-card-delete" data-id="${candidate.id}" title="Delete">×</button>
         </div>
-        <div style="flex:1;min-width:0;">
-          <div class="board-card-name">${escapeHtml(candidate.name)}${linkedInLink}</div>
-          <div class="board-card-title">${escapeHtml(candidate.headline || '')}</div>
+        <div class="board-card-name-row">
+          <span class="board-card-name">${escapeHtml(candidate.name)}</span>
+          ${linkedInLink}
         </div>
       </div>
-      <div class="board-card-time">${timeAgo(candidate.updatedAt || candidate.createdAt)}</div>
-      ${saveToNewBtn}
+      <div class="board-card-meta">${escapeHtml(metaText)}</div>
+      ${statusRow}
+      <div class="board-card-footer">
+        <span class="board-card-time">🕐 Added ${timeAgo(candidate.createdAt || candidate.updatedAt)}</span>
+      </div>
+      ${actionsOverlay}
     </div>
   `;
 }
@@ -971,19 +1174,19 @@ function bindPipelineDragEvents() {
     col.addEventListener('drop', async (e) => {
       e.preventDefault();
       col.classList.remove('drag-over');
-      if (!draggedId) return;
+      const candidateId = draggedId;
+      if (!candidateId) return;
       const newStage = col.dataset.status;
       try {
-        const candidate = await window.API.candidates.get(draggedId);
+        const candidate = await window.API.candidates.get(candidateId);
         if (candidate && (candidate.pipelineStage || 'new') !== newStage) {
           const oldStage = candidate.pipelineStage || 'new';
-          candidate.pipelineStage = newStage;
-          await window.API.candidates.update(draggedId, candidate);
+          await window.API.candidates.updatePipelineStage(candidateId, newStage);
           trackEvent('pipeline_moved', { category: 'engagement', label: `${oldStage}_to_${newStage}` });
           renderPipeline();
         }
       } catch (e) {
-        console.warn('[Pipeline] Move failed:', e.message);
+        log('[Pipeline] Move failed:', e.message);
       }
     });
   });
@@ -1024,35 +1227,43 @@ function bindPipelineDeleteEvents() {
           }
         }
       } catch (e) {
-        console.warn('[Pipeline] Delete fetch failed:', e.message);
+        log('[Pipeline] Delete fetch failed:', e.message);
       }
     });
   });
 }
 
-function bindPipelineSaveToNewEvents() {
-  document.querySelectorAll('.board-card-save-to-new').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
+function bindPipelineActionEvents() {
+  document.querySelectorAll('.board-card-action').forEach(row => {
+    row.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const candidateId = parseInt(btn.dataset.id);
+      const action = row.dataset.action;
+      const candidateId = parseInt(row.dataset.id);
+      if (!candidateId || !action) return;
+
+      if (action === 'edit') {
+        openManualEntryModal(candidateId);
+        return;
+      }
+
+      if (action === 'open') {
+        // <a> with target="_blank" handles navigation; just prevent card click
+        return;
+      }
+
       try {
-        const candidate = await window.API.candidates.get(candidateId);
-        if (!candidate) return;
         showLoading();
-        try {
-          candidate.pipelineStage = 'new';
-          await window.API.candidates.update(candidateId, candidate);
-          trackEvent('candidate_promoted', { category: 'conversion', label: 'unclaimed_to_new' });
-          showToast('Candidate saved to New');
-          renderPipeline();
-          if (currentTab === 'history') renderHistory();
-        } catch (err) {
-          showToast('Save failed: ' + err.message);
-        } finally {
-          hideLoading();
+        if (action === 'move-done') {
+          await window.API.candidates.updatePipelineStage(candidateId, 'done');
+          trackEvent('pipeline_moved', { category: 'engagement', label: 'to_done' });
+          showToast('Moved to Completed');
         }
-      } catch (e) {
-        console.warn('[Pipeline] Promote fetch failed:', e.message);
+        renderPipeline();
+        if (currentTab === 'history') renderHistory();
+      } catch (err) {
+        showToast('Action failed: ' + err.message);
+      } finally {
+        hideLoading();
       }
     });
   });
@@ -1103,7 +1314,7 @@ async function getSubscriptionUsage() {
     _usageCacheTime = now;
     return _cachedUsage;
   } catch (e) {
-    console.warn('[Popup] Failed to fetch subscription usage:', e.message);
+    log('[Popup] Failed to fetch subscription usage:', e.message);
     return null;
   }
 }
@@ -1125,7 +1336,7 @@ async function fetchPlans() {
       return _cachedPlans;
     }
   } catch (e) {
-    console.warn('[Popup] Failed to fetch plans:', e.message);
+    log('[Popup] Failed to fetch plans:', e.message);
   }
   return [];
 }
@@ -1144,7 +1355,6 @@ function formatLimit(value, type) {
 }
 
 function renderPlanCard(plan, options) {
-  const isFree = plan.planCode === 'free';
   const isCurrent = options.isCurrent;
   const highlightType = options.highlight;
   const cls = 'plan-card ' + (isCurrent ? 'current' : 'pro');
@@ -1155,31 +1365,45 @@ function renderPlanCard(plan, options) {
 
   const items = [
     { key: 'candidates', text: '• ' + candidates },
+    { key: 'sequences', text: '• ' + seq },
     { key: 'ai', text: '• ' + ai },
-    { key: 'sequences', text: '• ' + seq }
+    { key: 'support', text: '• Priority support' }
   ];
-  if (!isFree) {
-    items.push({ key: 'sync', text: '• Cross-device sync' });
-  }
 
   const listHtml = items.map(it => {
-    const hl = !isFree && it.key === highlightType ? 'highlight' : '';
+    const hl = it.key === highlightType ? 'highlight' : '';
     return `<li class="${hl}">${escapeHtml(it.text)}</li>`;
   }).join('');
 
-  let actionHtml = '';
-  if (isCurrent) {
-    actionHtml = `<div class="plan-badge">Current</div>`;
-  } else {
-    const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
-    actionHtml = `<div class="plan-price">${escapeHtml(price || '')}</div>
-      <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">Upgrade</button>`;
-  }
+  const popularBadge = options.isPopular ? '<div class="plan-popular-badge">★ MOST POPULAR</div>' : '';
+  const savingsHtml = options.savings
+    ? `<div class="plan-savings-sub">Save $${options.savings} (2 months free)</div>`
+    : '';
+
+  const price = plan.price > 0 ? `$${plan.price}/${plan.billingCycle === 'yearly' ? 'yr' : 'mo'}` : '';
+  let btnText = 'Upgrade';
+  if (plan.planCode === 'pro_monthly') btnText = 'Upgrade Now';
+  if (plan.planCode === 'pro_yearly') btnText = 'Get Yearly';
 
   return `<div class="${cls}">
+    ${popularBadge}
     <div class="plan-card-title">${escapeHtml(plan.name)}</div>
     <ul>${listHtml}</ul>
-    ${actionHtml}
+    <div class="plan-price">${escapeHtml(price || '')}</div>
+    ${savingsHtml}
+    <button class="btn-upgrade" data-plan-code="${escapeHtml(plan.planCode)}">${escapeHtml(btnText)}</button>
+  </div>`;
+}
+
+function renderFreeRow(plan, isCurrent) {
+  const candidates = formatLimit(plan.totalCandidateLimit, 'candidates');
+  const ai = formatLimit(plan.dailyConnectLimit, 'ai');
+  const seq = formatLimit(plan.sequenceLimit, 'sequences');
+  const badge = isCurrent ? '<span class="plan-free-badge">Current</span>' : '';
+  return `<div class="plan-free-row">
+    <span class="plan-free-label">Free plan:</span>
+    <span>${escapeHtml(candidates)} · ${escapeHtml(seq)} · ${escapeHtml(ai)}</span>
+    ${badge}
   </div>`;
 }
 
@@ -1191,9 +1415,10 @@ async function showUpgradeModal(config) {
   const currentPlanCode = (usage && usage.subscription && usage.subscription.plan && usage.subscription.plan.planCode) || 'free';
 
   const headerEl = $('modalUpgradeHeader');
+  const subheaderEl = $('modalUpgradeSubheader');
   const plansEl = $('modalUpgradePlans');
 
-  let headerText = config.header || "You've reached your daily limit";
+  let headerText = config.header || "You've hit the free limit";
   if (config.scenario === 'ai') {
     const used = config.used || 0;
     const limit = config.limit || 10;
@@ -1208,13 +1433,32 @@ async function showUpgradeModal(config) {
     headerText = `Sequence limit reached (${used}/${limit})`;
   }
   headerEl.textContent = headerText;
+  subheaderEl.textContent = 'Upgrade to unlock unlimited candidates and AI messages';
 
   const highlight = config.scenario === 'ai' ? 'ai' : config.scenario === 'candidate' ? 'candidates' : config.scenario === 'sequence' ? 'sequences' : '';
 
-  const sorted = [...plans].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-  const cardsHtml = sorted.map(p => renderPlanCard(p, {
+  // Calculate yearly savings
+  const monthlyPlan = plans.find(p => p.planCode === 'pro_monthly');
+  const yearlyPlan = plans.find(p => p.planCode === 'pro_yearly');
+  const savings = monthlyPlan && yearlyPlan ? ((monthlyPlan.price * 12) - yearlyPlan.price).toFixed(0) : '58';
+
+  const freePlan = plans.find(p => p.planCode === 'free');
+  const proPlans = plans.filter(p => p.planCode !== 'free').sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  // Render free plan as top row
+  const freeRowEl = $('modalUpgradeFreeRow');
+  if (freePlan) {
+    freeRowEl.innerHTML = renderFreeRow(freePlan, currentPlanCode === 'free');
+  } else {
+    freeRowEl.innerHTML = '';
+  }
+
+  // Render pro plans as two columns
+  const cardsHtml = proPlans.map(p => renderPlanCard(p, {
     isCurrent: p.planCode === currentPlanCode,
-    highlight: highlight
+    highlight: highlight,
+    isPopular: p.planCode === 'pro_monthly',
+    savings: p.planCode === 'pro_yearly' ? savings : null
   })).join('');
 
   plansEl.innerHTML = cardsHtml;
@@ -1225,12 +1469,80 @@ async function showUpgradeModal(config) {
       const planCode = btn.dataset.planCode;
       trackEvent('upgrade_clicked', { category: 'conversion', label: planCode });
       $('modalUpgrade').classList.remove('active');
+
+      // 检查邮箱，为空则弹出自定义 modal 让用户输入（仅用于本次支付，不落库）
+      let email = currentUserEmail;
+      if (!email) {
+        $('modalEmailInput').classList.add('active');
+        $('modalEmailInputField').value = '';
+        $('modalEmailInputField').focus();
+
+        email = await new Promise((resolve) => {
+          const confirmBtn = $('modalEmailConfirm');
+          const cancelBtn = $('modalEmailCancel');
+          const input = $('modalEmailInputField');
+
+          const onConfirm = () => {
+            const val = input.value.trim();
+            if (!val) {
+              showToast('Email is required to continue subscription');
+              return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+              showToast('Please enter a valid email address');
+              return;
+            }
+            cleanup();
+            resolve(val);
+          };
+
+          const onCancel = () => {
+            cleanup();
+            resolve(null);
+          };
+
+          const onKeydown = (e) => {
+            if (e.key === 'Enter') onConfirm();
+            if (e.key === 'Escape') onCancel();
+          };
+
+          const cleanup = () => {
+            $('modalEmailInput').classList.remove('active');
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            input.removeEventListener('keydown', onKeydown);
+          };
+
+          confirmBtn.addEventListener('click', onConfirm);
+          cancelBtn.addEventListener('click', onCancel);
+          input.addEventListener('keydown', onKeydown);
+        });
+
+        if (!email) {
+          if (upgradeResolve) { upgradeResolve(false); upgradeResolve = null; }
+          return;
+        }
+      }
+
       try {
-        const successUrl = chrome.runtime.getURL('popup.html') + '?checkout=success';
-        const cancelUrl = chrome.runtime.getURL('popup.html') + '?checkout=cancel';
-        const resp = await window.API.subscription.checkout(planCode, successUrl, cancelUrl, '');
-        if (resp.data && resp.data.checkout_url) {
-          chrome.tabs.create({ url: resp.data.checkout_url });
+        const resp = await window.API.subscription.checkout(planCode, email);
+        if (resp.data && resp.data.customer_id) {
+          const d = resp.data;
+          const params = new URLSearchParams({
+            price_id: d.price_id,
+            customer_id: d.customer_id,
+            order_id: d.order_id,
+            user_id: currentUserId || '',
+            plan_code: d.plan_code || '',
+            token: d.client_token,
+            env: d.environment,
+            session_id: sessionId || ''
+          });
+          const checkoutUrl = `http://localhost:8080/checkout.html?${params.toString()}`;
+          chrome.tabs.create({ url: checkoutUrl });
+          showToast('Checkout opened in new tab. Complete payment there.');
+        } else {
+          showToast('Checkout data not received. Please try again.');
         }
       } catch (e) {
         showToast('Checkout failed: ' + e.message);
@@ -1300,6 +1612,22 @@ async function showAiLimitModal(used, limit) {
 async function handleQuotaError(err) {
   if (err.status === 429 || (err.data && err.data.scenario)) {
     const scenario = err.data && err.data.scenario ? err.data.scenario : 'ai';
+
+    // Paid users who hit their quota cannot upgrade further — show info toast instead
+    if (err.data && err.data.canUpgrade === false) {
+      if (scenario === 'ai') {
+        const limit = err.data.limit || 50;
+        showToast(`Daily AI limit reached\nYou have used all ${limit} AI messages for today.\nNew messages will be available tomorrow.`);
+      } else if (scenario === 'sequence') {
+        const limit = err.data.limit || 10;
+        showToast(`Sequence limit reached. You have used all ${limit} Sequences. Delete an unused one to create new.`, 'warning');
+      } else {
+        showToast(err.message);
+      }
+      return true;
+    }
+
+    // Free users can upgrade
     const used = err.data && err.data.used !== undefined ? err.data.used : 0;
     const limit = err.data && err.data.limit !== undefined ? err.data.limit : 10;
     await showUpgradeModal({ scenario, used, limit });
@@ -1313,12 +1641,12 @@ async function updateFilterDropdown() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      candidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[Filter] Failed to fetch candidates:', e.message);
+    log('[Filter] Failed to fetch candidates:', e.message);
   }
-  const roles = ['All Roles', ...new Set(candidates.map(c => c.headline).filter(Boolean))];
+  const roles = ['All Roles', ...new Set(candidates.map(c => c.workExperiences?.[0]?.title).filter(Boolean))];
   const dropdown = $('pipelineFilterDropdown');
   dropdown.innerHTML = roles.map(r =>
     `<div class="pipeline-filter-dropdown-item ${r === currentFilter ? 'active' : ''}" data-role="${r}">${r}</div>`
@@ -1374,129 +1702,17 @@ $('modalAddCandidate').addEventListener('click', (e) => {
 
 async function loadSequenceOptions(selectEl, selectedId = '') {
   const sequences = await getAllSequences();
-  selectEl.innerHTML = '<option value="">None (manual follow-up only)</option>' +
+  selectEl.innerHTML = '<option value="0">None (manual follow-up only)</option>' +
     sequences.map(s => `<option value="${s.id}" ${s.id == selectedId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('');
 }
 
-async function bindCandidateToSequence(candidateId, sequenceId) {
-  console.log('[BIND_SEQ] START candidateId=', candidateId, 'sequenceId=', sequenceId);
-
-  // Ensure candidate is saved to backend first
-  if (!candidateId && currentCandidate) {
-    console.log('[BIND_SEQ] candidateId empty, creating candidate on backend...');
-    const canSave = await checkCandidateLimit();
-    if (!canSave) return;
-    try {
-      currentCandidate.source = 'linkedin_profile';
-      const created = await window.API.candidates.create(currentCandidate);
-      if (created && created.id) {
-        candidateId = created.id;
-        currentCandidate.id = candidateId;
-      }
-      console.log('[BIND_SEQ] created candidateId=', candidateId);
-    } catch (e) {
-      console.error('[BIND_SEQ] create candidate failed:', e);
-      return;
-    }
+async function getSequenceById(id) {
+  if (!id || id == 0) return null;
+  try {
+    return await window.API.sequences.get(id);
+  } catch (e) {
+    return null;
   }
-
-  let candidate = null;
-  if (candidateId) {
-    try {
-      candidate = await window.API.candidates.get(candidateId);
-    } catch (e) {
-      console.warn('[BIND_SEQ] get candidate from API failed:', e);
-    }
-  }
-  console.log('[BIND_SEQ] candidate=', candidate ? { id: candidate.id, name: candidate.name } : null);
-
-  if (!sequenceId) {
-    console.log('[BIND_SEQ] sequenceId empty, unbinding');
-    if (candidate && candidate.id) {
-      try {
-        const updated = { ...candidate };
-        delete updated.sequenceId;
-        await window.API.candidates.update(candidate.id, updated);
-      } catch (e) {
-        console.warn('[BIND_SEQ] unbind sequence failed:', e);
-      }
-    }
-    return;
-  }
-
-  const seq = await getSequenceById(sequenceId);
-  console.log('[BIND_SEQ] seq=', seq ? { id: seq.id, name: seq.name, stepsLength: seq.steps ? seq.steps.length : 'NO_STEPS' } : null);
-  if (!seq || !seq.steps || seq.steps.length === 0) {
-    console.warn('[BIND_SEQ] ABORT: seq missing or no steps');
-    return;
-  }
-
-  // Update candidate with bound sequence id on backend
-  if (candidate && candidate.id) {
-    try {
-      const updated = { ...candidate, sequenceId: sequenceId };
-      await window.API.candidates.update(candidate.id, updated);
-    } catch (e) {
-      console.warn('[BIND_SEQ] update candidate sequence failed:', e);
-    }
-  }
-
-  // Sync candidate-sequence binding to backend
-  if (typeof window !== 'undefined' && window.API) {
-    try {
-      console.log('[BIND_SEQ] syncing to backend...');
-
-      const candidateIdForSeq = candidate ? candidate.id : null;
-      const sequenceIdForSeq = seq.id;
-      console.log('[BIND_SEQ] candidateServerId=', candidateServerId, 'sequenceServerId=', sequenceServerId);
-      if (candidateIdForSeq && sequenceIdForSeq) {
-        console.log('[BIND_SEQ] calling createCandidateSequence...');
-        await window.API.sequences.createCandidateSequence(
-          candidateIdForSeq,
-          sequenceIdForSeq,
-          { stepIndex: 0, totalSteps: seq.steps.length, status: 'active' }
-        );
-        console.log('[BIND_SEQ] createCandidateSequence success');
-        trackEvent('sequence_bound', { category: 'engagement', label: 'sequence_' + sequenceId });
-      } else {
-        console.warn('[BIND_SEQ] SKIP backend sync: missing id', { candidateServerId, sequenceServerId });
-      }
-    } catch (e) {
-      console.warn('[BIND_SEQ] Sync candidate-sequence to backend failed:', e);
-    }
-  } else {
-    console.warn('[BIND_SEQ] window.API not available');
-  }
-
-  // Prompt user to confirm the suggested follow-up time (Step 2 if exists)
-  if (seq.steps.length >= 2 && candidate) {
-    const nextStep = seq.steps[1]; // step 2
-    const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
-    const suggestedDate = new Date(suggestedTime);
-    const dateStr = suggestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const dayLabel = nextStep.delayDays > 0 ? `(${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)` : '(immediately)';
-
-    const choice = await showSeqFollowupConfirm(`Sequence suggests follow-up:<br><strong>${dateStr}</strong> ${dayLabel}`);
-    if (choice && choice.accepted) {
-      const followupTime = choice.time ? choice.time.getTime() : suggestedTime;
-      const source = choice.edited ? 'manual' : 'sequence';
-      if (candidate.id) {
-        try {
-          await window.API.candidates.updateFollowup(
-            candidate.id,
-            new Date(followupTime),
-            source,
-            source === 'sequence' ? nextStep.stepNumber : null
-          );
-          renderOverviewNextFollowup();
-        } catch (e) {
-          console.warn('[BIND_SEQ] update followup failed:', e);
-        }
-      }
-    }
-  }
-
-  console.log('[BIND_SEQ] END');
 }
 
 // Manual Entry Modal
@@ -1519,16 +1735,24 @@ function openManualEntryModal(candidateId = null) {
       $('meLinkedInUrl').value = candidate.linkedInUrl || '';
       $('meEmail').value = candidate.emails?.[0] || '';
       $('meStatus').value = candidate.pipelineStage || (pipelineStages[0]?.id || 'new');
+      if (candidate.nextFollowup) {
+        $('meNextFollowup').value = fmtDateTimeInput(new Date(candidate.nextFollowup));
+      } else {
+        $('meNextFollowup').value = '';
+      }
       $('meNotes').value = candidate.keyMemory || '';
-      const temp = candidate.temperature || 'Warm';
+      const temp = candidate.temperature || 'New';
       document.querySelectorAll('.temp-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.temp === temp);
       });
       // Load current bound sequence
       await loadSequenceOptions($('meSequence'), candidate.sequenceId || '');
+      // Set follow-up toggle mode
+      const isSeqMode = candidate.nextFollowupSource === 'sequence' && candidate.sequenceId;
+      toggleMeFollowupMode(isSeqMode ? 'sequence' : 'manual');
       $('modalManualEntry').classList.add('active');
     }).catch(e => {
-      console.warn('[MANUAL_ENTRY] load candidate failed:', e);
+      log('[MANUAL_ENTRY] load candidate failed:', e);
       showToast('Failed to load candidate');
     });
   } else {
@@ -1538,12 +1762,14 @@ function openManualEntryModal(candidateId = null) {
     $('meLocation').value = '';
     $('meLinkedInUrl').value = '';
     $('meEmail').value = '';
-    $('meStatus').value = pipelineStages[0]?.id || 'new';
+    $('meStatus').value = 'new';
+    $('meNextFollowup').value = '';
     $('meNotes').value = '';
     document.querySelectorAll('.temp-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.temp === 'Warm');
+      btn.classList.toggle('active', btn.dataset.temp === 'New');
     });
     loadSequenceOptions($('meSequence'), '');
+    toggleMeFollowupMode('manual');
     $('modalManualEntry').classList.add('active');
   }
 }
@@ -1552,6 +1778,58 @@ function closeManualEntryModal() {
   $('modalManualEntry').classList.remove('active');
   manualEntryCandidateId = null;
 }
+
+function toggleMeFollowupMode(mode) {
+  const isSequence = mode === 'sequence';
+  $('meToggleSequence').classList.toggle('active', isSequence);
+  $('meToggleManual').classList.toggle('active', !isSequence);
+  $('meFollowupSequenceMode').classList.toggle('hidden', !isSequence);
+  $('meFollowupManualMode').classList.toggle('hidden', isSequence);
+  if (isSequence) {
+    const seqId = $('meSequence').value;
+    const statusBar = $('meFollowupStatusBar');
+    if (seqId && seqId != 0) {
+      getSequenceById(seqId).then(seq => {
+        if (seq && seq.steps && seq.steps.length >= 2) {
+          const nextStep = seq.steps[1];
+          const seqDate = Date.now() + nextStep.delayDays * 86400000;
+          const dateStr = new Date(seqDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          statusBar.textContent = `📅 Follow up on ${dateStr}`;
+          statusBar.className = 'followup-status-bar status-future';
+          $('meFollowupSourceHint').textContent = `From "${escapeHtml(seq.name)}" — Step 2 (${nextStep.delayDays} day${nextStep.delayDays > 1 ? 's' : ''} later)`;
+        } else {
+          statusBar.textContent = '⚪ Set reminder';
+          statusBar.className = 'followup-status-bar status-none';
+          $('meFollowupSourceHint').textContent = '';
+        }
+      });
+    } else {
+      statusBar.textContent = '⚪ Set reminder';
+      statusBar.className = 'followup-status-bar status-none';
+      $('meFollowupSourceHint').textContent = '';
+    }
+  }
+}
+
+$('meToggleSequence').addEventListener('click', () => toggleMeFollowupMode('sequence'));
+$('meToggleManual').addEventListener('click', () => toggleMeFollowupMode('manual'));
+
+$('meSequence').addEventListener('change', async () => {
+  const seqId = $('meSequence').value;
+  if (seqId && seqId != 0) {
+    const seq = await getSequenceById(seqId);
+    if (seq && seq.steps && seq.steps.length >= 2) {
+      const nextStep = seq.steps[1];
+      const suggestedTime = Date.now() + nextStep.delayDays * 86400000;
+      $('meNextFollowup').value = fmtDateTimeInput(new Date(suggestedTime));
+      $('meSequence').dataset.stepId = nextStep.id || '';
+    }
+    toggleMeFollowupMode('sequence');
+  } else {
+    $('meSequence').dataset.stepId = '';
+    toggleMeFollowupMode('manual');
+  }
+});
 
 document.querySelectorAll('.temp-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1567,7 +1845,7 @@ $('meSaveBtn').addEventListener('click', async () => {
     return;
   }
 
-  const temperature = document.querySelector('.temp-btn.active')?.dataset.temp || 'Warm';
+  const temperature = document.querySelector('.temp-btn.active')?.dataset.temp || 'New';
 
   showLoading();
   try {
@@ -1608,7 +1886,12 @@ $('meSaveBtn').addEventListener('click', async () => {
     candidate.emails = $('meEmail').value.trim() ? [$('meEmail').value.trim()] : [];
     candidate.temperature = temperature;
     candidate.pipelineStage = $('meStatus').value;
+    const nextFollowupVal = $('meNextFollowup').value;
+    candidate.nextFollowup = nextFollowupVal ? new Date(nextFollowupVal).getTime() : '';
+    candidate.nextFollowupSource = $('meToggleSequence').classList.contains('active') ? 'sequence' : 'manual';
+    candidate.nextFollowupSequenceStepId = $('meSequence').dataset.stepId ? Number($('meSequence').dataset.stepId) : null;
     candidate.keyMemory = $('meNotes').value.trim();
+    candidate.sequenceId = $('meSequence').value || null;
 
     const canSave = await checkCandidateLimit();
     if (!canSave) { hideLoading(); return; }
@@ -1632,17 +1915,16 @@ $('meSaveBtn').addEventListener('click', async () => {
       return;
     }
 
-    // Handle sequence binding
-    const sequenceId = $('meSequence').value;
-    if (sequenceId) {
-      await bindCandidateToSequence(savedId, sequenceId);
-    }
-
     showToast(manualEntryCandidateId ? 'Candidate updated!' : 'Candidate added!');
     trackEvent('candidate_saved', { category: 'engagement', label: 'manual_entry' });
     closeManualEntryModal();
-    if (currentTab === 'pipeline') renderPipeline();
-    if (currentTab === 'history') renderHistory();
+    // Switch to pipeline tab after saving
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.nav-tab[data-tab="pipeline"]').classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    $('tab-pipeline').classList.add('active');
+    currentTab = 'pipeline';
+    renderPipeline();
   } catch (e) {
     const handled = await handleQuotaError(e);
     if (!handled) showToast('Save failed: ' + e.message);
@@ -1653,6 +1935,7 @@ $('meSaveBtn').addEventListener('click', async () => {
 });
 
 $('meCancelBtn').addEventListener('click', closeManualEntryModal);
+$('meCloseBtn').addEventListener('click', closeManualEntryModal);
 
 $('modalManualEntry').addEventListener('click', (e) => {
   if (e.target === $('modalManualEntry')) closeManualEntryModal();
@@ -1686,16 +1969,20 @@ async function renderSequenceTemplates() {
 
     const div = document.createElement('div');
     div.className = 'seq-item';
+    const isTemplate = seq.isTemplate === true;
+    const actionsHtml = isTemplate ? '' : `
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn-sm seq-item-toggle" data-action="edit" data-id="${seq.id}" style="flex:1;background:#fff;color:#5b4cdb;border:1px solid #5b4cdb;">Edit</button>
+        <button class="btn-sm seq-item-delete" data-id="${seq.id}" style="flex:1;background:#fff;color:#ef4444;border:1px solid #ef4444;">Delete</button>
+      </div>
+    `;
     div.innerHTML = `
       <div class="seq-item-header">
         <span class="seq-item-name">${escapeHtml(seq.name)}</span>
         <span class="seq-item-count">${totalSteps} step${totalSteps !== 1 ? 's' : ''}</span>
       </div>
       <ul class="seq-steps">${stepsHtml}</ul>
-      <div style="display:flex;gap:8px;margin-top:10px;">
-        <button class="btn-sm seq-item-toggle" data-action="use" data-id="${seq.id}" style="flex:1;">Use</button>
-        <button class="btn-sm seq-item-toggle" data-action="edit" data-id="${seq.id}" style="flex:1;background:#fff;color:#5b4cdb;border:1px solid #5b4cdb;">Edit</button>
-      </div>
+      ${actionsHtml}
     `;
     container.appendChild(div);
   }
@@ -1703,7 +1990,7 @@ async function renderSequenceTemplates() {
   // Safety tip
   const tip = document.createElement('div');
   tip.className = 'seq-safety-tip';
-  tip.textContent = 'Safety: Max 20 connects/day · 1-2 per day · Manual approval. This sequence completes in 10 days.';
+  tip.textContent = 'LinkedIn safety tip: Limit connection requests to ~20/day to avoid account restrictions.';
   container.appendChild(tip);
 }
 
@@ -1712,15 +1999,29 @@ async function renderTodayTasks() {
   $('todayDate').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   let candidates = [];
+  let overdueCount = 0;
   try {
     const resp = await window.API.candidates.tasks();
     if (resp.data && resp.data.items) {
       candidates = resp.data.items;
     }
+    if (resp.data && typeof resp.data.overdueCount === 'number') {
+      overdueCount = resp.data.overdueCount;
+    }
   } catch (e) {
-    console.warn('[TodayTasks] Failed to fetch:', e.message);
+    log('[TodayTasks] Failed to fetch:', e.message);
   }
+
   $('todayTasksTitle').textContent = `Today's Tasks (${candidates.length})`;
+
+  const badge = $('seqTodayBadge');
+  if (candidates.length > 0) {
+    badge.classList.remove('hidden');
+    badge.textContent = candidates.length;
+    badge.className = 'tab-badge ' + (overdueCount > 0 ? 'badge-red' : 'badge-gray');
+  } else {
+    badge.classList.add('hidden');
+  }
 
   const container = $('seqTodayList');
   if (candidates.length === 0) {
@@ -1728,44 +2029,34 @@ async function renderTodayTasks() {
     return;
   }
 
-  const nowTs = Date.now();
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
-
   container.innerHTML = '';
   for (const candidate of candidates) {
-    const followupTime = new Date(candidate.nextFollowup).getTime();
-    const isOverdue = followupTime < nowTs;
-    const isToday = !isOverdue && followupTime <= todayEnd.getTime();
-
-    let statusLabel = isOverdue ? `${Math.ceil((nowTs - followupTime) / 86400000)}d overdue` : isToday ? 'Today' : 'Soon';
-    let statusClass = isOverdue ? 'status-overdue' : isToday ? 'status-today' : 'status-tomorrow';
-    let btnText = isOverdue ? 'Quick Send' : 'Go to Profile';
+    const status = getTaskStatusConfig(candidate.taskStatus);
+    const showMarkDone = candidate.taskStatus === 'OVERDUE' || candidate.taskStatus === 'DUE_SOON';
 
     const div = document.createElement('div');
-    div.className = 'task-item';
+    div.className = 'task-item ' + status.borderClass;
     div.innerHTML = `
       <div class="task-avatar" style="background:${getAvatarColor(candidate.name)}">${getInitials(candidate.name)}</div>
       <div class="task-info">
         <div class="task-name">${escapeHtml(candidate.name)}</div>
-        <div class="task-desc">Follow-up scheduled</div>
-        <div class="task-schedule">${new Date(candidate.nextFollowup).toLocaleString()}</div>
+        <div class="task-desc" style="color:${status.color};font-weight:600;font-size:12px;">${status.label}</div>
+        <div class="task-schedule">${candidate.nextFollowup ? new Date(candidate.nextFollowup).toLocaleString() : ''}</div>
       </div>
       <div class="task-right">
-        <span class="task-status ${statusClass}">${statusLabel}</span>
-        <button class="btn-sm task-action-btn" data-id="${candidate.id}">${btnText}</button>
+        <span class="task-status" style="color:${status.color};">${status.label}</span>
+        <button class="btn-sm task-mark-done-btn" data-id="${candidate.id}" style="display:${showMarkDone ? 'block' : 'none'};margin-top:6px;width:auto;padding:4px 10px;font-size:12px;background:#10b981;">✓ Mark Done</button>
       </div>
     `;
     container.appendChild(div);
   }
 
-  container.querySelectorAll('.task-action-btn').forEach(btn => {
+  container.querySelectorAll('.task-mark-done-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const candidateId = parseInt(btn.dataset.id);
-      const candidate = candidates.find(c => c.id === candidateId);
-      if (candidate) {
-        showToast(`Opening ${candidate.name}'s profile...`);
-      }
+      await doMarkFollowupDone(candidateId, () => {
+        renderTodayTasks();
+      });
     });
   });
 }
@@ -1782,6 +2073,7 @@ const SEQ_DELAY_OPTIONS = [
 ];
 
 let seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
+let editingSequenceId = null;
 
 function renderSeqStepRows() {
   const container = $('modalSeqStepsContainer');
@@ -1803,8 +2095,7 @@ function renderSeqStepRows() {
           <input type="text" class="form-input seq-step-name" placeholder="Step name" value="${escapeHtml(step.name)}" style="flex:1;">
           <select class="form-select seq-step-delay" style="width:140px;flex-shrink:0;">
             ${SEQ_DELAY_OPTIONS.map(opt => {
-              const disabled = opt.value < prevDelay;
-              return `<option value="${opt.value}" ${opt.value === step.delayDays ? 'selected' : ''} ${disabled ? 'disabled' : ''}>${opt.label}</option>`;
+              return `<option value="${opt.value}" ${opt.value === step.delayDays ? 'selected' : ''}>${opt.label}</option>`;
             }).join('')}
           </select>
         </div>
@@ -1819,13 +2110,6 @@ function renderSeqStepRows() {
   container.querySelectorAll('.seq-step-delay').forEach((select, idx) => {
     select.addEventListener('change', () => {
       seqSteps[idx].delayDays = parseInt(select.value);
-      let lastDelay = seqSteps[idx].delayDays;
-      for (let i = idx + 1; i < seqSteps.length; i++) {
-        if (seqSteps[i].delayDays < lastDelay) {
-          seqSteps[i].delayDays = lastDelay;
-        }
-        lastDelay = seqSteps[i].delayDays;
-      }
       renderSeqStepRows();
     });
   });
@@ -1839,6 +2123,8 @@ function renderSeqStepRows() {
 }
 
 $('btnNewSequence').addEventListener('click', () => {
+  editingSequenceId = null;
+  $('modalSeqTitle').textContent = 'New Sequence';
   seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
   $('modalSeqName').value = '';
   renderSeqStepRows();
@@ -1846,6 +2132,10 @@ $('btnNewSequence').addEventListener('click', () => {
 });
 
 $('modalSeqCancel').addEventListener('click', () => {
+  $('modalNewSequence').classList.remove('active');
+});
+
+$('modalSeqClose').addEventListener('click', () => {
   $('modalNewSequence').classList.remove('active');
 });
 
@@ -1859,9 +2149,6 @@ $('modalSeqSave').addEventListener('click', async () => {
   const name = $('modalSeqName').value.trim();
   if (!name) { showToast('Please enter a sequence name'); return; }
 
-  const canCreate = await checkSequenceLimit();
-  if (!canCreate) return;
-
   const steps = seqSteps.filter(s => s.name.trim()).map(s => ({
     name: s.name.trim(),
     delayDays: s.delayDays
@@ -1870,12 +2157,21 @@ $('modalSeqSave').addEventListener('click', async () => {
   if (steps.length === 0) { showToast('Please enter at least one step'); return; }
 
   try {
-    await saveSequence({ name, steps });
-    showToast('Sequence saved!');
+    if (editingSequenceId) {
+      await window.API.sequences.update(editingSequenceId, { name, steps });
+      showToast('Sequence updated!');
+    } else {
+      const canCreate = await checkSequenceLimit();
+      if (!canCreate) return;
+      await window.API.sequences.create({ name, steps });
+      showToast('Sequence saved!');
+    }
     $('modalNewSequence').classList.remove('active');
     $('modalSeqName').value = '';
     seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
     renderSeqStepRows();
+    editingSequenceId = null;
+    $('modalSeqTitle').textContent = 'New Sequence';
     renderSequenceTemplates();
   } catch (e) {
     const handled = await handleQuotaError(e);
@@ -1883,9 +2179,7 @@ $('modalSeqSave').addEventListener('click', async () => {
   }
 });
 
-$('modalNewSequence').addEventListener('click', (e) => {
-  if (e.target === $('modalNewSequence')) $('modalNewSequence').classList.remove('active');
-});
+// Click outside modal does NOT close — only Cancel or X button closes
 
 // ========== History ==========
 async function getHistoryByCandidate(candidateId) {
@@ -1893,7 +2187,7 @@ async function getHistoryByCandidate(candidateId) {
     const resp = await window.API.history.list({ candidateId });
     return resp.data?.items || [];
   } catch (e) {
-    console.warn('[getHistoryByCandidate] failed:', e);
+    log('[getHistoryByCandidate] failed:', e);
     return [];
   }
 }
@@ -1903,7 +2197,7 @@ async function renderHistoryContent(candidateId) {
   try {
     candidate = await window.API.candidates.get(candidateId);
   } catch (e) {
-    console.warn('[renderHistoryContent] get candidate failed:', e);
+    log('[renderHistoryContent] get candidate failed:', e);
     return;
   }
   if (!candidate) return;
@@ -1954,10 +2248,10 @@ async function renderHistory() {
   try {
     const resp = await window.API.candidates.list({ page: 1, pageSize: 100 });
     if (resp.data && resp.data.items) {
-      candidates = resp.data.items.map(item => window.API.utils.candidateFromBackend(item));
+      candidates = resp.data.items;
     }
   } catch (e) {
-    console.warn('[History] Failed to fetch candidates:', e.message);
+    log('[History] Failed to fetch candidates:', e.message);
   }
   const select = $('historyCandidateSelect');
   select.innerHTML = '<option value="">Select a candidate...</option>' +
@@ -1991,6 +2285,8 @@ $('historyCandidateSelect').addEventListener('change', async () => {
 
 // ========== Content Script Communication ==========
 async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
+  log(`[PLUGIN_INIT] sendMessageToContentScript START action=${message.action}`);
+  const start = performance.now();
   return new Promise((resolve, reject) => {
     let retries = 0;
     const trySend = () => {
@@ -1998,19 +2294,23 @@ async function sendMessageToContentScript(tabId, message, maxRetries = 2) {
         if (chrome.runtime.lastError) {
           if (retries < maxRetries) {
             retries++;
+            log(`[PLUGIN_INIT] sendMessageToContentScript retry ${retries}/${maxRetries}`);
             chrome.scripting.executeScript({
               target: { tabId }, files: ['content.js']
             }, () => {
               if (chrome.runtime.lastError) {
+                log(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`, chrome.runtime.lastError.message);
                 reject(new Error('Unable to inject content script'));
                 return;
               }
               setTimeout(trySend, 500);
             });
           } else {
+            log(`[PLUGIN_INIT] sendMessageToContentScript FAILED 耗时=${(performance.now() - start).toFixed(1)}ms`);
             reject(new Error('Content script not responding'));
           }
         } else {
+          log(`[PLUGIN_INIT] sendMessageToContentScript END 耗时=${(performance.now() - start).toFixed(1)}ms`);
           resolve(response);
         }
       });
@@ -2029,36 +2329,159 @@ function escapeHtml(text) {
 
 
 // ========== Init Backend Data ==========
-async function initBackendData() {
-  if (typeof window === 'undefined' || !window.API) return;
+const PIPELINE_CACHE_KEY = 'cachedPipelineStagesV2';
+const PIPELINE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+async function loadPipelineStagesFromCache() {
   try {
-    // Fetch pipeline stages from backend (fixed enum, no boards)
+    const cached = await getSetting(PIPELINE_CACHE_KEY, null);
+    if (cached && cached.stages && cached.ts && (Date.now() - cached.ts) < PIPELINE_CACHE_TTL_MS) {
+      pipelineStages = cached.stages;
+      log('[PLUGIN_INIT] pipeline stages loaded from cache, count=' + pipelineStages.length);
+      return true;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
+}
+
+async function initBackendData() {
+  log('[PLUGIN_INIT] initBackendData START');
+  const start = performance.now();
+  if (typeof window === 'undefined' || !window.API) {
+    log(`[PLUGIN_INIT] initBackendData END (skipped, no API) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    return;
+  }
+
+  // 1. Try cache first — pipeline stages are hardcoded enum, never change
+  const hadCache = await loadPipelineStagesFromCache();
+  if (hadCache) {
+    log(`[PLUGIN_INIT] initBackendData END (cache hit, no network) 耗时=${(performance.now() - start).toFixed(1)}ms`);
+    return;
+  }
+
+  // 2. No cache: fetch from backend and save
+  try {
     const stagesResp = await window.API.pipeline.listStages();
     if (stagesResp.data && stagesResp.data.items) {
       pipelineStages = stagesResp.data.items.map(s => ({
         id: s.id,
         name: s.name,
         color: s.color,
-        sortOrder: s.sort_order || s.sortOrder
+        sortOrder: s.sortOrder
       })).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      await setSetting(PIPELINE_CACHE_KEY, { stages: pipelineStages, ts: Date.now() });
     }
   } catch (e) {
-    console.warn('[Popup] Init backend data failed:', e.message);
+    log('[Popup] Init backend data failed:', e.message);
   }
+
+  log(`[PLUGIN_INIT] initBackendData END 耗时=${(performance.now() - start).toFixed(1)}ms`);
 }
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', async () => {
+  log('[PLUGIN_INIT] ===== 插件初始化开始 =====');
+  const totalStart = performance.now();
   showLoading();
+
+  // Sequence list edit / delete handler (event delegation)
+  $('seqTemplatesList').addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.seq-item-delete');
+    if (deleteBtn) {
+      const id = deleteBtn.dataset.id;
+      if (!id || !confirm('Are you sure you want to delete this sequence?')) return;
+      try {
+        await window.API.sequences.delete(id);
+        showToast('Sequence deleted');
+        renderSequenceTemplates();
+      } catch (err) {
+        showToast('Delete failed: ' + (err.message || 'Unknown error'));
+      }
+      return;
+    }
+
+    const editBtn = e.target.closest('.seq-item-toggle[data-action="edit"]');
+    if (editBtn) {
+      const id = editBtn.dataset.id;
+      try {
+        const seq = await window.API.sequences.get(id);
+        editingSequenceId = id;
+        $('modalSeqTitle').textContent = 'Edit Sequence';
+        $('modalSeqName').value = seq.name || '';
+        seqSteps = (seq.steps || []).map(s => ({
+          name: s.name || '',
+          delayDays: s.delayDays || 0
+        }));
+        if (seqSteps.length === 0) {
+          seqSteps = [{ name: 'Connection Request', delayDays: 0 }];
+        }
+        renderSeqStepRows();
+        $('modalNewSequence').classList.add('active');
+      } catch (err) {
+        showToast('Failed to load sequence: ' + (err.message || 'Unknown error'));
+      }
+    }
+  });
+
   try {
     await ensureUserId();
-    await initBackendData();        // 1. sequences + pipeline stages (fast)
-    await loadCurrentCandidate();   // 2. scrape current page → render overview instantly
-    await renderOverviewTodayTasks(); // 3. fetch today's tasks from backend (small payload)
-    await initBindEmailState();     // 4. init bind email button state
+
+    // Determine if on LinkedIn profile page and get linkedInId
+    let linkedInId = null;
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab && tab.url && tab.url.includes('linkedin.com/in/')) {
+        const response = await sendMessageToContentScript(tab.id, { action: 'scrape' });
+        if (response && response.success && response.data) {
+          linkedInId = response.data.linkedInId;
+        }
+      }
+    } catch (e) {
+      log('[PLUGIN_INIT] Failed to scrape linkedinId, fallback to no-candidate mode');
+    }
+
+    // Try facade overview API first (single request)
+    let overview = null;
+    let useOverview = false;
+    if (typeof window !== 'undefined' && window.API) {
+      try {
+        log('[PLUGIN_INIT] calling overview API, linkedinId=' + linkedInId);
+        overview = await window.API.overview.get(linkedInId);
+        useOverview = true;
+        log('[PLUGIN_INIT] overview API success');
+      } catch (e) {
+        log('[PLUGIN_INIT] overview API failed, fallback to legacy init:', e.message);
+      }
+    }
+
+    if (useOverview && overview) {
+      // 1. Pipeline stages
+      if (overview.pipelineStages) {
+        pipelineStages = overview.pipelineStages;
+        await setSetting(PIPELINE_CACHE_KEY, { stages: pipelineStages, ts: Date.now() });
+      }
+
+      // 2. User + Subscription
+      await initBindEmailState(overview.user, overview.subscription);
+
+      // 3. Today tasks
+      await renderOverviewTodayTasks(overview.todayTasks, overview.todayTaskOverdueCount);
+
+      // 4. Candidate (scrape + merge with backend data)
+      await loadCurrentCandidate(overview.candidate);
+    } else {
+      // Fallback to legacy multi-request init
+      await initBackendData();
+      await loadCurrentCandidate();
+      await Promise.all([
+        renderOverviewTodayTasks(),
+        initBindEmailState()
+      ]);
+    }
   } catch (e) {
-    console.error('Init error:', e);
+    log('Init error:', e);
   } finally {
+    log(`[PLUGIN_INIT] ===== 插件初始化完成 总耗时=${(performance.now() - totalStart).toFixed(1)}ms =====`);
     hideLoading();
   }
 });
@@ -2070,32 +2493,36 @@ function fmtDateTimeInput(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-(function initDatetimePicker() {
-  const input = $('ovNextFollowupInput');
-  const picker = $('ovDatetimePicker');
-  const monthYear = $('dtpMonthYear');
-  const daysGrid = $('dtpDays');
-  const hourSel = $('dtpHour');
-  const minuteSel = $('dtpMinute');
+function initDatetimePicker(config) {
+  const input = $(config.inputId);
+  const picker = $(config.pickerId);
+  const monthYear = $(config.monthYearId);
+  const daysGrid = $(config.daysId);
+  const hourSel = $(config.hourId);
+  const minuteSel = $(config.minuteId);
 
   let viewDate = new Date();
   let selectedDate = null;
   let longPressTimer = null;
   const LONG_PRESS_MS = 400;
 
-  // Init hour options
-  for (let i = 0; i < 24; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i.toString().padStart(2, '0');
-    hourSel.appendChild(opt);
+  // Init hour options (only once)
+  if (hourSel.options.length === 0) {
+    for (let i = 0; i < 24; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = i.toString().padStart(2, '0');
+      hourSel.appendChild(opt);
+    }
   }
-  // Init minute options
-  for (let i = 0; i < 60; i++) {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = i.toString().padStart(2, '0');
-    minuteSel.appendChild(opt);
+  // Init minute options (only once)
+  if (minuteSel.options.length === 0) {
+    for (let i = 0; i < 60; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = i.toString().padStart(2, '0');
+      minuteSel.appendChild(opt);
+    }
   }
 
   function renderCalendar() {
@@ -2168,9 +2595,10 @@ function fmtDateTimeInput(d) {
   function openPicker() {
     picker.classList.remove('hidden');
     let val = '';
-    if (currentCandidate && currentCandidate.nextFollowup) {
-      val = currentCandidate.nextFollowup;
-    } else if (input.value) {
+    if (config.getInitialValue) {
+      val = config.getInitialValue();
+    }
+    if (!val && input.value) {
       val = input.value;
     }
     if (val) {
@@ -2199,13 +2627,7 @@ function fmtDateTimeInput(d) {
     if (selectedDate) {
       const d = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), parseInt(hourSel.value, 10), parseInt(minuteSel.value, 10));
       input.value = fmtDateTimeInput(d);
-      if (currentCandidate) {
-        const pad = n => n.toString().padStart(2, '0');
-        currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        // Manual edit → source becomes manual (sacred)
-        currentCandidate.nextFollowupSource = 'manual';
-        currentCandidate.nextFollowupSequenceStepId = null;
-      }
+      if (config.onConfirm) config.onConfirm(d);
     }
     closePicker();
   }
@@ -2219,19 +2641,19 @@ function fmtDateTimeInput(d) {
     }
   });
 
-  $('dtpPrevMonth').addEventListener('click', (e) => {
+  $(config.prevMonthId).addEventListener('click', (e) => {
     e.stopPropagation();
     viewDate.setMonth(viewDate.getMonth() - 1);
     renderCalendar();
   });
 
-  $('dtpNextMonth').addEventListener('click', (e) => {
+  $(config.nextMonthId).addEventListener('click', (e) => {
     e.stopPropagation();
     viewDate.setMonth(viewDate.getMonth() + 1);
     renderCalendar();
   });
 
-  $('dtpBtnToday').addEventListener('click', (e) => {
+  $(config.btnTodayId).addEventListener('click', (e) => {
     e.stopPropagation();
     const now = new Date();
     selectedDate = now;
@@ -2242,15 +2664,15 @@ function fmtDateTimeInput(d) {
     confirmAndClose();
   });
 
-  $('dtpBtnClear').addEventListener('click', (e) => {
+  $(config.btnClearId).addEventListener('click', (e) => {
     e.stopPropagation();
     selectedDate = null;
     input.value = '';
-    if (currentCandidate) currentCandidate.nextFollowup = '';
+    if (config.onClear) config.onClear();
     closePicker();
   });
 
-  $('dtpBtnOk').addEventListener('click', (e) => {
+  $(config.btnOkId).addEventListener('click', (e) => {
     e.stopPropagation();
     confirmAndClose();
   });
@@ -2266,61 +2688,61 @@ function fmtDateTimeInput(d) {
   picker.addEventListener('click', (e) => {
     e.stopPropagation();
   });
-})();
-
-// ========== Sequence Follow-up Confirm Modal ==========
-function showSeqFollowupConfirm(messageHtml) {
-  return new Promise((resolve) => {
-    const overlay = $('modalSeqFollowup');
-    const textEl = $('modalSeqFollowupText');
-    const acceptBtn = $('modalSeqFollowupAccept');
-    const editBtn = $('modalSeqFollowupEdit');
-    const editRow = $('modalSeqFollowupEditRow');
-    const editInput = $('modalSeqFollowupEditInput');
-
-    textEl.innerHTML = messageHtml;
-    editRow.style.display = 'none';
-    overlay.classList.remove('hidden');
-
-    const cleanup = () => {
-      overlay.classList.add('hidden');
-      acceptBtn.onclick = null;
-      editBtn.onclick = null;
-      overlay.onclick = null;
-    };
-
-    acceptBtn.onclick = () => {
-      const edited = editRow.style.display !== 'none';
-      const time = edited && editInput.value ? new Date(editInput.value) : null;
-      cleanup();
-      resolve({ accepted: true, edited, time });
-    };
-
-    editBtn.onclick = () => {
-      if (editRow.style.display === 'none') {
-        editRow.style.display = 'block';
-        // Default to suggested time + 3 days if not set
-        if (!editInput.value) {
-          const d = new Date(Date.now() + 3 * 86400000);
-          const pad = n => n.toString().padStart(2, '0');
-          editInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-        }
-        editInput.focus();
-      } else {
-        const time = editInput.value ? new Date(editInput.value) : null;
-        cleanup();
-        resolve({ accepted: true, edited: true, time });
-      }
-    };
-
-    overlay.onclick = (e) => {
-      if (e.target === overlay) {
-        cleanup();
-        resolve({ accepted: false });
-      }
-    };
-  });
 }
+
+// Initialize Overview datetime picker
+initDatetimePicker({
+  inputId: 'ovNextFollowupInput',
+  pickerId: 'ovDatetimePicker',
+  monthYearId: 'dtpMonthYear',
+  daysId: 'dtpDays',
+  hourId: 'dtpHour',
+  minuteId: 'dtpMinute',
+  prevMonthId: 'dtpPrevMonth',
+  nextMonthId: 'dtpNextMonth',
+  btnTodayId: 'dtpBtnToday',
+  btnClearId: 'dtpBtnClear',
+  btnOkId: 'dtpBtnOk',
+  getInitialValue: () => (currentCandidate && currentCandidate.nextFollowup) ? currentCandidate.nextFollowup : '',
+  onConfirm: (d) => {
+    if (currentCandidate) {
+      const pad = n => n.toString().padStart(2, '0');
+      currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      currentCandidate.nextFollowupSource = 'manual';
+      currentCandidate.nextFollowupSequenceStepId = null;
+    }
+  },
+  onClear: () => {
+    if (currentCandidate) currentCandidate.nextFollowup = '';
+  }
+});
+
+// Follow-up mode toggle buttons
+$('ovToggleSequence').addEventListener('click', () => toggleFollowupMode('sequence'));
+$('ovToggleManual').addEventListener('click', () => toggleFollowupMode('manual'));
+
+// Initialize Manual Entry (Pipeline) datetime picker
+initDatetimePicker({
+  inputId: 'meNextFollowup',
+  pickerId: 'meDatetimePicker',
+  monthYearId: 'meDtpMonthYear',
+  daysId: 'meDtpDays',
+  hourId: 'meDtpHour',
+  minuteId: 'meDtpMinute',
+  prevMonthId: 'meDtpPrevMonth',
+  nextMonthId: 'meDtpNextMonth',
+  btnTodayId: 'meDtpBtnToday',
+  btnClearId: 'meDtpBtnClear',
+  btnOkId: 'meDtpBtnOk',
+  onConfirm: (d) => {
+    toggleMeFollowupMode('manual');
+  },
+  onClear: () => {
+    // no-op
+  }
+});
+
+
 
 // ========== Mark Done Follow-up Confirm Modal ==========
 function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
@@ -2336,10 +2758,10 @@ function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
     textEl.innerHTML = messageHtml;
     editRow.style.display = 'none';
     skipBtn.style.display = showSkip ? 'inline-block' : 'none';
-    overlay.classList.remove('hidden');
+    overlay.classList.add('active');
 
     const cleanup = () => {
-      overlay.classList.add('hidden');
+      overlay.classList.remove('active');
       acceptBtn.onclick = null;
       editBtn.onclick = null;
       skipBtn.onclick = null;
@@ -2383,32 +2805,22 @@ function showMarkDoneFollowupConfirm(messageHtml, showSkip = false) {
   });
 }
 
-// Mark Done button
-$('ovMarkDoneBtn').addEventListener('click', async () => {
-  if (!currentCandidate) return;
+async function doMarkFollowupDone(candidateId, onComplete) {
   showLoading();
   try {
-    // Call backend mark follow-up done
     let result = null;
-    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-      result = await window.API.candidates.markFollowupDone(currentCandidate.id);
+    if (typeof window !== 'undefined' && window.API && candidateId) {
+      result = await window.API.candidates.markFollowupDone(candidateId);
     }
 
-    // Clear local follow-up
-    if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
+    if (typeof window !== 'undefined' && window.API && candidateId) {
       try {
-        await window.API.candidates.updateFollowup(
-          currentCandidate.id,
-          null,
-          'none',
-          null
-        );
+        await window.API.candidates.updateFollowup(candidateId, null, 'none', null);
       } catch (e) {
-        console.warn('[MarkDone] clear followup failed:', e);
+        log('[MarkDone] clear followup failed:', e);
       }
     }
 
-    // If sequence has next suggestion, prompt user
     if (result && result.has_suggestion) {
       const suggested = result.suggested_time ? new Date(result.suggested_time) : null;
       const dateStr = suggested ? suggested.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
@@ -2417,64 +2829,68 @@ $('ovMarkDoneBtn').addEventListener('click', async () => {
       if (choice && choice.accepted) {
         const followupTime = choice.time || suggested;
         const source = choice.edited ? 'manual' : 'sequence';
-        if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-          try {
-            await window.API.candidates.updateFollowup(
-              currentCandidate.id,
-              followupTime,
-              source,
-              source === 'sequence' ? (result.sequence_step_id || null) : null
-            );
-          } catch (e) {
-            console.warn('[MarkDone] update followup failed:', e);
+        try {
+          await window.API.candidates.updateFollowup(
+            candidateId,
+            followupTime,
+            source,
+            source === 'sequence' ? (result.sequence_step_id || null) : null
+          );
+          if (currentCandidate && currentCandidate.id === candidateId) {
+            const d = new Date(followupTime);
+            const pad = n => n.toString().padStart(2, '0');
+            currentCandidate.nextFollowup = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            currentCandidate.nextFollowupSource = source;
           }
+        } catch (e) {
+          log('[MarkDone] update followup failed:', e);
         }
       }
     } else if (result && result.sequence_completed) {
       showToast('All sequence steps completed');
     }
 
-    renderOverviewNextFollowup();
+    if (onComplete) onComplete();
+    if (currentCandidate && currentCandidate.id === candidateId) {
+      renderOverviewNextFollowup();
+      renderOverviewTodayTasks();
+    }
     showToast('Marked as done');
   } catch (e) {
-    console.error('[MarkDone] error:', e);
+    log('[MarkDone] error:', e);
     showToast('Failed to mark done');
   } finally {
     hideLoading();
   }
+}
+
+// Mark Done button
+$('ovMarkDoneBtn').addEventListener('click', async () => {
+  if (!currentCandidate) return;
+  await doMarkFollowupDone(currentCandidate.id, () => {
+    renderOverviewNextFollowup();
+  });
 });
 
-// Sync to Sequence button
-$('ovSyncToSequenceBtn').addEventListener('click', async () => {
-  if (!currentCandidate || !currentCandidate.sequenceId) return;
-  showLoading();
-  try {
-    const seq = await getSequenceById(currentCandidate.sequenceId);
-    if (seq && seq.steps && seq.steps.length >= 2) {
-      const nextStep = seq.steps[1]; // step 2
-      const d = new Date(Date.now() + nextStep.delayDays * 86400000);
-      if (typeof window !== 'undefined' && window.API && currentCandidate.id) {
-        try {
-          await window.API.candidates.updateFollowup(
-            currentCandidate.id,
-            d,
-            'sequence',
-            null
-          );
-        } catch (e) {
-          console.warn('[SyncToSeq] update followup failed:', e);
-        }
+// Toggle follow-up mode (sequence / manual)
+function toggleFollowupMode(mode) {
+  if (!currentCandidate) return;
+  currentCandidate.nextFollowupSource = mode;
+  if (mode === 'sequence' && currentCandidate.sequenceId) {
+    // Recalculate from sequence
+    getSequenceById(currentCandidate.sequenceId).then(seq => {
+      if (seq && seq.steps && seq.steps.length >= 2) {
+        const nextStep = seq.steps[1];
+        currentCandidate.nextFollowup = Date.now() + nextStep.delayDays * 86400000;
+        saveDraft(currentCandidate);
+        renderOverviewNextFollowup();
       }
-      renderOverviewNextFollowup();
-      showToast('Synced to sequence');
-    }
-  } catch (e) {
-    console.error('[SyncToSeq] error:', e);
-    showToast('Failed to sync');
-  } finally {
-    hideLoading();
+    });
+  } else {
+    saveDraft(currentCandidate);
+    renderOverviewNextFollowup();
   }
-});
+}
 
 // ========== Feedback Modal ==========
 (function initFeedbackModal() {
@@ -2482,15 +2898,20 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
   const openBtn = $('feedbackOpenBtn');
   const closeBtn = $('feedbackCloseBtn');
   const cancelBtn = $('feedbackCancelBtn');
-  const sendBtn = $('feedbackSendBtn');
-  const contentEl = $('feedbackContent');
-  const emailEl = $('feedbackEmail');
+  const copyBtn = $('feedbackCopyBtn');
+  const copyEmailContentBtn = $('feedbackCopyEmailContentBtn');
+  const emailBtn = $('feedbackEmailBtn');
+  const uuidDisplay = $('feedbackUuidDisplay');
+  const toEmailSpan = $('feedbackToEmail');
 
   function openModal() {
     overlay.classList.remove('hidden');
-    contentEl.value = '';
-    emailEl.value = '';
-    contentEl.focus();
+    if (currentUserUuid) {
+      uuidDisplay.value = currentUserUuid;
+    }
+    if (currentUserFeedbackEmail) {
+      toEmailSpan.textContent = currentUserFeedbackEmail;
+    }
   }
 
   function closeModal() {
@@ -2501,52 +2922,103 @@ $('ovSyncToSequenceBtn').addEventListener('click', async () => {
   closeBtn.addEventListener('click', closeModal);
   cancelBtn.addEventListener('click', closeModal);
 
-  // Click overlay background to close
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) closeModal();
   });
 
-  sendBtn.addEventListener('click', async () => {
-    const content = contentEl.value.trim();
-    if (!content) {
-      showToast('Please enter your feedback');
-      contentEl.focus();
-      return;
-    }
-
-    sendBtn.disabled = true;
-    sendBtn.textContent = 'Sending...';
-
+  async function copyUuid() {
+    if (!currentUserUuid) return;
     try {
-      const email = emailEl.value.trim();
-      await window.API.feedback.submit(content, email);
-      showToast('Feedback sent! Thank you.');
-      trackEvent('feedback_submitted', { category: 'engagement' });
-      closeModal();
-    } catch (e) {
-      console.error('[Feedback] Failed to send:', e);
-      showToast('Failed to send feedback. Please try again.');
-    } finally {
-      sendBtn.disabled = false;
-      sendBtn.textContent = 'Send';
+      await navigator.clipboard.writeText(currentUserUuid);
+      showToast('User ID copied!');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = currentUserUuid;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('User ID copied!');
+      } catch (e) {
+        showToast('Copy failed. Please copy manually.');
+      }
+      document.body.removeChild(ta);
     }
+  }
+
+  copyBtn.addEventListener('click', copyUuid);
+
+  async function copyEmailContent() {
+    if (!currentUserUuid || !currentUserFeedbackEmail) return;
+    const text = `To: ${currentUserFeedbackEmail}\nSubject: [Feedback] User: ${currentUserUuid}\n\nHi team,\n\nMy feedback:\n[Please describe your idea or attach screenshots here]\n\n---\nUser ID: ${currentUserUuid}\nSent from TalentFlow SCRM for LinkedIn Plugin`;
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Email content copied! Paste into your email client.');
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('Email content copied! Paste into your email client.');
+      } catch (e) {
+        showToast('Copy failed. Please copy manually.');
+      }
+      document.body.removeChild(ta);
+    }
+  }
+
+  copyEmailContentBtn.addEventListener('click', copyEmailContent);
+
+  emailBtn.addEventListener('click', () => {
+    if (!currentUserUuid || !currentUserFeedbackEmail) return;
+    const subject = encodeURIComponent(`[Feedback] User: ${currentUserUuid}`);
+    const body = encodeURIComponent(`Hi team,\n\nMy User ID: ${currentUserUuid}\n\nMy feedback:\n\n[Please describe your idea or attach screenshots here]\n\n`);
+    const mailtoUrl = `mailto:${currentUserFeedbackEmail}?subject=${subject}&body=${body}`;
+    chrome.tabs.create({ url: mailtoUrl });
   });
 })();
 
 // ========== Bind Email Modal ==========
+let currentUserId = null;
 let currentUserEmail = null;
-
 let currentUserNeedBindEmail = false;
+let currentUserUuid = null;
+let currentUserIsPro = false;
+let currentUserPlanCode = null;
+let currentUserFeedbackEmail = null;
 
-async function initBindEmailState() {
+async function initBindEmailState(preloadedUser = null, preloadedSubscription = null) {
+  log('[PLUGIN_INIT] initBindEmailState START');
+  const start = performance.now();
   try {
-    const user = await window.API.user.me();
-    currentUserEmail = user.email || null;
-    currentUserNeedBindEmail = user.needBindEmail || false;
-    updateBindEmailButton();
-    renderEmailAlertCard();
+    let user = preloadedUser;
+    if (!user && typeof window !== 'undefined' && window.API) {
+      user = await window.API.user.me();
+    }
+    if (user) {
+      currentUserId = user.id || null;
+      currentUserEmail = user.email || null;
+      currentUserNeedBindEmail = (preloadedSubscription ? preloadedSubscription.needBindEmail : user.needBindEmail) || false;
+      currentUserUuid = user.uuid || null;
+      currentUserIsPro = (preloadedSubscription ? preloadedSubscription.isPro : user.isPro) || false;
+      currentUserPlanCode = (preloadedSubscription
+        ? (preloadedSubscription.plan_code || preloadedSubscription.planCode || (preloadedSubscription.plan && preloadedSubscription.plan.planCode))
+        : (user.plan_code || user.planCode || (user.plan && user.plan.planCode))) || null;
+      currentUserFeedbackEmail = user.feedbackEmail || 'richardtao2001@gmail.com';
+      updateBindEmailButton();
+      updateProBadge();
+      renderEmailAlertCard();
+    }
   } catch (e) {
-    console.error('[BindEmail] Failed to get user:', e);
+    log('[BindEmail] Failed to get user:', e);
+  } finally {
+    // Re-render empty state if on empty page (email may have loaded after first render)
+    if ($('tab-overview') && $('tab-overview').classList.contains('empty-page')) {
+      renderEmptyState();
+    }
+    log(`[PLUGIN_INIT] initBindEmailState END 耗时=${(performance.now() - start).toFixed(1)}ms`);
   }
 }
 
@@ -2563,13 +3035,48 @@ function renderEmailAlertCard() {
 function updateBindEmailButton() {
   const btn = $('bindEmailOpenBtn');
   if (currentUserEmail) {
-    btn.textContent = '📧';
-    btn.title = 'Email: ' + currentUserEmail;
+    btn.textContent = '✉️';
+    btn.title = '';
+    btn.classList.add('has-email');
+    btn.setAttribute('data-email', currentUserEmail);
   } else {
     btn.textContent = '📧 Bind Email';
     btn.title = 'Bind Email';
+    btn.classList.remove('has-email');
+    btn.removeAttribute('data-email');
   }
 }
+
+function updateProBadge() {
+  const proBadge = $('proBadge');
+  const proBadgeText = $('proBadgeText');
+  const upgradeBadge = $('upgradeBadge');
+  if (currentUserIsPro) {
+    proBadge.classList.remove('hidden');
+    upgradeBadge.classList.add('hidden');
+    if (currentUserPlanCode === 'pro_beta') {
+      proBadge.classList.add('pro-beta-badge');
+      if (proBadgeText) proBadgeText.textContent = 'PRO BETA';
+    } else {
+      proBadge.classList.remove('pro-beta-badge');
+      if (proBadgeText) proBadgeText.textContent = 'PRO';
+    }
+  } else {
+    proBadge.classList.add('hidden');
+    proBadge.classList.remove('pro-beta-badge');
+    upgradeBadge.classList.remove('hidden');
+  }
+}
+
+(function initUpgradeBadge() {
+  const upgradeBadge = $('upgradeBadge');
+  if (upgradeBadge) {
+    upgradeBadge.addEventListener('click', async () => {
+      trackEvent('upgrade_badge_clicked', { category: 'conversion' });
+      await showUpgradeModal({ scenario: 'header' });
+    });
+  }
+})();
 
 (function initBindEmailModal() {
   const bindOverlay = $('bindEmailOverlay');
@@ -2578,70 +3085,49 @@ function updateBindEmailButton() {
   const bindCancelBtn = $('bindEmailCancelBtn');
   const bindSubmitBtn = $('bindEmailSubmitBtn');
   const bindEmailInput = $('bindEmailInput');
-  const bindCodeInput = $('bindCodeInput');
-  const sendCodeBtn = $('sendCodeBtn');
+  const bindSendCodeBtn = $('bindEmailSendCodeBtn');
+  const bindCodeInput = $('bindEmailCodeInput');
 
-  const emailDisplayOverlay = $('emailDisplayOverlay');
-  const emailDisplayCloseBtn = $('emailDisplayCloseBtn');
-  const emailDisplayOkBtn = $('emailDisplayOkBtn');
-  const emailDisplayText = $('emailDisplayText');
-
-  let countdownTimer = null;
+  let sendCodeTimer = null;
 
   function openBindModal() {
     bindOverlay.classList.remove('hidden');
-    bindEmailInput.value = '';
+    bindEmailInput.value = currentUserEmail || '';
     bindCodeInput.value = '';
-    resetSendCodeBtn();
     bindEmailInput.focus();
   }
+  window.openBindModal = openBindModal;
 
   function closeBindModal() {
     bindOverlay.classList.add('hidden');
-    if (countdownTimer) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
+    resetSendCodeTimer();
   }
 
-  function openEmailDisplayModal() {
-    emailDisplayText.textContent = currentUserEmail || '';
-    emailDisplayOverlay.classList.remove('hidden');
-  }
-
-  function closeEmailDisplayModal() {
-    emailDisplayOverlay.classList.add('hidden');
-  }
-
-  function resetSendCodeBtn() {
-    if (countdownTimer) {
-      clearInterval(countdownTimer);
-      countdownTimer = null;
-    }
-    sendCodeBtn.disabled = false;
-    sendCodeBtn.textContent = 'Send Code';
-  }
-
-  function startCountdown() {
+  function startSendCodeCountdown() {
     let seconds = 60;
-    sendCodeBtn.disabled = true;
-    sendCodeBtn.textContent = `Resend (${seconds}s)`;
-    countdownTimer = setInterval(() => {
+    bindSendCodeBtn.disabled = true;
+    bindSendCodeBtn.textContent = `${seconds}s`;
+    sendCodeTimer = setInterval(() => {
       seconds--;
       if (seconds <= 0) {
-        resetSendCodeBtn();
-      } else {
-        sendCodeBtn.textContent = `Resend (${seconds}s)`;
+        resetSendCodeTimer();
+        return;
       }
+      bindSendCodeBtn.textContent = `${seconds}s`;
     }, 1000);
   }
 
-  bindOpenBtn.addEventListener('click', () => {
-    if (currentUserEmail) {
-      openEmailDisplayModal();
-    } else {
-      openBindModal();
+  function resetSendCodeTimer() {
+    if (sendCodeTimer) {
+      clearInterval(sendCodeTimer);
+      sendCodeTimer = null;
     }
+    bindSendCodeBtn.disabled = false;
+    bindSendCodeBtn.textContent = 'Send Code';
+  }
+
+  bindOpenBtn.addEventListener('click', () => {
+    openBindModal();
   });
 
   // Overview tab email alert button
@@ -2656,29 +3142,22 @@ function updateBindEmailButton() {
     if (e.target === bindOverlay) closeBindModal();
   });
 
-  emailDisplayCloseBtn.addEventListener('click', closeEmailDisplayModal);
-  emailDisplayOkBtn.addEventListener('click', closeEmailDisplayModal);
-  emailDisplayOverlay.addEventListener('click', (e) => {
-    if (e.target === emailDisplayOverlay) closeEmailDisplayModal();
-  });
-
-  sendCodeBtn.addEventListener('click', async () => {
+  bindSendCodeBtn.addEventListener('click', async () => {
     const email = bindEmailInput.value.trim();
     if (!email) {
       showToast('Please enter your email');
       bindEmailInput.focus();
       return;
     }
-    sendCodeBtn.disabled = true;
-    sendCodeBtn.textContent = 'Sending...';
+    bindSendCodeBtn.disabled = true;
     try {
       await window.API.user.sendVerificationCode(email);
       showToast('Verification code sent!');
-      startCountdown();
+      startSendCodeCountdown();
     } catch (e) {
-      console.error('[BindEmail] Failed to send code:', e);
-      showToast(e.message || 'Failed to send code. Please try again.');
-      resetSendCodeBtn();
+      log('[BindEmail] Failed to send code:', e);
+      showToast(e.message || 'Failed to send verification code. Please try again.');
+      bindSendCodeBtn.disabled = false;
     }
   });
 
@@ -2696,102 +3175,185 @@ function updateBindEmailButton() {
       return;
     }
     bindSubmitBtn.disabled = true;
-    bindSubmitBtn.textContent = 'Binding...';
+    bindSubmitBtn.textContent = 'Saving...';
     try {
-      const result = await window.API.user.bindEmail(email, code);
-      if (result.conflict) {
-        // Show conflict modal
-        pendingBindEmail = email;
-        pendingBindCode = code;
-        pendingConflictUser = result.existingUser;
+      const resp = await window.API.user.bindEmail(email, code);
+      log('[BindEmail] resp:', resp);
+      if (resp && resp.merged) {
+        log('[BindEmail] merged=true, targetUuid=', resp.targetUuid);
+        currentUserUuid = resp.targetUuid || currentUserUuid;
+        if (resp.targetUuid) {
+          await setSetting('userId', resp.targetUuid);
+        }
+        const modal = $('mergeModal');
+        log('[BindEmail] mergeModal element:', modal);
+        if (modal) {
+          modal.classList.remove('hidden');
+          log('[BindEmail] mergeModal shown');
+        } else {
+          log('[BindEmail] mergeModal not found');
+        }
         closeBindModal();
-        openConflictModal();
-        return;
+      } else {
+        showToast('Email linked successfully!');
+        currentUserEmail = email;
+        updateBindEmailButton();
+        closeBindModal();
       }
-      showToast('Email bound successfully!');
-      currentUserEmail = email;
-      updateBindEmailButton();
-      closeBindModal();
     } catch (e) {
-      console.error('[BindEmail] Failed to bind:', e);
+      log('[BindEmail] Failed to bind:', e);
       showToast(e.message || 'Failed to bind email. Please try again.');
     } finally {
       bindSubmitBtn.disabled = false;
-      bindSubmitBtn.textContent = 'Bind';
+      bindSubmitBtn.textContent = 'Save';
     }
   });
 })();
 
-// ========== Account Conflict Modal ==========
-let pendingBindEmail = null;
-let pendingBindCode = null;
-let pendingConflictUser = null;
+// ========== AI Message Generation ==========
+(function initAiMessage() {
+  $('ovAiGenerateBtn').addEventListener('click', async () => {
+    if (!currentCandidate) {
+      showToast("Please open a candidate's LinkedIn profile to use this feature.");
+      return;
+    }
 
-(function initAccountConflictModal() {
-  const conflictOverlay = $('accountConflictOverlay');
-  const conflictCloseBtn = $('accountConflictCloseBtn');
-  const conflictMergeBtn = $('accountConflictMergeBtn');
-  const conflictKeepBtn = $('accountConflictKeepBtn');
+    const btn = $('ovAiGenerateBtn');
+    const loading = $('ovAiLoading');
+    const result = $('ovAiResult');
 
-  function openConflictModal() {
-    conflictOverlay.classList.remove('hidden');
-  }
+    btn.disabled = true;
+    loading.style.display = 'block';
+    result.style.display = 'none';
 
-  function closeConflictModal() {
-    conflictOverlay.classList.add('hidden');
-  }
-
-  window.openConflictModal = openConflictModal;
-
-  conflictCloseBtn.addEventListener('click', closeConflictModal);
-  conflictOverlay.addEventListener('click', (e) => {
-    if (e.target === conflictOverlay) closeConflictModal();
-  });
-
-  conflictMergeBtn.addEventListener('click', async () => {
-    if (!pendingBindEmail || !pendingBindCode || !pendingConflictUser) return;
-    conflictMergeBtn.disabled = true;
-    conflictMergeBtn.textContent = 'Merging...';
     try {
-      const result = await window.API.user.mergeAccount(
-        pendingBindEmail,
-        pendingBindCode,
-        pendingConflictUser.id,
-        pendingConflictUser.uuid
-      );
-      showToast('Account merged successfully!');
-      // Switch to the merged account's UUID
-      if (result.targetUuid) {
-        await setSetting('userId', result.targetUuid);
-        localStorage.setItem('uuid', result.targetUuid);
-        currentUserEmail = pendingBindEmail;
-        updateBindEmailButton();
-        // Refresh page to reload data with new UUID
-        location.reload();
+      if (!currentCandidate.id) {
+        const canSave = await checkCandidateLimit();
+        if (!canSave) {
+          btn.disabled = false;
+          loading.style.display = 'none';
+          return;
+        }
+        try {
+          currentCandidate.source = 'linkedin_profile';
+          const created = await window.API.candidates.create(currentCandidate);
+          if (created && created.id) {
+            currentCandidate.id = created.id;
+          } else {
+            showToast('Failed to save candidate');
+            btn.disabled = false;
+            loading.style.display = 'none';
+            return;
+          }
+        } catch (e) {
+          log('[AI_GEN] Auto-save candidate failed:', e);
+          showToast('Failed to save candidate: ' + (e.message || 'Unknown error'));
+          btn.disabled = false;
+          loading.style.display = 'none';
+          return;
+        }
       }
-    } catch (e) {
-      console.error('[Conflict] Failed to merge:', e);
-      showToast(e.message || 'Failed to merge account. Please try again.');
-      conflictMergeBtn.disabled = false;
-      conflictMergeBtn.textContent = 'Merge with existing account';
+
+      const request = {
+        candidate_id: currentCandidate.id,
+        pipeline_stage: currentCandidate.pipelineStage,
+        job_title: currentCandidate.jobTitle,
+        job_function: currentCandidate.jobFunction,
+        contact_mode: currentCandidate.contactMode || 'recruiting'
+      };
+
+      const data = await window.API.candidates.generateAiMessages(currentCandidate.id, request);
+      renderAiResult(data);
+    } catch (err) {
+      log('[AI_GEN] catch err:', err);
+      const quotaHandled = await handleQuotaError(err);
+      log('[AI_GEN] quotaHandled:', quotaHandled);
+      if (quotaHandled) {
+        // 额度超限，已弹出升级框
+      } else if (err.code === 4001) {
+        await showConfirm(err.message || "Please open the candidate's profile page and use this feature.");
+      } else {
+        showToast('Failed to generate: ' + (err.message || 'Unknown error'));
+      }
+      log('[SCRM_TEMPLATE] AI generation failed:', err);
+    } finally {
+      btn.disabled = false;
+      loading.style.display = 'none';
     }
   });
 
-  conflictKeepBtn.addEventListener('click', async () => {
-    if (!pendingBindEmail || !pendingBindCode) return;
-    conflictKeepBtn.disabled = true;
-    conflictKeepBtn.textContent = 'Processing...';
-    try {
-      await window.API.user.keepDeviceNew(pendingBindEmail, pendingBindCode);
-      showToast('Email bound to this device!');
-      currentUserEmail = pendingBindEmail;
-      updateBindEmailButton();
-      closeConflictModal();
-    } catch (e) {
-      console.error('[Conflict] Failed to keep device new:', e);
-      showToast(e.message || 'Failed to process. Please try again.');
-      conflictKeepBtn.disabled = false;
-      conflictKeepBtn.textContent = 'Keep this device as new';
+  function renderAiResult(data) {
+    const versionsEl = $('ovAiVersions');
+    const message = data && data.message || '';
+    if (message) {
+      versionsEl.innerHTML = `
+        <div class="ai-version" style="margin-bottom:10px;padding:10px;border:1px solid #5b4cdb;border-radius:8px;background:#f5f3ff;">
+          <textarea id="aiMessageEditor" style="width:100%;min-height:80px;font-size:13px;color:#1f2937;line-height:1.5;padding:8px;border:1px solid #ddd;border-radius:6px;resize:vertical;background:#fff;box-sizing:border-box;">${escapeHtml(message)}</textarea>
+          <button class="btn-copy" style="margin-top:8px;font-size:12px;padding:4px 10px;border:1px solid #d1d5db;background:#fff;color:#374151;border-radius:4px;cursor:pointer;">Copy</button>
+        </div>
+      `;
+
+      versionsEl.querySelector('.btn-copy').addEventListener('click', () => {
+        const editedText = $('aiMessageEditor').value;
+        copyToClipboard(editedText);
+        showToast('Copied!');
+      });
+    } else {
+      versionsEl.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:13px;padding:12px;">No message generated</div>';
     }
-  });
+
+    $('ovAiResult').style.display = 'block';
+  }
+
+  function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async function copyToClipboard(text) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch (e) {
+        log('Copy failed:', e);
+      }
+      document.body.removeChild(ta);
+    }
+  }
+})();
+
+// ========== Merge Success Modal ==========
+(function initMergeModal() {
+  const modal = $('mergeModal');
+  const refreshBtn = $('mergeRefreshBtn');
+  const laterBtn = $('mergeLaterBtn');
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      location.reload();
+    });
+  }
+
+  if (laterBtn) {
+    laterBtn.addEventListener('click', () => {
+      modal.classList.add('hidden');
+    });
+  }
+
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.classList.add('hidden');
+      }
+    });
+  }
 })();

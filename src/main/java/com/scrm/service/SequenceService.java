@@ -12,10 +12,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.*;
 
 @Service
 public class SequenceService {
+
+    private static final Logger log = LoggerFactory.getLogger(SequenceService.class);
 
     @Autowired
     @Qualifier("sequenceMapper")
@@ -85,6 +90,7 @@ public class SequenceService {
         try {
             return sequenceMapper.selectByPrimaryKey(Long.parseLong(id));
         } catch (NumberFormatException e) {
+            log.error("Invalid sequence id format", e);
             return null;
         }
     }
@@ -165,19 +171,9 @@ public class SequenceService {
         Long userId = RequestContext.getCurrentUserId();
         Sequence existing = findSequence(userId, id);
         if (existing == null) throw new BusinessException("Sequence not found");
-        // delete steps
-        SequenceStepExample ex = new SequenceStepExample();
-        ex.createCriteria().andSequenceIdEqualTo(existing.getId());
-        for (SequenceStep s : sequenceStepMapper.selectByExample(ex)) {
-            sequenceStepMapper.deleteByPrimaryKey(s.getId());
-        }
-        // delete candidate bindings
-        CandidateSequenceExample cse = new CandidateSequenceExample();
-        cse.createCriteria().andSequenceIdEqualTo(existing.getId());
-        for (CandidateSequence cs : candidateSequenceMapper.selectByExample(cse)) {
-            candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
-        }
-        sequenceMapper.deleteByPrimaryKey(existing.getId());
+        existing.setIsActive(false);
+        existing.setUpdatedAt(new Date());
+        sequenceMapper.updateByPrimaryKeySelective(existing);
     }
 
     // Candidate Sequences
@@ -201,21 +197,33 @@ public class SequenceService {
     @Transactional
     public CandidateSequence createCandidateSequence(CandidateSequence cs) {
         Long userId = RequestContext.getCurrentUserId();
+
+        // 1. Check if candidate already has an active binding to the SAME sequence
+        CandidateSequenceExample existingExample = new CandidateSequenceExample();
+        existingExample.createCriteria()
+                .andUserIdEqualTo(userId)
+                .andCandidateIdEqualTo(cs.getCandidateId())
+                .andStatusEqualTo("active");
+        List<CandidateSequence> existingList = candidateSequenceMapper.selectByExample(existingExample);
+        if (!existingList.isEmpty()) {
+            CandidateSequence existing = existingList.get(0);
+            if (existing.getSequenceId().equals(cs.getSequenceId())) {
+                // Same sequence, no change needed, no popup
+                existing.setRebound(false);
+                return existing;
+            }
+            // Different sequence: delete old binding (rebound)
+            for (CandidateSequence old : existingList) {
+                candidateSequenceMapper.deleteByPrimaryKey(old.getId());
+            }
+        }
+
+        // 2. Create new binding (first time or rebound)
         cs.setUserId(userId);
         cs.setCreatedAt(new Date());
         cs.setUpdatedAt(new Date());
         cs.setCurrentStepNumber(1);
-
-        // Abandon any existing active binding for this candidate before creating a new one
-        CandidateSequenceExample abandonExample = new CandidateSequenceExample();
-        abandonExample.createCriteria().andUserIdEqualTo(userId)
-                .andCandidateIdEqualTo(cs.getCandidateId())
-                .andStatusEqualTo("active");
-        for (CandidateSequence old : candidateSequenceMapper.selectByExample(abandonExample)) {
-            old.setStatus("abandoned");
-            old.setUpdatedAt(new Date());
-            candidateSequenceMapper.updateByPrimaryKeySelective(old);
-        }
+        cs.setStatus("active");
 
         // get sequence steps to set total_steps
         SequenceStepExample example = new SequenceStepExample();
@@ -229,9 +237,7 @@ public class SequenceService {
         historyService.recordHistory(cs.getCandidateId(), "sequence_started",
                 "Sequence started (step 1/" + cs.getTotalSteps() + ")", "system");
 
-        // Note: next_followup is NO LONGER set here automatically.
-        // The frontend will prompt the user to accept or edit the suggested follow-up time.
-
+        cs.setRebound(true);
         return cs;
     }
 
@@ -241,6 +247,20 @@ public class SequenceService {
         CandidateSequence cs = findCandidateSequence(userId, id);
         if (cs == null) throw new BusinessException("Candidate sequence not found");
         candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
+    }
+
+    @Transactional
+    public void unbindCandidate(Long candidateId) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateSequenceExample example = new CandidateSequenceExample();
+        example.createCriteria()
+                .andUserIdEqualTo(userId)
+                .andCandidateIdEqualTo(candidateId)
+                .andStatusEqualTo("active");
+        List<CandidateSequence> list = candidateSequenceMapper.selectByExample(example);
+        for (CandidateSequence cs : list) {
+            candidateSequenceMapper.deleteByPrimaryKey(cs.getId());
+        }
     }
 
     /**
@@ -415,6 +435,7 @@ public class SequenceService {
         try {
             return candidateSequenceMapper.selectByPrimaryKey(Long.parseLong(id));
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate sequence id format", e);
             return null;
         }
     }
@@ -423,6 +444,7 @@ public class SequenceService {
         try {
             return Long.parseLong(id);
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate id format", e);
             return null;
         }
     }

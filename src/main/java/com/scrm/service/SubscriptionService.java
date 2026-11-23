@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -57,12 +58,14 @@ public class SubscriptionService {
         SubscriptionPlanExample example = new SubscriptionPlanExample();
         example.createCriteria().andIsActiveEqualTo(true);
         example.setOrderByClause("sort_order ASC");
-        return planMapper.selectByExample(example);
+        return planMapper.selectByExample(example).stream()
+                .filter(p -> Boolean.TRUE.equals(p.getIsPurchasable()))
+                .toList();
     }
 
     public Map<String, Object> getCurrentSubscription() {
         Long userId = RequestContext.getCurrentUserId();
-        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
+        Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(userId);
 
         Map<String, Object> result = new HashMap<>();
         result.put("has_subscription", activeSub != null);
@@ -72,6 +75,10 @@ public class SubscriptionService {
             subMap.put("id", activeSub.getId());
             SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
             subMap.put("plan", plan);
+            if (plan != null) {
+                subMap.put("plan_code", plan.getPlanCode());
+                subMap.put("plan_name", plan.getName());
+            }
             subMap.put("status", activeSub.getStatus());
             subMap.put("current_period_start", activeSub.getCurrentPeriodStart());
             subMap.put("current_period_end", activeSub.getCurrentPeriodEnd());
@@ -118,11 +125,11 @@ public class SubscriptionService {
     }
 
     @Transactional
-    public Map<String, Object> checkout(String planCode, String successUrl, String cancelUrl, String couponCode) {
+    public Map<String, Object> checkout(String planCode, String email) {
         Long userId = RequestContext.getCurrentUserId();
         User user = userMapper.selectByPrimaryKey(userId);
-        if (user == null || user.getEmail() == null) {
-            throw new BusinessException("User email not found");
+        if (user == null) {
+            throw new BusinessException("User not found");
         }
 
         SubscriptionPlanExample example = new SubscriptionPlanExample();
@@ -132,13 +139,16 @@ public class SubscriptionService {
         if (plan == null) {
             throw new BusinessException("Plan not found: " + planCode);
         }
+        if (!Boolean.TRUE.equals(plan.getIsPurchasable())) {
+            throw new BusinessException("This plan is not available for purchase: " + planCode);
+        }
 
         String priceId = paddleProperties.getPriceIds().get(planCode);
         if (priceId == null || priceId.isEmpty()) {
             throw new BusinessException("Paddle price ID not configured for plan: " + planCode);
         }
 
-        // 1. Create local order
+        // 1. Create local pending order
         Order order = new Order();
         order.setOrderNo(generateOrderNo());
         order.setUserId(userId);
@@ -151,28 +161,24 @@ public class SubscriptionService {
         order.setUpdatedAt(new Date());
         orderMapper.insertSelective(order);
 
-        // 2. Call Paddle API
-        Map<String, Object> customData = new HashMap<>();
-        customData.put("order_id", order.getId());
+        // 2. Create or find Paddle customer
+        String emailForPaddle = StringUtils.hasText(email) ? email : user.getEmail();
+        if (!StringUtils.hasText(emailForPaddle)) {
+            throw new BusinessException("Email is required for checkout");
+        }
 
-        Map<String, Object> paddleData = paddleApiService.createCheckout(
-                priceId, user.getEmail(), successUrl, cancelUrl, customData);
+        Map<String, Object> customerData = paddleApiService.getOrCreateCustomer(emailForPaddle);
+        String customerId = (String) customerData.get("id");
 
-        String checkoutId = (String) paddleData.get("id");
-        String checkoutUrl = (String) paddleData.get("url");
-
-        // 3. Update order with paddle checkout id
-        Order updateOrder = new Order();
-        updateOrder.setId(order.getId());
-        updateOrder.setPaddleCheckoutId(checkoutId);
-        updateOrder.setUpdatedAt(new Date());
-        orderMapper.updateByPrimaryKeySelective(updateOrder);
+        // 3. Order created with paddle fields left empty, will be updated by webhook
 
         Map<String, Object> result = new HashMap<>();
-        result.put("checkout_url", checkoutUrl);
-        result.put("checkout_id", checkoutId);
-        result.put("order_no", order.getOrderNo());
-        result.put("client_token", paddleProperties.isSandbox() ? "test_5da3dc2731cc4791072992f74f6" : null);
+        result.put("customer_id", customerId);
+        result.put("price_id", priceId);
+        result.put("order_id", order.getId());
+        result.put("plan_code", planCode);
+        result.put("client_token", paddleProperties.getClientToken());
+        result.put("environment", paddleProperties.getEnvironment());
         return result;
     }
 
@@ -189,6 +195,12 @@ public class SubscriptionService {
         if (sub == null) {
             result.put("success", false);
             result.put("message", "No active subscription");
+            return result;
+        }
+        // If subscription already expired, treat as success (idempotent)
+        if (sub.getCurrentPeriodEnd() != null && sub.getCurrentPeriodEnd().before(new Date())) {
+            result.put("success", true);
+            result.put("message", "Subscription already expired");
             return result;
         }
 
@@ -296,7 +308,7 @@ public class SubscriptionService {
     }
 
     public SubscriptionPlan getCurrentPlan(Long userId) {
-        Subscription activeSub = subSubscriptionMapper.selectActiveByUserId(userId);
+        Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(userId);
         if (activeSub != null) {
             return planMapper.selectByPrimaryKey(activeSub.getPlanId());
         }

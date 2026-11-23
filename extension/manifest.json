@@ -1,17 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "LinkedIn SCRM",
-  "version": "2.0.0",
-  "description": "LinkedIn candidate relationship management",
+  "name": "TalentFlow SCRM for LinkedIn (Test)",
+  "version": "2.0.1",
+  "description": "The SCRM tool for LinkedIn recruiters. Track candidates, manage pipeline, and automate follow-ups directly on LinkedIn profiles.",
   "default_locale": "en",
   "permissions": [
     "activeTab",
     "storage",
-    "scripting",
-    "alarms"
+    "scripting"
   ],
   "host_permissions": [
-    "https://www.linkedin.com/*"
+    "http://localhost:8080/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -42,5 +41,8 @@
       "48": "icon48.png",
       "128": "icon128.png"
     }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }

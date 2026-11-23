@@ -2,12 +2,22 @@ package com.scrm.service;
 
 import com.scrm.common.PipelineStageEnum;
 import com.scrm.common.RequestContext;
+import com.scrm.common.TaskStatus;
 import com.scrm.dao.CandidateMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.scrm.dao.CandidateSequenceMapper;
 import com.scrm.dao.sub.SubCandidateMapper;
 import com.scrm.entity.Candidate;
 import com.scrm.entity.CandidateExample;
+import com.scrm.entity.CandidateSequence;
+import com.scrm.entity.CandidateSequenceExample;
 import com.scrm.entity.CandidateWithBLOBs;
+import com.scrm.entity.SequenceStep;
 import com.scrm.exception.BusinessException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -17,6 +27,8 @@ import java.util.*;
 
 @Service
 public class CandidateService {
+
+    private static final Logger log = LoggerFactory.getLogger(CandidateService.class);
 
     @Autowired
     @Qualifier("candidateMapper")
@@ -29,14 +41,47 @@ public class CandidateService {
     private SubscriptionService subscriptionService;
     @Autowired
     private HistoryService historyService;
+    @Autowired
+    private CandidateSequenceMapper candidateSequenceMapper;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-    public List<Candidate> listCandidates(String search, String temperature, String status,
+    public List<CandidateWithBLOBs> listCandidates(String search, String temperature, String status,
                                           String source, String sortBy, String sortOrder,
                                           Date syncSince, int page, int pageSize) {
         Long userId = RequestContext.getCurrentUserId();
         int offset = (page - 1) * pageSize;
-        return subCandidateMapper.searchByKeyword(userId, search, temperature, status, source,
+        List<CandidateWithBLOBs> list = subCandidateMapper.searchByKeyword(userId, search, temperature, status, source,
                 syncSince, sortBy, sortOrder, offset, pageSize);
+        for (CandidateWithBLOBs candidate : list) {
+            enrichProfileExperiences(candidate);
+        }
+        return list;
+    }
+
+    private void enrichProfileExperiences(CandidateWithBLOBs candidate) {
+        String rawProfileData = candidate.getRawProfileData();
+        if (rawProfileData == null || rawProfileData.trim().isEmpty()) {
+            return;
+        }
+        try {
+            JsonNode root = objectMapper.readTree(rawProfileData);
+            if (root.has("workExperiences")) {
+                List<Map<String, Object>> workExperiences = objectMapper.convertValue(root.get("workExperiences"),
+                        new TypeReference<List<Map<String, Object>>>() {});
+                // 只返回最新一条工作经历，前端卡片也只需要展示当前职位
+                if (workExperiences != null && !workExperiences.isEmpty()) {
+                    candidate.setWorkExperiences(workExperiences.subList(0, 1));
+                }
+            }
+            if (root.has("educationExperiences")) {
+                candidate.setEducationExperiences(objectMapper.convertValue(root.get("educationExperiences"),
+                        new TypeReference<List<Map<String, Object>>>() {}));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse rawProfileData for candidate {}", candidate.getId(), e);
+        }
+        candidate.setRawProfileData(null);
     }
 
     public long countCandidates(String search, String temperature, String status,
@@ -51,6 +96,7 @@ public class CandidateService {
         if (candidate == null) {
             throw new BusinessException("Candidate not found");
         }
+        fillSequenceId(candidate);
         return candidate;
     }
 
@@ -63,6 +109,7 @@ public class CandidateService {
             }
             return c;
         } catch (NumberFormatException e) {
+            log.error("Invalid candidate id format", e);
             return null;
         }
     }
@@ -88,9 +135,18 @@ public class CandidateService {
             String existingStage = existing.getPipelineStage();
             if (existingStage == null) existingStage = PipelineStageEnum.NEW.getValue();
 
+            boolean isChatSource = "linkedin_chat".equalsIgnoreCase(candidate.getSource())
+                    || "linkedin_chat".equalsIgnoreCase(existing.getSource());
+
+            // 聊天来源保存已有候选人时，如果还是未认领状态，直接返回现有记录，避免覆盖已有阶段
+            if (isChatSource && PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(candidate.getPipelineStage())) {
+                return existing;
+            }
+
             // If existing stage is delete or unclaimed, re-calculate to 'new' for manual save
-            if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existingStage)
-                    || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(existingStage)) {
+            // Skip for linkedin_chat source: keep unclaimed as-is
+            if (!isChatSource && (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existingStage)
+                    || PipelineStageEnum.UNCLAIMED.getValue().equalsIgnoreCase(existingStage))) {
                 candidate.setPipelineStage(PipelineStageEnum.NEW.getValue());
                 candidate.setPipelineEnteredAt(new Date());
             }
@@ -101,6 +157,7 @@ public class CandidateService {
             candidate.setCreatedAt(existing.getCreatedAt());
             candidate.setUpdatedAt(new Date());
             candidateMapper.updateByPrimaryKeySelective(candidate);
+            handleSequenceBinding(candidate);
             return candidate;
         }
 
@@ -111,7 +168,7 @@ public class CandidateService {
         candidate.setUserId(userId);
 
         if (candidate.getTemperature() == null) {
-            candidate.setTemperature("cold");
+            candidate.setTemperature("new");
         }
         if (candidate.getSource() == null) {
             candidate.setSource("linkedin_profile");
@@ -130,6 +187,7 @@ public class CandidateService {
         historyService.recordHistory(candidate.getId(), "candidate_created",
                 "Candidate created: " + candidate.getFullName(), "user");
 
+        handleSequenceBinding(candidate);
         return candidate;
     }
 
@@ -139,6 +197,13 @@ public class CandidateService {
         CandidateWithBLOBs existing = findById(userId, id);
         if (existing == null) {
             throw new BusinessException("Candidate not found");
+        }
+
+        // Auto-recover from delete stage
+        if (PipelineStageEnum.DELETE.getValue().equalsIgnoreCase(existing.getPipelineStage())) {
+            candidate.setPipelineStage(PipelineStageEnum.NEW.getValue());
+            historyService.recordHistory(existing.getId(), "status_change",
+                    "Recovered from delete to new", "system");
         }
 
         // Detect pipeline stage change for history
@@ -153,6 +218,7 @@ public class CandidateService {
         candidate.setCreatedAt(null);
         candidate.setUpdatedAt(new Date());
         candidateMapper.updateByPrimaryKeySelective(candidate);
+        handleSequenceBinding(candidate);
         return candidateMapper.selectByPrimaryKey(existing.getId());
     }
 
@@ -178,69 +244,6 @@ public class CandidateService {
     }
 
     @Transactional
-    public Map<String, Object> batchCandidates(List<Map<String, Object>> items) {
-        Long userId = RequestContext.getCurrentUserId();
-        List<Map<String, Object>> results = new ArrayList<>();
-        for (Map<String, Object> item : items) {
-            Map<String, Object> result = new HashMap<>();
-            String action = (String) item.getOrDefault("_sync_action", "create");
-            try {
-                // Resolve candidate by id or linkedin_id
-                CandidateWithBLOBs existing = null;
-                Object idObj = item.get("id");
-                if (idObj != null) {
-                    try {
-                        existing = candidateMapper.selectByPrimaryKey(Long.parseLong(idObj.toString()));
-                        if (existing != null && !existing.getUserId().equals(userId)) {
-                            existing = null;
-                        }
-                    } catch (NumberFormatException ignored) {}
-                }
-                if (existing == null && item.get("linkedin_id") != null) {
-                    CandidateExample ex = new CandidateExample();
-                    ex.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo((String) item.get("linkedin_id"));
-                    List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(ex);
-                    if (!list.isEmpty()) {
-                        existing = list.get(0);
-                    }
-                }
-
-                if ("delete".equals(action)) {
-                    if (existing != null) {
-                        candidateMapper.deleteByPrimaryKey(existing.getId());
-                    }
-                    result.put("status", "deleted");
-                } else {
-                    CandidateWithBLOBs candidate = mapToCandidate(item);
-                    candidate.setUserId(userId);
-                    if (existing == null) {
-                        subscriptionService.checkCandidateLimit(userId);
-                        candidateMapper.insertSelective(candidate);
-                        result.put("status", "created");
-                        result.put("id", candidate.getId());
-                    } else {
-                        candidate.setId(existing.getId());
-                        candidate.setUserId(null);
-                        candidate.setCreatedAt(null);
-                        candidate.setUpdatedAt(new Date());
-                        candidateMapper.updateByPrimaryKeySelective(candidate);
-                        result.put("status", "updated");
-                        result.put("id", existing.getId());
-                    }
-                }
-            } catch (Exception e) {
-                result.put("status", "failed");
-                result.put("error", e.getMessage());
-            }
-            results.add(result);
-        }
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("results", results);
-        resp.put("sync_token", UUID.randomUUID().toString());
-        return resp;
-    }
-
-    @Transactional
     public void updateFollowup(String id, Date nextFollowupAt, String source, Long sequenceStepId) {
         Long userId = RequestContext.getCurrentUserId();
         CandidateWithBLOBs existing = findById(userId, id);
@@ -252,32 +255,71 @@ public class CandidateService {
                 "Follow-up scheduled for " + nextFollowupAt, "user");
     }
 
+    @Transactional
+    public void updatePipelineStage(String id, String pipelineStage) {
+        Long userId = RequestContext.getCurrentUserId();
+        CandidateWithBLOBs existing = findById(userId, id);
+        if (existing == null) {
+            throw new BusinessException("Candidate not found");
+        }
+        String oldStage = existing.getPipelineStage();
+        subCandidateMapper.updatePipelineStage(existing.getId(), pipelineStage);
+        historyService.recordHistory(existing.getId(), "status_change",
+                "Moved from " + oldStage + " to " + pipelineStage, "user");
+    }
+
     public CandidateWithBLOBs getCandidateByLinkedInId(String linkedInId) {
         Long userId = RequestContext.getCurrentUserId();
         CandidateExample example = new CandidateExample();
         example.createCriteria().andUserIdEqualTo(userId).andLinkedinIdEqualTo(linkedInId);
         List<CandidateWithBLOBs> list = candidateMapper.selectByExampleWithBLOBs(example);
-        return list.isEmpty() ? null : list.get(0);
+        if (list.isEmpty()) {
+            return null;
+        }
+        CandidateWithBLOBs candidate = list.get(0);
+        fillSequenceId(candidate);
+        return candidate;
     }
 
-    public List<Candidate> listTodayTasks() {
-        Long userId = RequestContext.getCurrentUserId();
-        // End of today
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.HOUR_OF_DAY, 23);
-        cal.set(Calendar.MINUTE, 59);
-        cal.set(Calendar.SECOND, 59);
-        cal.set(Calendar.MILLISECOND, 999);
-        Date endOfDay = cal.getTime();
+    private void fillSequenceId(CandidateWithBLOBs candidate) {
+        if (candidate == null || candidate.getId() == null) {
+            return;
+        }
+        CandidateSequenceExample example = new CandidateSequenceExample();
+        example.createCriteria().andCandidateIdEqualTo(candidate.getId());
+        List<CandidateSequence> bindings = candidateSequenceMapper.selectByExample(example);
+        if (!bindings.isEmpty()) {
+            candidate.setSequenceId(bindings.get(0).getSequenceId());
+        }
+    }
 
-        CandidateExample example = new CandidateExample();
-        example.createCriteria()
-                .andUserIdEqualTo(userId)
-                .andNextFollowupAtIsNotNull()
-                .andNextFollowupAtLessThanOrEqualTo(endOfDay)
-                .andPipelineStageNotEqualTo(PipelineStageEnum.DELETE.getValue());
-        example.setOrderByClause("next_followup_at ASC");
-        return candidateMapper.selectByExample(example);
+    private static final int DUE_SOON_MINUTES = 60;
+
+    private TaskStatus evaluateTaskStatus(Date nextFollowupAt, long clientTimeMs) {
+        if (nextFollowupAt == null) {
+            return null;
+        }
+        long diffMs = nextFollowupAt.getTime() - clientTimeMs;
+        if (diffMs < 0) {
+            return TaskStatus.OVERDUE;
+        }
+        if (diffMs <= DUE_SOON_MINUTES * 60000L) {
+            return TaskStatus.DUE_SOON;
+        }
+        return TaskStatus.UPCOMING;
+    }
+
+    public List<Candidate> listTodayTasks(Long clientTimeMs) {
+        Long userId = RequestContext.getCurrentUserId();
+        long thresholdMs = clientTimeMs + DUE_SOON_MINUTES * 60000L;
+        List<Candidate> tasks = subCandidateMapper.selectTodayTasks(userId, clientTimeMs, thresholdMs);
+        tasks.forEach(c -> c.setTaskStatus(evaluateTaskStatus(c.getNextFollowupAt(), clientTimeMs)));
+        return tasks;
+    }
+
+    public long countOverdueTasks(Long clientTimeMs) {
+        Long userId = RequestContext.getCurrentUserId();
+        return subCandidateMapper.countOverdueTasks(userId, clientTimeMs);
     }
 
     public Map<String, Object> markFollowupDone(String id) {
@@ -292,32 +334,60 @@ public class CandidateService {
         return result;
     }
 
-    private CandidateWithBLOBs mapToCandidate(Map<String, Object> map) {
-        CandidateWithBLOBs c = new CandidateWithBLOBs();
+    private void handleSequenceBinding(CandidateWithBLOBs candidate) {
+        Long candidateId = candidate.getId();
+        Long sequenceId = candidate.getSequenceId();
 
-        c.setFullName((String) map.get("full_name"));
-        c.setHeadline((String) map.get("headline"));
-        c.setJobTitle((String) map.get("job_title"));
-        c.setCompany((String) map.get("company"));
-        c.setLocation((String) map.get("location"));
-        c.setLinkedinUrl((String) map.get("linkedin_url"));
-        c.setLinkedinId((String) map.get("linkedin_id"));
-        c.setEmail((String) map.get("email"));
-        c.setPhone((String) map.get("phone"));
-        c.setAvatarUrl((String) map.get("avatar_url"));
-        c.setConnectionDegree((String) map.get("connection_degree"));
-        c.setTemperature((String) map.get("temperature"));
-        if (map.containsKey("is_ai_suggested_temp")) {
-            c.setIsAiSuggestedTemp((Boolean) map.get("is_ai_suggested_temp"));
-        }
+        if (sequenceId != null && sequenceId > 0) {
+            CandidateSequence cs = new CandidateSequence();
+            cs.setCandidateId(candidateId);
+            cs.setSequenceId(sequenceId);
+            sequenceService.createCandidateSequence(cs);
 
-        c.setSource((String) map.get("source"));
-        if (map.get("tags") != null) {
-            c.setTags(map.get("tags").toString());
+            if (Boolean.TRUE.equals(candidate.getUpdateFollowupFromSequence())) {
+                List<SequenceStep> steps = sequenceService.getSequenceSteps(sequenceId);
+                if (steps != null && steps.size() >= 2) {
+                    Date followupAt = candidate.getSequenceFollowupAt();
+                    Long sequenceStepId = null;
+                    if (followupAt == null) {
+                        SequenceStep nextStep = steps.get(1);
+                        followupAt = calculateFollowupTime(new Date(), nextStep.getDelayType(), nextStep.getDelayValue());
+                        sequenceStepId = nextStep.getId();
+                    }
+                    subCandidateMapper.updateNextFollowup(candidateId, followupAt, "sequence", sequenceStepId);
+                    historyService.recordHistory(candidateId, "follow_up_scheduled",
+                            "Follow-up scheduled for " + followupAt, "user");
+                }
+            }
+        } else if (sequenceId != null && sequenceId == 0) {
+            sequenceService.unbindCandidate(candidateId);
         }
-        if (map.get("raw_profile_data") != null) {
-            c.setRawProfileData(map.get("raw_profile_data").toString());
+        // sequenceId == null: do nothing (partial field update)
+    }
+
+    private Date calculateFollowupTime(Date base, String delayType, Integer delayValue) {
+        if (base == null) base = new Date();
+        if (delayValue == null || delayValue <= 0) return base;
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(base);
+        switch (delayType != null ? delayType.toLowerCase() : "days") {
+            case "immediately":
+                break;
+            case "minutes":
+                cal.add(Calendar.MINUTE, delayValue);
+                break;
+            case "hours":
+                cal.add(Calendar.HOUR, delayValue);
+                break;
+            case "days":
+                cal.add(Calendar.DAY_OF_YEAR, delayValue);
+                break;
+            case "weeks":
+                cal.add(Calendar.WEEK_OF_YEAR, delayValue);
+                break;
+            default:
+                cal.add(Calendar.DAY_OF_YEAR, delayValue);
         }
-        return c;
+        return cal.getTime();
     }
 }

@@ -1,0 +1,29 @@
+Write a LinkedIn DM to {{ fullName }} ({{ jobTitle }} at {{ company }}).
+
+### Context
+- Goal: {{ goal }}
+- Reason: {{ reason }}
+- Key Insight: {{ keyInsight }}
+- Mode: {% if mode == 'recruiting' %}Job fit, direct but low-pressure{% else %}Relationship building, casual check-in{% endif %}
+
+### Rules
+1. Tone: Peer-to-peer. No sales pitch.
+2. Forbidden (NEVER use): "I hope this message finds you well", "I came across your profile", "delve", "leverage", "synergy", "passionate", "game-changer", "revolutionary", "excited to connect".
+3. Personalization: Reference ONE concrete detail (project, product, team scope, tech, or news) from company, headline, or role. Company name alone is NOT enough.
+4. MUST use the Key Insight to find a natural opening, but NEVER quote or explain the insight itself.
+   - BAD: "Your warm intent suggests openness, so..."
+   - GOOD: "OMOTION's mocap work looks slick. How's it going?"
+5. Questions must be SHORT (5-8 words max) and casual.
+   - BAD: "How's the team balancing X with Y for Z?"
+   - GOOD: "How's the rollout going?"
+6. Length: 55-70 words. Hard max 80.
+7. One short paragraph. No bullets, emojis, signatures, "Best regards".
+8. End with ONE short question (CTA).
+9. Do NOT compliment the candidate. Do NOT explain why you are messaging.
+
+### Examples
+GOOD: "Hi Minchae — OMOTION's motion-capture pipeline looks slick. How's the rollout going? Worth a brief chat?"
+BAD: "I hope this message finds you well. I came across your profile and was impressed by your background..."
+
+### Output
+Return ONLY the message body text.

@@ -28,6 +28,30 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
 
+    private static final java.util.Set<String> STATIC_EXTENSIONS = java.util.Set.of(
+            ".html", ".htm", ".css", ".js", ".png", ".jpg", ".jpeg", ".gif",
+            ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot", ".map"
+    );
+
+    /**
+     * 跳过静态资源和指定接口的日志打印
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String method = request.getMethod();
+        String uri = request.getRequestURI();
+        if ("GET".equals(method) && "/api/v1/pipeline/stages".equals(uri)) {
+            return true;
+        }
+        String lowerUri = uri.toLowerCase();
+        for (String ext : STATIC_EXTENSIONS) {
+            if (lowerUri.endsWith(ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,

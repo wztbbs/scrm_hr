@@ -26,7 +26,15 @@
     where id = #{id,jdbcType=BIGINT}
   </update>
 
-  <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.BaseResultMap">
+  <update id="updatePipelineStage">
+    update candidates
+    set pipeline_stage = #{pipelineStage,jdbcType=CHAR},
+        pipeline_entered_at = now(),
+        updated_at = now()
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="searchByKeyword" resultMap="com.scrm.dao.CandidateMapper.ResultMapWithBLOBs">
     SELECT * FROM candidates
     WHERE user_id = #{userId}
     <if test="search != null and search != ''">
@@ -73,6 +81,31 @@
     <if test="syncSince != null">
       AND updated_at &gt;= #{syncSince}
     </if>
+  </select>
+
+  <select id="selectTodayTasks" resultMap="com.scrm.dao.CandidateMapper.BaseResultMap">
+    SELECT * FROM candidates
+    WHERE user_id = #{userId}
+      AND next_followup_at IS NOT NULL
+      AND next_followup_source != 'none'
+      AND next_followup_at &lt;= FROM_UNIXTIME(#{thresholdMs} / 1000)
+      AND pipeline_stage != 'delete'
+    ORDER BY
+      CASE
+        WHEN next_followup_at &lt; FROM_UNIXTIME(#{clientTimeMs} / 1000) THEN 0
+        WHEN next_followup_at &lt;= FROM_UNIXTIME(#{thresholdMs} / 1000) THEN 1
+        ELSE 2
+      END ASC,
+      next_followup_at ASC
+  </select>
+
+  <select id="countOverdueTasks" resultType="long">
+    SELECT COUNT(*) FROM candidates
+    WHERE user_id = #{userId}
+      AND next_followup_at IS NOT NULL
+      AND next_followup_at &lt; FROM_UNIXTIME(#{clientTimeMs} / 1000)
+      AND next_followup_source != 'none'
+      AND pipeline_stage != 'delete'
   </select>
 
 </mapper>

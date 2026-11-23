@@ -1,7 +1,7 @@
-// api.js - Backend API client for LinkedIn SCRM
+// api.js - Backend API client for TalentFlow SCRM for LinkedIn
 // Maps frontend local data models to backend REST APIs
 
-const DEFAULT_API_BASE = 'https://api.hrscrm.net';
+const DEFAULT_API_BASE = 'http://localhost:8080';
 
 let _apiBase = null;
 
@@ -37,7 +37,17 @@ function toTimestamp(iso) {
 }
 
 async function apiRequest(method, path, body = null, query = null) {
+  const perfLabel = `[API_PERF] ${method} ${path}`;
+  const start = performance.now();
+  log(`${perfLabel} START`);
+
+  const t1 = performance.now();
   const base = await getApiBase();
+  const t2 = performance.now();
+  const userId = await getSetting('userId', '');
+  const t3 = performance.now();
+  log(`${perfLabel} storageReady apiBase=${(t2-t1).toFixed(1)}ms userId=${(t3-t2).toFixed(1)}ms`);
+
   let url = `${base}${path}`;
   if (query && Object.keys(query).length > 0) {
     const qs = new URLSearchParams();
@@ -48,21 +58,45 @@ async function apiRequest(method, path, body = null, query = null) {
     if (qstr) url += (url.includes('?') ? '&' : '?') + qstr;
   }
 
-  const userId = await getSetting('userId', '');
   const options = {
     method,
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'X-User-Id': userId
+      'X-User-Id': userId,
+      'X-Client-Time': Date.now()
     }
   };
   if (body !== null) {
     options.body = JSON.stringify(body);
   }
 
+  const t4 = performance.now();
   try {
-    const resp = await fetch(url, options);
+    let resp;
+    try {
+      // Route through background service worker to reuse persistent connections
+      const bgResp = await chrome.runtime.sendMessage({
+        type: 'API_REQUEST',
+        payload: { url, options }
+      });
+      if (!bgResp.ok) {
+        throw new Error(bgResp.error || 'Background proxy failed');
+      }
+      resp = {
+        status: bgResp.status,
+        ok: bgResp.status >= 200 && bgResp.status < 300,
+        json: async () => bgResp.json,
+        text: async () => bgResp.text
+      };
+    } catch (bgErr) {
+      // Fallback: background unavailable (e.g. service worker killed), fetch directly
+      console.warn(`${perfLabel} background proxy failed, fallback to direct fetch:`, bgErr.message);
+      resp = await fetch(url, options);
+    }
+
+    const t5 = performance.now();
+    log(`${perfLabel} networkDone fetch=${(t5-t4).toFixed(1)}ms`);
     if (resp.status === 429) {
       const json = await resp.json().catch(() => null);
       const err = new Error(json && json.message ? json.message : 'Rate limit exceeded');
@@ -77,13 +111,17 @@ async function apiRequest(method, path, body = null, query = null) {
     }
     const json = await resp.json();
     if (json.code !== 0) {
-      throw new Error(json.message || 'API error');
+      const err = new Error(json.message || 'API error');
+      err.code = json.code;
+      err.data = json.data || null;
+      throw err;
     }
+    log(`${perfLabel} END total=${(performance.now() - start).toFixed(1)}ms`);
     return json;
   } catch (err) {
-    console.warn('[API] Request failed:', method, url, err.message);
-    // 抛给上层/用户的必须是干净错误，但保留内部属性供业务判断（如 handleQuotaError）
-    const cleanErr = new Error('Something went wrong. Please try again.');
+    console.warn(`${perfLabel} FAILED total=${(performance.now() - start).toFixed(1)}ms fetch=${(performance.now()-t4).toFixed(1)}ms`, err.message);
+    // 保留原始业务错误消息（如 "Email already in use"），网络错误兜底用通用提示
+    const cleanErr = new Error(err.message || 'Something went wrong. Please try again.');
     cleanErr.status = err.status;
     cleanErr.code = err.code;
     cleanErr.data = err.data;
@@ -104,17 +142,17 @@ function candidateToBackend(frontendCandidate) {
     websites: frontendCandidate.websites || []
   };
 
-  return {
+  const body = {
     // localId removed: backend uses auto-increment id only
-    fullName: frontendCandidate.name || '',
+    fullName: frontendCandidate.name || frontendCandidate.fullName || '',
     headline: frontendCandidate.headline || '',
     company: frontendCandidate.company || '',
     location: frontendCandidate.location || '',
-    linkedinId: frontendCandidate.linkedInId || '',
-    linkedinUrl: frontendCandidate.linkedInUrl || '',
-    email: (frontendCandidate.emails && frontendCandidate.emails[0]) || '',
-    phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || '',
-    temperature: frontendCandidate.temperature || 'Cold',
+    linkedinId: frontendCandidate.linkedInId || frontendCandidate.linkedinId || '',
+    linkedinUrl: frontendCandidate.linkedInUrl || frontendCandidate.linkedinUrl || '',
+    email: (frontendCandidate.emails && frontendCandidate.emails[0]) || frontendCandidate.email || '',
+    phone: (frontendCandidate.phones && frontendCandidate.phones[0]) || frontendCandidate.phone || '',
+    temperature: (frontendCandidate.temperature ? frontendCandidate.temperature.toLowerCase() : null) || 'new',
     source: frontendCandidate.source || 'linkedin_profile',
     pipelineStage: frontendCandidate.pipelineStage || 'new',
     pipelinePosition: frontendCandidate.pipelinePosition || 0,
@@ -123,8 +161,12 @@ function candidateToBackend(frontendCandidate) {
     tags: frontendCandidate.tags || '[]',
     nextFollowupAt: frontendCandidate.nextFollowup ? new Date(frontendCandidate.nextFollowup).toISOString() : null,
     nextFollowupSource: frontendCandidate.nextFollowupSource || 'none',
-    nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null
+    nextFollowupSequenceStepId: frontendCandidate.nextFollowupSequenceStepId || null,
+    sequenceId: frontendCandidate.sequenceId != null ? Number(frontendCandidate.sequenceId) : null
   };
+  log('[SCRM_BASE] api.js candidateToBackend temperature conversion:', frontendCandidate.temperature, '->', body.temperature);
+  log('[SCRM_BASE] api.js candidateToBackend:', JSON.stringify(body));
+  return body;
 }
 
 function candidateFromBackend(backend) {
@@ -135,6 +177,9 @@ function candidateFromBackend(backend) {
     }
   } catch (e) { /* ignore */ }
 
+  const tempRaw = backend.temperature;
+  const tempConverted = (tempRaw ? tempRaw.charAt(0).toUpperCase() + tempRaw.slice(1).toLowerCase() : null) || 'New';
+  log('[SCRM_BASE] api.js candidateFromBackend temperature conversion:', tempRaw, '->', tempConverted);
   const fc = {
     id: backend.id || '',
     name: backend.fullName || '',
@@ -145,7 +190,7 @@ function candidateFromBackend(backend) {
     linkedInUrl: backend.linkedinUrl || '',
     emails: backend.email ? [backend.email] : [],
     phones: backend.phone ? [backend.phone] : [],
-    temperature: backend.temperature || 'Cold',
+    temperature: tempConverted,
     source: backend.source || 'extension',
     pipelineStage: backend.pipelineStage || 'new',
     pipelinePosition: backend.pipelinePosition || 0,
@@ -154,13 +199,15 @@ function candidateFromBackend(backend) {
     voiceMemo: extra.voiceMemo || '',
     contactMode: extra.contactMode || 'recruiting',
     skills: extra.skills || [],
-    workExperiences: extra.workExperiences || [],
-    educationExperiences: extra.educationExperiences || [],
+    workExperiences: backend.workExperiences || extra.workExperiences || [],
+    educationExperiences: backend.educationExperiences || extra.educationExperiences || [],
     websites: extra.websites || [],
     tags: backend.tags || '[]',
     nextFollowup: backend.nextFollowupAt ? toTimestamp(backend.nextFollowupAt) : null,
     nextFollowupSource: backend.nextFollowupSource || 'none',
     nextFollowupSequenceStepId: backend.nextFollowupSequenceStepId || null,
+    sequenceId: backend.sequenceId != null ? backend.sequenceId : null,
+    taskStatus: backend.taskStatus || null,
     createdAt: toTimestamp(backend.createdAt) || Date.now(),
     updatedAt: toTimestamp(backend.updatedAt) || Date.now()
   };
@@ -170,12 +217,15 @@ function candidateFromBackend(backend) {
 const CandidatesAPI = {
   async list(params = {}) {
     const resp = await apiRequest('GET', '/api/v1/candidates', null, params);
+    if (resp.data && resp.data.items) {
+      resp.data.items = resp.data.items.map(candidateFromBackend);
+    }
     return resp;
   },
 
   async get(id) {
     const resp = await apiRequest('GET', `/api/v1/candidates/${id}`);
-    return resp.data;
+    return resp.data ? candidateFromBackend(resp.data) : null;
   },
 
   async create(candidate) {
@@ -196,9 +246,8 @@ const CandidatesAPI = {
     return resp.data;
   },
 
-  async batch(items) {
-    const bodyItems = items.map(candidateToBackend);
-    const resp = await apiRequest('POST', '/api/v1/candidates/batch', { items: bodyItems });
+  async updatePipelineStage(id, stage) {
+    const resp = await apiRequest('PUT', `/api/v1/candidates/${id}/pipeline-stage`, { pipeline_stage: stage });
     return resp.data;
   },
 
@@ -217,9 +266,16 @@ const CandidatesAPI = {
     return resp.data;
   },
 
+  async generateAiMessages(id, request) {
+    const resp = await apiRequest('POST', `/api/v1/candidates/${id}/ai-messages`, request);
+    return resp.data;
+  },
+
   async getByLinkedInId(linkedinId) {
     const resp = await apiRequest('GET', '/api/v1/candidates/by-linkedin-id', null, { linkedin_id: linkedinId });
-    return resp.data ? candidateFromBackend(resp.data) : null;
+    const result = resp.data ? candidateFromBackend(resp.data) : null;
+    log('[SCRM_TEMPLATE] api.js getByLinkedInId result:', JSON.stringify(result));
+    return result;
   },
 
   async tasks() {
@@ -228,6 +284,26 @@ const CandidatesAPI = {
       resp.data.items = resp.data.items.map(candidateFromBackend);
     }
     return resp;
+  }
+};
+
+// ==================== Overview ====================
+
+const OverviewAPI = {
+  async get(linkedinId) {
+    const query = linkedinId ? { linkedin_id: linkedinId } : null;
+    const resp = await apiRequest('GET', '/api/v1/overview', null, query);
+    const data = resp.data || {};
+
+    // Transform nested candidate if present
+    if (data.candidate) {
+      data.candidate = candidateFromBackend(data.candidate);
+    }
+    // Transform today tasks if present
+    if (data.todayTasks) {
+      data.todayTasks = data.todayTasks.map(candidateFromBackend);
+    }
+    return data;
   }
 };
 
@@ -386,7 +462,7 @@ function sequenceToBackend(frontendSeq) {
     stepNumber: idx + 1,
     name: s.name || '',
     actionType: s.actionType || 'message',
-    delayType: 'day',
+    delayType: s.delayDays === 0 ? 'immediately' : 'days',
     delayValue: s.delayDays || 0
   }));
 
@@ -422,29 +498,6 @@ function sequenceFromBackend(backend) {
   return fs;
 }
 
-function candidateSequenceToBackend(frontendTask, candidateId, sequenceId) {
-  return {
-    candidateId: candidateId,
-    sequenceId: sequenceId,
-    status: frontendTask.status || 'active',
-    currentStepNumber: (frontendTask.stepIndex || 0) + 1,
-    totalSteps: frontendTask.totalSteps || 1
-  };
-}
-
-function candidateSequenceFromBackend(backend) {
-  return {
-    id: backend.id || '',
-    candidateId: backend.candidateId,
-    sequenceId: backend.sequenceId,
-    status: backend.status || 'active',
-    currentStepNumber: backend.currentStepNumber || 1,
-    totalSteps: backend.totalSteps || 1,
-    startedAt: toTimestamp(backend.startedAt),
-    completedAt: toTimestamp(backend.completedAt)
-  };
-}
-
 const SequencesAPI = {
   async list(params = {}) {
     const resp = await apiRequest('GET', '/api/v1/sequences', null, params);
@@ -474,34 +527,11 @@ const SequencesAPI = {
   async delete(id) {
     const resp = await apiRequest('DELETE', `/api/v1/sequences/${id}`);
     return resp.data;
-  },
-
-  // Candidate Sequences
-  async listCandidateSequences(params = {}) {
-    const resp = await apiRequest('GET', '/api/v1/candidate-sequences', null, params);
-    if (resp.data && resp.data.items) {
-      resp.data.items = resp.data.items.map(candidateSequenceFromBackend);
-    }
-    return resp;
-  },
-
-  async createCandidateSequence(candidateLocalId, sequenceLocalId, task = {}) {
-    console.log('[API] createCandidateSequence called:', { candidateLocalId, sequenceLocalId, task });
-    const body = candidateSequenceToBackend(task, candidateLocalId, sequenceLocalId);
-    console.log('[API] createCandidateSequence body=', body);
-    const resp = await apiRequest('POST', '/api/v1/candidate-sequences', body);
-    console.log('[API] createCandidateSequence response=', resp);
-    return candidateSequenceFromBackend(resp.data);
-  },
-
-  async deleteCandidateSequence(id) {
-    const resp = await apiRequest('DELETE', `/api/v1/candidate-sequences/${id}`);
-    return resp.data;
   }
 };
 
 async function getAllSequences() {
-  const resp = await SequencesAPI.list();
+  const resp = await SequencesAPI.list({ is_active: true });
   if (resp.data && resp.data.items) {
     return resp.data.items;
   }
@@ -516,6 +546,11 @@ const UserAPI = {
     return resp.data;
   },
 
+  async updateMe(data) {
+    const resp = await apiRequest('PUT', '/api/v1/user/me', data);
+    return resp.data;
+  },
+
   async sendVerificationCode(email) {
     const resp = await apiRequest('POST', '/api/v1/user/send-verification-code', { email });
     return resp.data;
@@ -524,28 +559,8 @@ const UserAPI = {
   async bindEmail(email, code) {
     const resp = await apiRequest('POST', '/api/v1/user/bind-email', { email, code });
     return resp.data;
-  },
-
-  async mergeAccount(email, code, targetUserId, targetUuid) {
-    const resp = await apiRequest('POST', '/api/v1/user/merge-account', { email, code, targetUserId, targetUuid });
-    return resp.data;
-  },
-
-  async keepDeviceNew(email, code) {
-    const resp = await apiRequest('POST', '/api/v1/user/keep-device-new', { email, code });
-    return resp.data;
   }
 };
-
-const FeedbackAPI = {
-  async submit(content, email = '') {
-    const body = { content, email };
-    const resp = await apiRequest('POST', '/api/v1/feedback', body);
-    return resp;
-  }
-};
-
-
 
 // ==================== Subscription ====================
 
@@ -558,8 +573,8 @@ const SubscriptionAPI = {
     const resp = await apiRequest('GET', '/api/v1/subscription/current');
     return resp;
   },
-  async checkout(planCode, successUrl, cancelUrl, couponCode) {
-    const resp = await apiRequest('POST', '/api/v1/subscription/checkout', { plan_code: planCode, success_url: successUrl, cancel_url: cancelUrl, coupon_code: couponCode });
+  async checkout(planCode, email) {
+    const resp = await apiRequest('POST', '/api/v1/subscription/checkout', { plan_code: planCode, email: email });
     return resp;
   },
   async cancel(atPeriodEnd = true) {
@@ -573,13 +588,14 @@ const SubscriptionAPI = {
 if (typeof window !== 'undefined') {
   window.API = {
     base: { getApiBase, setApiBase },
+    overview: OverviewAPI,
     candidates: CandidatesAPI,
     history: HistoryAPI,
     notes: NotesAPI,
     pipeline: PipelineAPI,
     sequences: SequencesAPI,
     user: UserAPI,
-    feedback: FeedbackAPI,
+
     events: {
       async track(eventName, eventData, sessionId) {
         const body = {

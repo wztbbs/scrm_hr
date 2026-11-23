@@ -3,7 +3,7 @@
     <property name="LOG_PATH" value="${user.home}/logs"/>
     <property name="LOG_PATTERN" value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"/>
 
-    <!-- 全量日志：info 及以上 -->
+    <!-- 全量日志：info 及以上（包含 error，确保 info 文件是全量日志） -->
     <appender name="INFO_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${LOG_PATH}/hr_scrm_info.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">

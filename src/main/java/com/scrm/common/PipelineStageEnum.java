@@ -40,7 +40,8 @@ public enum PipelineStageEnum {
     }
 
     public static List<PipelineStageEnum> getDisplayStages() {
-        return Arrays.asList(UNCLAIMED, NEW, MESSAGED, TALKING, DONE);
+        // unclaimed 是系统后台暂存池，不在前端 Pipeline 看板展示
+        return Arrays.asList(NEW, MESSAGED, TALKING, DONE);
     }
 
     public static List<PipelineStageEnum> getAllStages() {

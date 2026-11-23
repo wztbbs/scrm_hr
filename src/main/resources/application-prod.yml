@@ -14,23 +14,20 @@ spring:
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${FEEDBACK_FROM_EMAIL:270938043@qq.com}
-    password: ${FEEDBACK_APP_PASSWORD:}
-    properties:
-      mail.smtp.auth: true
-      mail.smtp.starttls.enable: true
-
   ai:
     openai:
-      api-key: ${OPENROUTER_API_KEY:dummy}
-      base-url: https://openrouter.ai/api/v1
+      # 阿里云百炼兼容模式（OpenAI API 兼容）
+      # 注意：base-url 不要带 /v1，Spring AI 内部会自动追加 /v1/chat/completions
+      api-key: ${DASHSCOPE_API_KEY:dummy}
+#      base-url: https://dashscope-us.aliyuncs.com/compatible-mode
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
       chat:
         options:
-          model: google/gemini-1.5-flash
+          model: qwen-plus
           temperature: 0.3
+
+resend:
+  api-key: ${RESEND_API_KEY:}
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml,classpath:mapper/sub/*.xml
@@ -39,21 +36,23 @@ mybatis:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
-# OpenRouter 额外标识（部分模型要求）
-openrouter:
-  site-url: https://linkedin-scrm.com
-  app-name: LinkedIn SCRM
+# 阿里云百炼不需要 HTTP-Referer / X-Title 等额外 header
+# （原 OpenRouter 配置已移除）
 
 paddle:
   api-key: ${PADDLE_API_KEY:}
   webhook-secret: ${PADDLE_WEBHOOK_SECRET:}
-  environment: ${PADDLE_ENVIRONMENT:sandbox}
+  environment: ${PADDLE_ENVIRONMENT:live}
   price-ids:
     pro_monthly: ${PADDLE_PRICE_PRO_MONTHLY:}
     pro_yearly: ${PADDLE_PRICE_PRO_YEARLY:}
 
 feedback:
   to-email: ${FEEDBACK_TO_EMAIL:richardtao2001@gmail.com}
+
+feature:
+  pro-beta-gift:
+    enabled: ${PRO_BETA_GIFT_ENABLED:true}
 
 logging:
   level:

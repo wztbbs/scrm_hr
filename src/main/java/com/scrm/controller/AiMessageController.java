@@ -17,11 +17,10 @@ public class AiMessageController {
     @PostMapping("/candidates/{id}/ai-messages")
     public ApiResponse<AiMessageResponse> generateAiMessages(@PathVariable String id,
                                                               @RequestBody AiMessageRequest request) {
-        // Resolve candidate ID
         try {
             request.setCandidateId(Long.parseLong(id));
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Invalid candidate id: " + id);
+            return ApiResponse.error(4001, "Please open the candidate's profile page and use this feature.");
         }
         return ApiResponse.success(aiMessageService.generateMessages(request));
     }

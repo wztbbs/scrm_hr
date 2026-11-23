@@ -1,17 +1,22 @@
 package com.scrm.controller;
 
 import com.scrm.common.ApiResponse;
+import com.scrm.common.ProBetaConstants;
 import com.scrm.common.RequestContext;
 import com.scrm.dto.BindEmailRequest;
-import com.scrm.dto.MergeAccountRequest;
 import com.scrm.dto.SendVerificationCodeRequest;
 import com.scrm.entity.EmailVerification;
 import com.scrm.entity.User;
+import com.scrm.dao.SubscriptionPlanMapper;
 import com.scrm.dao.sub.SubSubscriptionMapper;
 import com.scrm.entity.Subscription;
+import com.scrm.entity.SubscriptionPlan;
 import com.scrm.service.EmailVerificationService;
 import com.scrm.service.UserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -20,6 +25,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/user")
 public class UserController {
+
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private UserService userService;
@@ -30,12 +37,19 @@ public class UserController {
     @Autowired
     private SubSubscriptionMapper subSubscriptionMapper;
 
+    @Autowired
+    private SubscriptionPlanMapper planMapper;
+
+    @Value("${feedback.to-email}")
+    private String feedbackToEmail;
+
     @GetMapping("/me")
     public ApiResponse<Map<String, Object>> me() {
         User user = userService.getCurrentUser();
         Subscription activeSub = subSubscriptionMapper.selectValidActiveByUserId(user.getId());
         boolean isPro = activeSub != null;
-        boolean needBindEmail = isPro && (user.getEmail() == null || user.getEmail().trim().isEmpty());
+        boolean isProBeta = isProBetaSubscription(activeSub);
+        boolean needBindEmail = isPro && !isProBeta && (user.getEmail() == null || user.getEmail().trim().isEmpty());
 
         Map<String, Object> data = new HashMap<>();
         data.put("id", user.getId());
@@ -45,6 +59,27 @@ public class UserController {
         data.put("mergedToUserId", user.getMergedToUserId());
         data.put("isPro", isPro);
         data.put("needBindEmail", needBindEmail);
+        data.put("feedbackEmail", feedbackToEmail);
+        if (activeSub != null) {
+            SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+            if (plan != null) {
+                data.put("plan", plan);
+                data.put("plan_code", plan.getPlanCode());
+                data.put("plan_name", plan.getName());
+            }
+        }
+        return ApiResponse.success(data);
+    }
+
+    @PutMapping("/me")
+    public ApiResponse<Map<String, Object>> updateMe(@RequestBody Map<String, Object> request) {
+        String email = (String) request.get("email");
+        if (email == null || email.trim().isEmpty()) {
+            return ApiResponse.error(400, "Email is required");
+        }
+        userService.updateEmail(email.trim());
+        Map<String, Object> data = new HashMap<>();
+        data.put("success", true);
         return ApiResponse.success(data);
     }
 
@@ -56,10 +91,18 @@ public class UserController {
         return ApiResponse.success(data);
     }
 
+    private boolean isProBetaSubscription(Subscription activeSub) {
+        if (activeSub == null) {
+            return false;
+        }
+        SubscriptionPlan plan = planMapper.selectByPrimaryKey(activeSub.getPlanId());
+        return plan != null && ProBetaConstants.PLAN_CODE.equals(plan.getPlanCode());
+    }
+
     @PostMapping("/bind-email")
     public ApiResponse<Map<String, Object>> bindEmail(@RequestBody BindEmailRequest request) {
         // 1. Verify code
-        emailVerificationService.verifyCode(request.getEmail(), request.getCode());
+        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
 
         // 2. Check if email already exists in users table
         User existingUser = userService.findByEmail(request.getEmail());
@@ -67,67 +110,22 @@ public class UserController {
 
         if (existingUser != null && existingUser.getIsActive() != null && existingUser.getIsActive()
                 && !existingUser.getId().equals(currentUserId)) {
-            // Conflict: existing active user with this email
+            // Conflict: merge current user into existing user and migrate data
+            log.info("Email conflict detected: currentUserId={} will be merged into existingUserId={}", currentUserId, existingUser.getId());
+            userService.mergeUser(currentUserId, existingUser.getId());
+            userService.migrateUserData(currentUserId, existingUser.getId());
+            emailVerificationService.markCodeAsUsed(record);
+
             Map<String, Object> data = new HashMap<>();
-            data.put("conflict", true);
-            Map<String, Object> existingUserInfo = new HashMap<>();
-            existingUserInfo.put("id", existingUser.getId());
-            existingUserInfo.put("uuid", existingUser.getUuid());
-            existingUserInfo.put("email", existingUser.getEmail());
-            data.put("existingUser", existingUserInfo);
+            data.put("success", true);
+            data.put("merged", true);
+            data.put("targetUuid", existingUser.getUuid());
             return ApiResponse.success(data);
         }
 
         // No conflict, bind directly
-        emailVerificationService.markCodeAsUsed(
-                emailVerificationService.verifyCode(request.getEmail(), request.getCode()));
-        userService.updateEmail(request.getEmail());
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("success", true);
-        return ApiResponse.success(data);
-    }
-
-    @PostMapping("/merge-account")
-    public ApiResponse<Map<String, Object>> mergeAccount(@RequestBody MergeAccountRequest request) {
-        // 1. Verify code
-        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
-
-        Long currentUserId = RequestContext.getCurrentUserId();
-        Long targetUserId = request.getTargetUserId();
-
-        // 2. Mark current user as merged to target user
-        userService.mergeUser(currentUserId, targetUserId);
-
-        // 3. Mark code as used
         emailVerificationService.markCodeAsUsed(record);
-
-        // 4. Get target user's UUID for frontend switching
-        User targetUser = userService.findByUuid(request.getTargetUuid());
-        String targetUuid = targetUser != null ? targetUser.getUuid() : request.getTargetUuid();
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("success", true);
-        data.put("targetUuid", targetUuid);
-        return ApiResponse.success(data);
-    }
-
-    @PostMapping("/keep-device-new")
-    public ApiResponse<Map<String, Object>> keepDeviceNew(@RequestBody BindEmailRequest request) {
-        // 1. Verify code
-        EmailVerification record = emailVerificationService.verifyCode(request.getEmail(), request.getCode());
-
-        // 2. Find existing user with this email and deactivate it
-        User existingUser = userService.findByEmail(request.getEmail());
-        if (existingUser != null) {
-            userService.deactivateUser(existingUser.getId());
-        }
-
-        // 3. Bind email to current user
         userService.updateEmail(request.getEmail());
-
-        // 4. Mark code as used
-        emailVerificationService.markCodeAsUsed(record);
 
         Map<String, Object> data = new HashMap<>();
         data.put("success", true);

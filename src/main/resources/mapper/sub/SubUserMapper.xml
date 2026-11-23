@@ -25,13 +25,6 @@
     limit 1
   </select>
 
-  <update id="deactivateById">
-    update users
-    set is_active = 0,
-        updated_at = now()
-    where id = #{id,jdbcType=BIGINT}
-  </update>
-
   <update id="mergeToUser">
     update users
     set is_active = 0,

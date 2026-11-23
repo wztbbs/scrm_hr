@@ -1,8 +1,11 @@
 package com.scrm.exception;
 
 import com.scrm.common.ApiResponse;
+import com.scrm.common.RequestContext;
+import com.scrm.dao.sub.SubSubscriptionMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -14,6 +17,9 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @Autowired
+    private SubSubscriptionMapper subSubscriptionMapper;
 
     @ExceptionHandler(NoResourceFoundException.class)
     public org.springframework.http.ResponseEntity<Void> handleNoResourceFoundException(NoResourceFoundException e) {
@@ -33,6 +39,17 @@ public class GlobalExceptionHandler {
         data.put("scenario", e.getScenario());
         data.put("used", e.getUsed());
         data.put("limit", e.getLimit());
+
+        // Determine if user can upgrade: free users can, paid users cannot
+        try {
+            Long userId = RequestContext.getCurrentUserId();
+            boolean hasActiveSubscription = userId != null &&
+                    subSubscriptionMapper.selectValidActiveByUserId(userId) != null;
+            data.put("canUpgrade", !hasActiveSubscription);
+        } catch (Exception ex) {
+            data.put("canUpgrade", true); // default to allowing upgrade on error
+        }
+
         if (e.getExtra() != null) {
             data.putAll(e.getExtra());
         }

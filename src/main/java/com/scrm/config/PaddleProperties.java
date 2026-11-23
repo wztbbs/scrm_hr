@@ -11,7 +11,9 @@ import java.util.Map;
 public class PaddleProperties {
     private String apiKey;
     private String webhookSecret;
+    private String clientToken;
     private String environment = "sandbox";
+    private String frontendUrl = "https://www.hrscrm.net";
     private Map<String, String> priceIds = new HashMap<>();
 
     public String getApiKey() {
@@ -28,6 +30,14 @@ public class PaddleProperties {
 
     public void setWebhookSecret(String webhookSecret) {
         this.webhookSecret = webhookSecret;
+    }
+
+    public String getClientToken() {
+        return clientToken;
+    }
+
+    public void setClientToken(String clientToken) {
+        this.clientToken = clientToken;
     }
 
     public String getEnvironment() {
@@ -48,6 +58,14 @@ public class PaddleProperties {
 
     public boolean isSandbox() {
         return "sandbox".equalsIgnoreCase(environment);
+    }
+
+    public String getFrontendUrl() {
+        return frontendUrl;
+    }
+
+    public void setFrontendUrl(String frontendUrl) {
+        this.frontendUrl = frontendUrl;
     }
 
     public String getBaseUrl() {
