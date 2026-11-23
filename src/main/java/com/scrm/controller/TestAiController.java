@@ -17,11 +17,19 @@ import java.util.Map;
 @RequestMapping("/api/v1/test-ai")
 public class TestAiController {
 
-    private static final String API_URL = "https://sub2api.awayy1432.xyz/v1/chat/completions";
-    private static final String API_KEY = "sk-d50115dc72d5258a73400c70c084a91ecba612e0c1895fd711b8f81d20bfb6e0";
-    private static final String MODEL = "gemini-2.5-pro";
+    private static final String API_URL = "https://router.nerver.cc/v1/chat/completions";
+    private static final String API_KEY = "sk-zBuKgh2JRFN7DTOwn4oJdgYFbhI81xLalgLp8Jg3lN9paX5l";
+    private static final String MODEL = "gpt-5.5";
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public TestAiController() {
+        org.springframework.http.client.SimpleClientHttpRequestFactory factory =
+                new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10_000);    // 连接超时 10s
+        factory.setReadTimeout(300_000);      // 读超时 300s（LLM 推理耗时长）
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     @PostMapping("/chat")
     public ApiResponse<Map<String, Object>> chat(@RequestBody Map<String, String> body) {
@@ -36,6 +44,7 @@ public class TestAiController {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", MODEL);
+//        requestBody.put("reasoning_effort", "high");
 
         List<Map<String, String>> messages = new ArrayList<>();
         Map<String, String> userMessage = new HashMap<>();

@@ -184,13 +184,6 @@
             }
         }
 
-        // 支持回车发送
-        document.getElementById('question').addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                askAi();
-            }
-        });
     </script>
 </body>
 </html>
